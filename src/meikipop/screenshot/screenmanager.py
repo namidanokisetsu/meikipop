@@ -7,6 +7,7 @@ from PIL import Image
 
 from meikipop.config.config import config, IS_WAYLAND
 from meikipop.gui.region_selector import RegionSelector
+from meikipop.pipeline import PipelineValue
 
 if IS_WAYLAND:
     from . import wayland_mss_shim
@@ -27,6 +28,7 @@ class ScreenManager(threading.Thread):
         self.last_ocr_put_time = 0.0
         self.last_screenshot = None
         self.last_mouse_pos = None
+        self.last_screenshot_activation_id = None
         self.input_loop = input_loop
         if config.scan_region == "region":
             self.set_scan_region()
@@ -50,6 +52,7 @@ class ScreenManager(threading.Thread):
                 self.shared_state.screenshot_trigger_event.clear()
                 if not self.shared_state.running: break
                 logger.debug("Screenshot: Triggered!")
+                activation_id = self.shared_state.consume_screenshot_request()
 
                 # prevent multiple ocr runs during auto_scan_interval_seconds
                 seconds_since_last_ocr = time.perf_counter() - self.last_ocr_put_time
@@ -73,15 +76,17 @@ class ScreenManager(threading.Thread):
                 processing_duration = time.perf_counter() - start_time
                 logger.debug(f"Screenshot {screenshot.size} complete in {processing_duration:.2f}s")
 
-                if self.last_screenshot and self.last_screenshot.raw == screenshot.raw:
+                if (self.last_screenshot and self.last_screenshot.raw == screenshot.raw
+                        and self.last_screenshot_activation_id == activation_id):
                     logger.debug(f"Screen content didnt change... skipping ocr")
                     self._sleep_and_handle_loop_exit(0.1)
                     continue
 
                 self.last_screenshot = screenshot
+                self.last_screenshot_activation_id = activation_id
                 self.last_mouse_pos = self.input_loop.get_mouse_pos()
                 img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
-                self.shared_state.ocr_queue.put(img)
+                self.shared_state.ocr_queue.put(PipelineValue(activation_id, img))
                 self.last_ocr_put_time = time.perf_counter()
             except:
                 logger.exception("An unexpected error occurred in the screenshot loop. Continuing...")
@@ -120,12 +125,13 @@ class ScreenManager(threading.Thread):
 
     def force_screenshot_trigger(self):
         self.last_screenshot = None
+        self.last_screenshot_activation_id = None
         self.last_mouse_pos = None
 
     def _sleep_and_handle_loop_exit(self, interval):
         if config.auto_scan_mode:
             time.sleep(interval)
-            self.shared_state.screenshot_trigger_event.set()
+            self.shared_state.request_screenshot()
         else:
             self.shared_state.hit_scan_queue.trigger()
 

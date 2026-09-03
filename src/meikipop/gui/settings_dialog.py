@@ -4,13 +4,15 @@ from PyQt6.QtGui import QColor, QIcon, QFontDatabase
 from PyQt6.QtWidgets import (QWidget, QDialog, QFormLayout, QComboBox,
                              QSpinBox, QCheckBox, QPushButton, QColorDialog, QVBoxLayout, QHBoxLayout,
                              QGroupBox, QDialogButtonBox, QLabel, QSlider, QDoubleSpinBox,
-                             QTabWidget, QSizePolicy, QFontComboBox)
+                             QTabWidget, QSizePolicy, QFontComboBox, QFileDialog, QLineEdit, QMessageBox)
 
 from meikipop.dictionary.lookup import Lookup
 from meikipop.config.config import config, APP_NAME, IS_WINDOWS
 from meikipop.gui.input import InputLoop
 from meikipop.gui.popup import Popup
 from meikipop.ocr.ocr import OcrProcessor
+from meikipop.gui.activation import parse_activation_bindings, serialise_activation_bindings
+from meikipop.utils.startup import set_startup_enabled
 
 THEMES = {
     "Nazeka": {
@@ -71,11 +73,22 @@ class SettingsDialog(QDialog):
         core_layout = QFormLayout()
         self.form_layouts.append(core_layout)
 
+        configured_bindings = parse_activation_bindings(config.activation_bindings)
+        keyboard_binding = next((binding for binding in configured_bindings if not binding & {'middle', 'mouse4', 'mouse5'}), frozenset())
         self.hotkey_combo = QComboBox()
-        self.hotkey_combo.addItems(['ctrl', 'shift', 'alt', 'ctrl+shift', 'ctrl+alt', 'shift+alt', 'ctrl+shift+alt'])
-        self.hotkey_combo.setCurrentText(config.hotkey)
+        self.hotkey_combo.addItems(['None', 'ctrl', 'shift', 'alt', 'cmd', 'ctrl+shift', 'ctrl+alt', 'shift+alt', 'ctrl+shift+alt'])
+        self.hotkey_combo.setCurrentText('+'.join(token for token in ('ctrl', 'shift', 'alt', 'cmd') if token in keyboard_binding) or 'None')
         self._set_expanding(self.hotkey_combo)
-        core_layout.addRow("Hotkey:", self.hotkey_combo)
+        core_layout.addRow("Keyboard activation:", self.hotkey_combo)
+
+        mouse_container = QWidget()
+        mouse_layout = QHBoxLayout(mouse_container)
+        mouse_layout.setContentsMargins(0, 0, 0, 0)
+        self.middle_activation_check = QCheckBox("Middle")
+        self.middle_activation_check.setChecked(frozenset({'middle'}) in configured_bindings)
+        mouse_layout.addWidget(self.middle_activation_check)
+        mouse_layout.addStretch()
+        core_layout.addRow("Mouse activation:", mouse_container)
 
         self.ocr_provider_combo = QComboBox()
         self.ocr_provider_combo.addItems(self.ocr_processor.available_providers.keys())
@@ -103,6 +116,11 @@ class SettingsDialog(QDialog):
             self.magpie_check.setChecked(config.magpie_compatibility)
             self.magpie_check.setToolTip("Enable transformations for compatibility with Magpie game scaler.")
             core_layout.addRow("Magpie Compatibility:", self.magpie_check)
+
+            self.startup_check = QCheckBox()
+            self.startup_check.setChecked(config.start_with_windows)
+            self.startup_check.setToolTip("Start Meikipop in the system tray when you sign in to Windows.")
+            core_layout.addRow("Start with Windows:", self.startup_check)
 
         core_group.setLayout(core_layout)
         self.tab_general_layout.addWidget(core_group)
@@ -314,10 +332,54 @@ class SettingsDialog(QDialog):
         self.tab_appearance_layout.addWidget(color_group)
         self.tab_appearance_layout.addStretch()
 
+        # ==========================================
+        # TAB 4: Audio
+        # ==========================================
+        self.tab_audio = QWidget()
+        self.tab_audio_layout = QVBoxLayout(self.tab_audio)
+        audio_group = QGroupBox("Pronunciation Audio")
+        audio_layout = QFormLayout()
+        self.form_layouts.append(audio_layout)
+
+        self.audio_enabled_check = QCheckBox()
+        self.audio_enabled_check.setChecked(config.audio_autoplay_enabled)
+        audio_layout.addRow("Enable autoplay:", self.audio_enabled_check)
+
+        path_container = QWidget()
+        path_layout = QHBoxLayout(path_container)
+        path_layout.setContentsMargins(0, 0, 0, 0)
+        self.audio_path_edit = QLineEdit(config.audio_database_path)
+        self.audio_path_edit.editingFinished.connect(self._validate_audio_database)
+        self.audio_browse_button = QPushButton("Browse…")
+        self.audio_browse_button.clicked.connect(self._browse_audio_database)
+        path_layout.addWidget(self.audio_path_edit)
+        path_layout.addWidget(self.audio_browse_button)
+        audio_layout.addRow("android.db path:", path_container)
+
+        self.audio_sources_edit = QLineEdit(config.audio_preferred_sources)
+        self.audio_sources_edit.editingFinished.connect(self._validate_audio_database)
+        self.audio_sources_edit.setToolTip("Comma-separated source names, highest priority first")
+        audio_layout.addRow("Preferred sources:", self.audio_sources_edit)
+
+        self.audio_volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.audio_volume_slider.setRange(0, 100)
+        self.audio_volume_slider.setValue(config.audio_volume)
+        audio_layout.addRow("Volume:", self.audio_volume_slider)
+
+        self.audio_status_label = QLabel(getattr(self.lookup.audio_service, 'last_status', 'Audio service unavailable'))
+        self.audio_status_label.setWordWrap(True)
+        audio_layout.addRow("Status:", self.audio_status_label)
+        if self.lookup.audio_service:
+            self.lookup.audio_service.status_changed.connect(self.audio_status_label.setText)
+        audio_group.setLayout(audio_layout)
+        self.tab_audio_layout.addWidget(audio_group)
+        self.tab_audio_layout.addStretch()
+
         # Add tabs to main layout
         self.tabs.addTab(self.tab_general, "General")
         self.tabs.addTab(self.tab_content, "Popup Content")
         self.tabs.addTab(self.tab_appearance, "Popup Appearance")
+        self.tabs.addTab(self.tab_audio, "Audio")
         main_layout.addWidget(self.tabs)
 
         # Buttons
@@ -338,6 +400,17 @@ class SettingsDialog(QDialog):
     def _set_expanding(self, widget):
         """Helper to let a widget expand horizontally"""
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def _browse_audio_database(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Select Local Audio Server database", self.audio_path_edit.text(), "SQLite database (*.db);;All files (*)")
+        if path:
+            self.audio_path_edit.setText(path)
+            self._validate_audio_database()
+
+    def _validate_audio_database(self):
+        if self.lookup.audio_service and self.audio_path_edit.text().strip():
+            self.audio_status_label.setText("Checking audio database…")
+            self.lookup.audio_service.validate(self.audio_path_edit.text(), self.audio_sources_edit.text())
 
     def _finalize_layout_styling(self):
         """ Sets all label columns to that width to align the controls perfectly"""
@@ -420,7 +493,16 @@ class SettingsDialog(QDialog):
             self.ocr_processor.switch_provider(selected_provider)
 
         # Update all other config values
-        config.hotkey = self.hotkey_combo.currentText()
+        bindings = []
+        keyboard_binding = self.hotkey_combo.currentText()
+        if keyboard_binding != 'None':
+            bindings.append(keyboard_binding.split('+'))
+        if self.middle_activation_check.isChecked():
+            bindings.append(['middle'])
+        if not bindings:
+            bindings.append(['shift'])
+        config.activation_bindings = serialise_activation_bindings(bindings)
+        config.hotkey = keyboard_binding.lower() if keyboard_binding != 'None' else 'shift'
         config.glens_low_bandwidth = self.glens_compression_check.isChecked()
         config.max_lookup_length = self.max_lookup_spin.value()
         config.auto_scan_mode = self.auto_scan_check.isChecked()
@@ -430,6 +512,12 @@ class SettingsDialog(QDialog):
 
         if IS_WINDOWS:
             config.magpie_compatibility = self.magpie_check.isChecked()
+            config.start_with_windows = self.startup_check.isChecked()
+            try:
+                set_startup_enabled(config.start_with_windows)
+            except OSError as exc:
+                config.start_with_windows = False
+                QMessageBox.warning(self, "Startup setting", f"Could not change Windows startup setting:\n{exc}")
         config.compact_mode = self.compact_check.isChecked()
         config.show_all_glosses = self.show_glosses_check.isChecked()
         config.show_deconjugation = self.show_deconj_check.isChecked()
@@ -447,12 +535,20 @@ class SettingsDialog(QDialog):
         config.font_family = self.font_family_combo.currentFont().family()
         config.font_size_header = self.font_size_header_spin.value()
         config.font_size_definitions = self.font_size_def_spin.value()
+        config.audio_autoplay_enabled = self.audio_enabled_check.isChecked()
+        config.audio_database_path = self.audio_path_edit.text().strip()
+        config.audio_preferred_sources = ','.join(
+            source.strip() for source in self.audio_sources_edit.text().split(',') if source.strip()
+        )
+        config.audio_volume = self.audio_volume_slider.value()
         config.save()
 
         # Tell the live components to re-apply settings
         self.input_loop.reapply_settings()
         self.popup_window.reapply_settings()
         self.tray_icon.reapply_settings()
-        self.ocr_processor.shared_state.screenshot_trigger_event.set()
+        self.ocr_processor.shared_state.request_screenshot()
+        if self.lookup.audio_service:
+            self.lookup.audio_service.apply_settings(validate=True)
 
         self.accept()

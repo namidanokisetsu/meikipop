@@ -5,6 +5,7 @@ import os
 import sys
 
 from meikipop.utils.paths import paths
+from meikipop.gui.activation import normalise_activation_bindings
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class Config:
     _SCHEMA = {
         'Settings': {
             'hotkey': 'shift',
+            'activation_bindings': 'shift,middle',
             'scan_region': 'region',
             'max_lookup_length': 25,
             'glens_low_bandwidth': False,
@@ -38,7 +40,14 @@ class Config:
             'auto_scan_mode_lookups_without_hotkey': True,
             'auto_scan_interval_seconds': 0.5,
             'auto_scan_on_mouse_move': True,
-            'magpie_compatibility': True
+            'magpie_compatibility': True,
+            'start_with_windows': False
+        },
+        'Audio': {
+            'audio_autoplay_enabled': False,
+            'audio_database_path': '',
+            'audio_volume': 80,
+            'audio_preferred_sources': 'jpod,shinmeikai8,daijisen,nhk16,forvo,taas,ozk5,forvo_ext,forvo_ext2',
         },
         'Theme': {
             'theme_name': 'Nazeka',
@@ -73,6 +82,7 @@ class Config:
         parser = configparser.ConfigParser()
         found = parser.read(CONFIG_PATH, encoding='utf-8')
 
+        activation_was_present = parser.has_option('Settings', 'activation_bindings')
         for section, settings in self._SCHEMA.items():
             for key, default in settings.items():
                 if parser.has_option(section, key):
@@ -87,6 +97,15 @@ class Config:
                 else:
                     val = default
                 setattr(self, key, val)
+
+        # Legacy config files used one keyboard chord in ``hotkey``. Only new
+        # installs receive the Shift-or-Middle default.
+        activation_source = self.activation_bindings if activation_was_present or not found else self.hotkey
+        try:
+            self.activation_bindings = normalise_activation_bindings(activation_source)
+        except ValueError as exc:
+            logger.warning("Invalid activation bindings %r: %s; using Shift", activation_source, exc)
+            self.activation_bindings = 'shift'
 
         self.is_enabled = True
         if found:

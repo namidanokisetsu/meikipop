@@ -1,218 +1,133 @@
-# meikipop/gui/input.py
+"""Event-driven global keyboard and mouse input tracking."""
+from __future__ import annotations
+
 import logging
-import sys
 import threading
-import time
 
-from pynput import mouse
+from pynput import keyboard, mouse
 
-from meikipop.config.config import config, IS_LINUX, IS_MACOS
-
-if IS_LINUX:
-    from Xlib import display as xlib_display
-    from Xlib.error import XError
-    from Xlib import XK
-elif IS_MACOS:
-    import Quartz
-    from AppKit import NSEvent
-else:
-    import keyboard
-
+from meikipop.config.config import config
+from meikipop.gui.activation import ActivationState, normalise_pynput_button, normalise_pynput_key
+from meikipop.pipeline import PipelineValue, REUSE_LAST_VALUE
 
 logger = logging.getLogger(__name__)
 
-class LinuxX11KeyboardController:
-    def __init__(self, hotkey_str):
-        self.hotkey_str = hotkey_str.lower()
-        try:
-            self.display = xlib_display.Display()
-            self._setup_keycodes()
-        except (XError, Exception) as e:
-            logger.critical("Could not connect to X server. Is DISPLAY environment variable set? Error: %s", e)
-            logger.critical("Meikipop cannot run without a graphical session.")
-            sys.exit(1)
-
-    def _setup_keycodes(self):
-        self.modifier_groups = []
-        modifier_map = {
-            'shift': ['Shift_L', 'Shift_R'],
-            'ctrl': ['Control_L', 'Control_R'],
-            'alt': ['Alt_L', 'Alt_R']
-        }
-        hotkeys = self.hotkey_str.split('+')
-
-        for key in hotkeys:
-            target_keysyms = modifier_map.get(key)
-            if not target_keysyms:
-                logger.critical(f"Unsupported hotkey '{key}' for Linux/X11. Use 'shift', 'ctrl', or 'alt'.")
-                sys.exit(1)
-            group_keycodes = set()
-            for keysym_str in target_keysyms:
-                keysym = XK.string_to_keysym(keysym_str)
-                if keysym:
-                    keycode = self.display.keysym_to_keycode(keysym)
-                    if keycode:
-                        group_keycodes.add(keycode)
-
-            if not group_keycodes:
-                logger.critical(f"Could not find keycodes for hotkey '{key}'.")
-                sys.exit(1)
-
-            self.modifier_groups.append(group_keycodes)
-
-    def is_hotkey_pressed(self) -> bool:
-        try:
-            key_map = self.display.query_keymap()
-            for group in self.modifier_groups:
-                group_is_pressed = False
-                for keycode in group:
-                    if (key_map[keycode // 8] >> (keycode % 8)) & 1:
-                        group_is_pressed = True
-                        break
-                if not group_is_pressed:
-                    return False
-            return True
-        except XError:
-            return False
-
-
-class WindowsKeyboardController:
-    def __init__(self, hotkey_str):
-        self.hotkey_str = hotkey_str.lower()
-
-    def is_hotkey_pressed(self) -> bool:
-        try:
-            return keyboard.is_pressed(self.hotkey_str)
-        except ImportError:
-            logger.critical("FATAL: The 'keyboard' library failed to import a backend. This often means it needs to be run with administrator/sudo privileges.")
-            sys.exit(1)
-        except Exception:
-            return False
-
-
-class MacOSKeyboardController:
-    def __init__(self, hotkey_str):
-        self.hotkey_str = hotkey_str.lower()
-        self.modifiers = self.hotkey_str.split('+')
-
-        # Map common hotkey strings to macOS key codes
-        key_mapping = {
-            'shift': [56, 60],  # Left and Right Shift
-            'ctrl': [59, 62],   # Left and Right Control
-            'alt': [58, 61],    # Left and Right Option/Alt
-            'cmd': [55, 54],    # Left and Right Command
-        }
-
-        for mod in self.modifiers:
-            self.keycodes_to_check = key_mapping.get(mod, [])
-            if not self.keycodes_to_check:
-                logger.critical(
-                    f"Unsupported hotkey '{self.hotkey_str}' for macOS. Use 'shift', 'ctrl', 'alt', or 'cmd'.")
-                sys.exit(1)
-
-    def is_hotkey_pressed(self) -> bool:
-        try:
-            # Get current modifier flags
-            flags = NSEvent.modifierFlags()
-
-            # Iterate through all required modifiers in the combo
-            for mod in self.modifiers:
-                if mod == 'shift':
-                    if not (flags & (1 << 17) or flags & (1 << 18)):
-                        return False
-                elif mod == 'ctrl':
-                    if not (flags & (1 << 12)):
-                        return False
-                elif mod == 'alt':
-                    if not (flags & (1 << 19)):
-                        return False
-                elif mod == 'cmd':
-                    if not (flags & (1 << 20)):
-                        return False
-            return True
-        except Exception as e:
-            logger.warning(f"Error checking hotkey state: {e}")
-            return False
 
 class InputLoop(threading.Thread):
+    """Own activation edge detection; listener callbacks only update state."""
+
     def __init__(self, shared_state):
         super().__init__(daemon=True, name="InputLoop")
         self.shared_state = shared_state
         self.mouse_controller = mouse.Controller()
-
-        self.hotkey_str = config.hotkey.lower()
-        if IS_LINUX:
-            self.keyboard_controller = LinuxX11KeyboardController(self.hotkey_str)
-        elif IS_MACOS:
-            self.keyboard_controller = MacOSKeyboardController(self.hotkey_str)
-        else: # IS_WINDOWS
-            self.keyboard_controller = WindowsKeyboardController(self.hotkey_str)
-
+        self.activation = ActivationState(config.activation_bindings)
+        self._wake = threading.Event()
+        self._movement_pending = False
+        self._movement_lock = threading.Lock()
+        self._keyboard_listener = None
+        self._mouse_listener = None
         self.started_auto_mode = False
+
+    def _on_key_press(self, key):
+        token = normalise_pynput_key(key)
+        if token:
+            self.activation.update(token, True)
+            self._wake.set()
+
+    def _on_key_release(self, key):
+        token = normalise_pynput_key(key)
+        if token:
+            self.activation.update(token, False)
+            self._wake.set()
+
+    def _on_click(self, _x, _y, button, pressed):
+        token = normalise_pynput_button(button)
+        if token:
+            self.activation.update(token, pressed)
+            self._wake.set()
+
+    def _on_move(self, _x, _y):
+        with self._movement_lock:
+            self._movement_pending = True
+        self._wake.set()
+
+    def _consume_movement(self):
+        with self._movement_lock:
+            moved = self._movement_pending
+            self._movement_pending = False
+        return moved
 
     def run(self):
         logger.debug("Input thread started.")
-        last_mouse_pos = (0, 0)
-        hotkey_was_pressed = False
+        self._keyboard_listener = keyboard.Listener(on_press=self._on_key_press, on_release=self._on_key_release)
+        self._mouse_listener = mouse.Listener(on_move=self._on_move, on_click=self._on_click)
+        self._keyboard_listener.start()
+        self._mouse_listener.start()
+        previous_active = self.activation.active
+        observed_activation_id = self.activation.activation_id
+        try:
+            while self.shared_state.running:
+                self._wake.wait(0.1)
+                self._wake.clear()
+                if not config.is_enabled:
+                    previous_active = self.activation.active
+                    observed_activation_id = self.activation.activation_id
+                    self.shared_state.set_activation(observed_activation_id, False)
+                    continue
+                active = self.activation.active
+                activation_id = self.activation.activation_id
+                if activation_id != observed_activation_id:
+                    self.shared_state.set_activation(activation_id, active)
+                    if not config.auto_scan_mode:
+                        logger.info("Input: activation %s pressed; triggering screenshot", activation_id)
+                        self.shared_state.request_screenshot(activation_id)
+                    else:
+                        # Reuse the latest auto-scan OCR immediately, but tag the
+                        # hit test as a fresh activation for lookup/audio delivery.
+                        self.shared_state.hit_scan_queue.put(PipelineValue(activation_id, REUSE_LAST_VALUE))
+                    observed_activation_id = activation_id
+                elif previous_active and not active:
+                    self.shared_state.set_activation(activation_id, False)
+                    logger.info("Input: activation %s released", activation_id)
 
-        while self.shared_state.running:
-            if not config.is_enabled:
-                time.sleep(0.1)
-                continue
-            try:
-                current_mouse_pos = self.mouse_controller.position
-                try:
-                    hotkey_is_pressed = self.keyboard_controller.is_hotkey_pressed()
-                except Exception:
-                    hotkey_is_pressed = False
-
-                # trigger screenshots + ocr in manual mode
-                if hotkey_is_pressed and not hotkey_was_pressed and not config.auto_scan_mode:
-                    logger.info(f"Input: Hotkey '{config.hotkey}' pressed. Triggering screenshot.")
-                    self.shared_state.screenshot_trigger_event.set()
-
-                # trigger initial screenshots + ocr in auto mode
                 if not self.started_auto_mode and config.auto_scan_mode:
-                    self.shared_state.screenshot_trigger_event.set()
+                    self.shared_state.request_screenshot()
                 self.started_auto_mode = config.auto_scan_mode
+                if self._consume_movement():
+                    if config.auto_scan_mode and config.auto_scan_on_mouse_move:
+                        self.shared_state.request_screenshot()
+                    hit_id = activation_id if active else 0
+                    self.shared_state.hit_scan_queue.put(PipelineValue(hit_id, REUSE_LAST_VALUE))
+                previous_active = active
+        except Exception:
+            logger.exception("The input loop stopped unexpectedly")
+        finally:
+            for listener in (self._keyboard_listener, self._mouse_listener):
+                if listener:
+                    listener.stop()
+            for listener in (self._keyboard_listener, self._mouse_listener):
+                if listener:
+                    listener.join(timeout=2)
+            logger.debug("Input thread stopped.")
 
-                # trigger screenshots + ocr in auto-on-mouse-move mode
-                if config.auto_scan_mode and config.auto_scan_on_mouse_move and current_mouse_pos != last_mouse_pos:
-                    self.shared_state.screenshot_trigger_event.set()
-
-                # trigger hit_scans + lookups
-                if current_mouse_pos != last_mouse_pos:
-                    self.shared_state.hit_scan_queue.trigger()
-
-                if hotkey_was_pressed and not hotkey_is_pressed:
-                    logger.info(f"Input: Hotkey '{config.hotkey}' released.")
-
-                last_mouse_pos = current_mouse_pos
-                hotkey_was_pressed = hotkey_is_pressed
-                self.hotkey_is_pressed = hotkey_is_pressed
-            except:
-                logger.exception("An unexpected error occurred in the input loop. Continuing...")
-            finally:
-                time.sleep(0.01)
-        logger.debug("Input thread stopped.")
+    def stop(self):
+        self._wake.set()
+        for listener in (self._keyboard_listener, self._mouse_listener):
+            if listener:
+                listener.stop()
 
     def is_virtual_hotkey_down(self):
-        return self.keyboard_controller.is_hotkey_pressed() or (
-                config.auto_scan_mode and config.auto_scan_mode_lookups_without_hotkey)
+        return self.activation.active or (config.auto_scan_mode and config.auto_scan_mode_lookups_without_hotkey)
 
     def reapply_settings(self):
-        logger.debug(f"InputLoop: Re-applying settings. New hotkey: '{config.hotkey}'.")
-        self.hotkey_str = config.hotkey.lower()
-        if IS_LINUX:
-            self.keyboard_controller = LinuxX11KeyboardController(self.hotkey_str)
-        elif IS_MACOS:
-            self.keyboard_controller = MacOSKeyboardController(self.hotkey_str)
-        else: # IS_WINDOWS
-            self.keyboard_controller = WindowsKeyboardController(self.hotkey_str)
+        logger.debug("InputLoop: applying activation bindings %r", config.activation_bindings)
+        transition = self.activation.set_bindings(config.activation_bindings)
+        if transition.became_active:
+            self.shared_state.set_activation(transition.activation_id, True)
+        elif transition.became_inactive:
+            self.shared_state.set_activation(transition.activation_id, False)
+        self._wake.set()
 
-    @staticmethod
-    def get_mouse_pos():
-        with mouse.Controller() as mc:
-            pos = mc.position
-            # Convert floats to integers for QPoint compatibility
-            return (int(pos[0]), int(pos[1]))
+    def get_mouse_pos(self):
+        pos = self.mouse_controller.position
+        return int(pos[0]), int(pos[1])

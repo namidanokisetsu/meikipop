@@ -20,6 +20,11 @@ build/
 data/
 config.ini
 dictionary.pkl
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.log
 
 # MacOS things
 .DS_Store

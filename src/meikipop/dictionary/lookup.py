@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple
 from meikipop.config.config import config, MAX_DICT_ENTRIES, DICT_PATH
 from meikipop.dictionary.customdict import Dictionary, WRITTEN_FORM_INDEX, READING_INDEX, FREQUENCY_INDEX, ENTRY_ID_INDEX, DEFAULT_FREQ
 from meikipop.dictionary.deconjugator import Deconjugator, Form
+from meikipop.pipeline import LookupResult, PipelineValue
 
 KANJI_REGEX = re.compile(r'[\u4e00-\u9faf]')
 JAPANESE_SEPARATORS = {
@@ -48,6 +49,8 @@ class Lookup(threading.Thread):
         self.shared_state = shared_state
         self.popup_window = popup_window
         self.last_hit_result = None
+        self.last_activation_id = None
+        self.audio_service = None
 
         self.dictionary = Dictionary()
         self.lookup_cache: OrderedDict = OrderedDict()
@@ -64,17 +67,32 @@ class Lookup(threading.Thread):
         logger.debug("Lookup thread started.")
         while self.shared_state.running:
             try:
-                hit_result = self.shared_state.lookup_queue.get()
+                request = self.shared_state.lookup_queue.get()
                 if not self.shared_state.running: break
+                if isinstance(request, PipelineValue):
+                    activation_id, hit_result = request.activation_id, request.value
+                else:
+                    activation_id, hit_result = 0, request
                 logger.debug("Lookup: Triggered")
 
-                # skip lookup if hit_result didnt change
-                if hit_result == self.last_hit_result:
+                current_id, _active = self.shared_state.activation_snapshot()
+                if activation_id and activation_id != current_id:
+                    logger.debug("Discarding stale lookup request for activation %s", activation_id)
+                    continue
+
+                # Identical cursor hits are deduplicated only within one activation.
+                if hit_result == self.last_hit_result and activation_id == self.last_activation_id:
                     continue
                 self.last_hit_result = hit_result
+                self.last_activation_id = activation_id
 
                 lookup_result = self.lookup(self.last_hit_result) if self.last_hit_result else None
-                self.popup_window.set_latest_data(lookup_result)
+                message = LookupResult(activation_id, hit_result, tuple(lookup_result or ()))
+                current_id, _active = self.shared_state.activation_snapshot()
+                if not activation_id or activation_id == current_id:
+                    self.popup_window.set_latest_data(list(message.entries) or None)
+                    if self.audio_service:
+                        self.audio_service.handle_lookup_result(message)
             except:
                 logger.exception("An unexpected error occurred in the lookup loop. Continuing...")
         logger.debug("Lookup thread stopped.")

@@ -11,6 +11,7 @@ from typing import Dict, Type, Optional
 from meikipop.config.config import config
 from meikipop.ocr.interface import OcrProvider
 from meikipop.ocr.providers.glensv2 import GoogleLensOcrV2
+from meikipop.pipeline import PipelineValue
 
 logger = logging.getLogger(__name__)  # Get the logger
 
@@ -32,8 +33,12 @@ class OcrProcessor(threading.Thread):
         logger.debug("OCR thread started.")
         while self.shared_state.running:
             try:
-                screenshot = self.shared_state.ocr_queue.get()
+                request = self.shared_state.ocr_queue.get()
                 if not self.shared_state.running: break
+                if isinstance(request, PipelineValue):
+                    activation_id, screenshot = request.activation_id, request.value
+                else:
+                    activation_id, screenshot = 0, request
 
                 logger.debug("OCR: Triggered!")
 
@@ -43,12 +48,12 @@ class OcrProcessor(threading.Thread):
                     f"{self.ocr_backend.NAME} found {len(ocr_result) if ocr_result else 0} paragraphs in {(time.perf_counter() - start_time):.3f}s.")
                 # todo keep last ocr result?
 
-                self.shared_state.hit_scan_queue.put(ocr_result)
+                self.shared_state.hit_scan_queue.put(PipelineValue(activation_id, ocr_result))
             except:
                 logger.exception("An unexpected error occurred in the ocr loop. Continuing...")
             finally:
                 if config.auto_scan_mode:
-                    self.shared_state.screenshot_trigger_event.set()
+                    self.shared_state.request_screenshot()
         logger.debug("OCR thread stopped.")
 
     # todo combine methods?
@@ -65,9 +70,9 @@ class OcrProcessor(threading.Thread):
                 config.ocr_provider = self.ocr_backend.NAME
                 config.save()  # todo fix tray showing wrong provider
                 if config.auto_scan_mode:
-                    self.shared_state.hit_scan_queue.put(None)
+                    self.shared_state.hit_scan_queue.put(PipelineValue(0, None))
                     self.screen_manager.force_screenshot_trigger()
-                    self.shared_state.screenshot_trigger_event.set()
+                    self.shared_state.request_screenshot()
             except Exception as e:
                 logger.error(f"Failed to instantiate provider '{provider_name}': {e}", exc_info=True)
                 if self.ocr_backend:
