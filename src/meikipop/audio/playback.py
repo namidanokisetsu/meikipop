@@ -5,7 +5,7 @@ import logging
 import threading
 
 from PyQt6.QtCore import QByteArray, QBuffer, QIODevice, QObject, QUrl, pyqtSignal
-from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PyQt6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 
 from meikipop.audio.worker import AudioRequest, AudioWorker
 from meikipop.config.config import config
@@ -20,7 +20,10 @@ class PronunciationAudioService(QObject):
     def __init__(self, shared_state, parent=None):
         super().__init__(parent)
         self.shared_state = shared_state
+        self._media_devices = QMediaDevices(self)
         self.output = QAudioOutput(self)
+        self._media_devices.audioOutputsChanged.connect(self._follow_system_audio_output)
+        self._follow_system_audio_output()
         self.player = QMediaPlayer(self)
         self.player.setAudioOutput(self.output)
         self._bytes = None
@@ -37,6 +40,13 @@ class PronunciationAudioService(QObject):
         self.worker = AudioWorker(self.clip_ready.emit, self.status_changed.emit)
         self.worker.start()
         self.apply_settings(validate=config.audio_autoplay_enabled)
+
+    def _follow_system_audio_output(self):
+        """Route playback to the current system default output device."""
+        device = self._media_devices.defaultAudioOutput()
+        if self.output.device() != device:
+            logger.info("Audio output changed to %s", device.description())
+            self.output.setDevice(device)
 
     def _preferences(self):
         return tuple(item.strip() for item in config.audio_preferred_sources.split(",") if item.strip())

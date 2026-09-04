@@ -104,6 +104,33 @@ class AudioServiceTests(unittest.TestCase):
         self.service._on_media_status(QMediaPlayer.MediaStatus.EndOfMedia)
         self.assertIsNone(self.service._buffer)
 
+    def test_audio_output_follows_new_system_default(self):
+        class Device:
+            def description(self):
+                return "Bluetooth headphones"
+
+        class MediaDevicesSpy:
+            def defaultAudioOutput(self):
+                return device
+
+        class OutputSpy:
+            current_device = object()
+
+            def device(self):
+                return self.current_device
+
+            def setDevice(self, new_device):
+                self.current_device = new_device
+
+        device = Device()
+        output = OutputSpy()
+        self.service._media_devices = MediaDevicesSpy()
+        self.service.output = output
+
+        self.service._follow_system_audio_output()
+
+        self.assertIs(output.current_device, device)
+
 
 if __name__ == "__main__":
     unittest.main()
