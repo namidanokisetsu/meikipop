@@ -114,7 +114,8 @@ def run_gui():
 
     --------------------------------------------------
     """
-    print(ready_message)
+    if sys.stdout is not None:
+        print(ready_message)
 
     def signal_handler(sig, frame):
         QApplication.quit()

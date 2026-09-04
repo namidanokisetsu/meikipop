@@ -54,6 +54,12 @@ class ScreenManager(threading.Thread):
                 logger.debug("Screenshot: Triggered!")
                 activation_id = self.shared_state.consume_screenshot_request()
 
+                # Auto mode may be turned off while a background request is
+                # still queued. Never let that stale request run OCR in Manual
+                # mode; manual activation requests always have a non-zero id.
+                if not config.auto_scan_mode and activation_id == 0:
+                    continue
+
                 # prevent multiple ocr runs during auto_scan_interval_seconds
                 seconds_since_last_ocr = time.perf_counter() - self.last_ocr_put_time
                 if config.auto_scan_mode and seconds_since_last_ocr < config.auto_scan_interval_seconds:

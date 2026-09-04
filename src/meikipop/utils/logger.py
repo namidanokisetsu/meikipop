@@ -1,8 +1,11 @@
 # meikipop/utils/logger.py
 import logging
+from logging.handlers import RotatingFileHandler
 import sys
+from pathlib import Path
 
 from meikipop.config.config import APP_NAME
+from meikipop.utils.paths import paths
 
 TRACE_LEVEL_NUM = 5
 logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
@@ -21,7 +24,17 @@ def setup_logging():
         datefmt='%H:%M:%S'
     )
 
-    handler = logging.StreamHandler(sys.stdout)
+    if sys.stdout is not None:
+        handler = logging.StreamHandler(sys.stdout)
+    else:
+        log_dir = Path(paths.cache_dir)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            log_dir / "meikipop.log",
+            maxBytes=1_000_000,
+            backupCount=2,
+            encoding="utf-8",
+        )
     handler.setFormatter(log_formatter)
 
     logger = logging.getLogger()

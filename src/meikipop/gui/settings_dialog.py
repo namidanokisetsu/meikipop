@@ -547,7 +547,8 @@ class SettingsDialog(QDialog):
         self.input_loop.reapply_settings()
         self.popup_window.reapply_settings()
         self.tray_icon.reapply_settings()
-        self.ocr_processor.shared_state.request_screenshot()
+        if config.auto_scan_mode:
+            self.ocr_processor.shared_state.request_screenshot()
         if self.lookup.audio_service:
             self.lookup.audio_service.apply_settings(validate=True)
 

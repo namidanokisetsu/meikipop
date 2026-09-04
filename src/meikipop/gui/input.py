@@ -57,6 +57,15 @@ class InputLoop(threading.Thread):
             self._movement_pending = False
         return moved
 
+    def _dispatch_movement(self, active, activation_id):
+        """Handle pointer movement without activating Manual mode by itself."""
+        if config.auto_scan_mode and config.auto_scan_on_mouse_move:
+            self.shared_state.request_screenshot()
+
+        if active or (config.auto_scan_mode and config.auto_scan_mode_lookups_without_hotkey):
+            hit_id = activation_id if active else 0
+            self.shared_state.hit_scan_queue.put(PipelineValue(hit_id, REUSE_LAST_VALUE))
+
     def run(self):
         logger.debug("Input thread started.")
         self._keyboard_listener = keyboard.Listener(on_press=self._on_key_press, on_release=self._on_key_release)
@@ -94,10 +103,7 @@ class InputLoop(threading.Thread):
                     self.shared_state.request_screenshot()
                 self.started_auto_mode = config.auto_scan_mode
                 if self._consume_movement():
-                    if config.auto_scan_mode and config.auto_scan_on_mouse_move:
-                        self.shared_state.request_screenshot()
-                    hit_id = activation_id if active else 0
-                    self.shared_state.hit_scan_queue.put(PipelineValue(hit_id, REUSE_LAST_VALUE))
+                    self._dispatch_movement(active, activation_id)
                 previous_active = active
         except Exception:
             logger.exception("The input loop stopped unexpectedly")
