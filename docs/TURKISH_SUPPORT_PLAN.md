@@ -283,16 +283,13 @@ Dictionary and audio packs update independently. A text-pack update does not for
 
 ## 9. OCR integration
 
-Implement text lookup before spending effort on OCR. Then adapt existing multilingual providers for Turkish:
+The local-first requirement supersedes the earlier Lens-first proposal. Turkish uses **PaddleOCR 3.7.0**, PaddleX 3.7.2 and PaddlePaddle 3.3.1 on CPU, with **PP-OCRv6 small** detection/recognition. These were the current PyPI releases checked on 2026-09-06. Japanese providers remain unchanged. There is no cloud fallback for Turkish screenshots.
 
-- First route: existing Google Lens provider, with Japanese-only line filtering removed for Turkish and word separators preserved. This reuses the app's current remote backend; no new cloud API setup.
-- Preserve spaces and line boundaries; store reliable offsets from each recognized word into paragraph text.
-- Turkish hover selects the entire recognized token, wherever the cursor lands within it. Preserve a complete line of context for Stanza. Do not use Japanese prefix scanning or the current 25-character truncation for Turkish words.
-- Keep proper-name apostrophe forms together. Bypass Japanese-only furigana assumptions for Turkish.
-- Language/provider settings must not leave Turkish pointed silently at the Japanese MeikiOCR model. Explain/select a compatible provider when enabling Turkish.
-- A dedicated local PaddleOCR Latin provider is a later optional step, not a prerequisite for trying Stanza + TDK. This is functional scope control, not an OCR benchmark.
+`setup-turkish-ocr` explicitly downloads the two models, stages them under the Turkish data directory, records file checksums, and activates a complete model directory. Runtime verifies local files before lazily importing PaddleOCR, disables host connectivity probing, passes both local model paths, and disables orientation/unwarping models. Failed setup retains the previous directory. Model setup uses PaddleX's official downloader; the installed manifest records the downloaded bytes rather than claiming an immutable upstream weight revision.
 
-Make screen-region selection and OCR initialization lazy enough that clipboard-only use does not prompt for a scan region or download Japanese OCR models/dictionaries. Existing Japanese installations retain their normal setup path.
+The popup captures a bounded region around the pointer on its own monitor. Qt screen coordinates are converted to screenshot pixels using the actual captured dimensions. Paddle's `text_word_boxes` map a hit to an offset in the full recognized line, then the existing Turkish analyzer chooses the token. No character-width estimates or Japanese-only text filtering. Screen images remain in memory.
+
+Verification: the real PP-OCRv6 small models recognize `Bug?n ?ocuklar kitap okuyor.` with Turkish glyphs intact and select `kitap` at offset 15; the smoke blocks socket connections throughout model initialization and inference. Focused fixtures cover repeated words, box misses and missing-model failure before imports/downloads. Desktop capture and popup acceptance are recorded below separately.
 
 ## 10. Implementation sequence and likely files
 

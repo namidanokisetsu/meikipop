@@ -1,4 +1,4 @@
-"""Commands for the Turkish text-only proof of concept."""
+"""Turkish desktop lookup and explicit offline data/model setup."""
 import argparse
 from dataclasses import asdict
 import json
@@ -21,6 +21,10 @@ def main(argv=None):
     build.add_argument("--output", type=Path)
     setup = sub.add_parser("setup-turkish-model", help="Explicitly download the pinned Turkish models")
     setup.add_argument("--model-dir", type=Path)
+    wordnet = sub.add_parser("setup-turkish-wordnet", help="Build the locked offline KeNet pack")
+    wordnet.add_argument("--source", type=Path)
+    wordnet.add_argument("--output", type=Path)
+    sub.add_parser("setup-turkish-ocr", help="Explicitly download local PaddleOCR models")
     for command in ("turkish-clipboard", "lookup-turkish"):
         cmd = sub.add_parser(command)
         cmd.add_argument("--dictionary", type=Path)
@@ -33,6 +37,14 @@ def main(argv=None):
             cmd.add_argument("--debug", action="store_true", help="Include raw analysis and attempted lookup routes")
             cmd.add_argument("--target", type=int, help="Zero-based token index (otherwise whole phrase, then first token)")
     args = parser.parse_args(argv)
+    if args.command == "setup-turkish-wordnet":
+        from meikipop.dictionary.turkish_wordnet import setup_wordnet
+        print_json(setup_wordnet(args.source, args.output))
+        return
+    if args.command == "setup-turkish-ocr":
+        from meikipop.ocr.turkish_paddle import setup_ocr
+        print(setup_ocr())
+        return
     if args.command == "build-turkish-dict":
         from meikipop.scripts.build_turkish_dictionary import main as build_main
         forwarded = []

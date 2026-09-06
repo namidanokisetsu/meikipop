@@ -138,7 +138,7 @@ def run_gui():
 
 def main():
     # Dispatch text-only commands before importing any GUI/OCR dependencies.
-    if len(sys.argv) > 1 and sys.argv[1] in ("build-turkish-dict", "setup-turkish-model", "turkish-clipboard", "lookup-turkish"):
+    if len(sys.argv) > 1 and sys.argv[1] in ("build-turkish-dict", "setup-turkish-model", "setup-turkish-wordnet", "setup-turkish-ocr", "turkish-clipboard", "lookup-turkish"):
         from meikipop.scripts.turkish import main as turkish_main
         return turkish_main(sys.argv[1:])
     parser = argparse.ArgumentParser(
@@ -148,7 +148,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     subparsers.add_parser("build-dict", help="Build the dictionary from source files")
-    for command in ("build-turkish-dict", "setup-turkish-model", "turkish-clipboard", "lookup-turkish"):
+    for command in ("build-turkish-dict", "setup-turkish-model", "setup-turkish-wordnet", "setup-turkish-ocr", "turkish-clipboard", "lookup-turkish"):
         subparsers.add_parser(command, help="Turkish clipboard proof of concept (use command --help)")
 
     import_html_parser = subparsers.add_parser("import-yomitan-dict-html", help="Import Yomitan dictionary (HTML format)")

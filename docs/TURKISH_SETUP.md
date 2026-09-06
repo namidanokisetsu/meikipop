@@ -88,3 +88,28 @@ CLI lookup and smoke reports emit UTF-8 JSON, including when redirected on Windo
 `--debug` adds raw Stanza tokens, all expanded Words, lemma/POS/features, and
 attempted dictionary routes. Normal CLI output omits those diagnostics; exact
 mode has no raw Stanza analysis. No diagnostic files or clipboard history are saved.
+
+## Local PaddleOCR and WordNet setup
+
+The Turkish OCR extra pins current PaddleOCR 3.7.0, PaddleX 3.7.2 and
+PaddlePaddle 3.3.1. Install it in the project environment:
+
+```powershell
+uv pip install --python .venv/Scripts/python.exe paddleocr==3.7.0 paddlex==3.7.2 paddlepaddle==3.3.1
+.\.venv\Scripts\meikipop.exe setup-turkish-wordnet
+.\.venv\Scripts\meikipop.exe setup-turkish-ocr
+.\.venv\Scripts\python.exe -m meikipop.scripts.smoke_turkish_ocr
+```
+
+A full pip development install can use `pip install -e ".[turkish,turkish-ocr]"`.
+The existing lightweight clipboard install remains supported without OCR dependencies.
+OCR setup downloads PP-OCRv6 small detection/recognition weights explicitly.
+Runtime uses local CPU inference only, with no remote fallback or model downloads.
+Models live at `languages/tr/paddle/3.7.0/`; their local manifest records SHA-256
+checksums. WordNet lives at `languages/tr/packs/tr-kenet/1/wordnet.sqlite3`.
+KeNet source revision, checksum and GPL-3.0 attribution are in the pack metadata
+and the checked-in `resources/turkish/wordnet.json` source lock.
+
+The OCR smoke uses Windows Arial to generate a small Turkish fixture and blocks
+network connections during real model initialization, recognition, and word-box lookup.
+It is separate from the fast fixture-based unit suite.
