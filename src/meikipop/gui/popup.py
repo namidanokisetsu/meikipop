@@ -5,12 +5,13 @@ from typing import List, Optional
 
 from PyQt6.QtCore import QTimer, QPoint, QSize
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QCursor, QFont, QFontMetrics, QFontInfo
+from PyQt6.QtGui import QCursor, QFont, QFontMetrics, QFontInfo
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame, QApplication
 
 from meikipop.config.config import config, IS_MACOS
 from meikipop.dictionary.lookup import DictionaryEntry, KanjiEntry
 from meikipop.gui.magpie_manager import magpie_manager
+from meikipop.gui.popup_style import frame_stylesheet, popup_position
 
 # macOS-specific imports for focus management
 if IS_MACOS:
@@ -72,27 +73,10 @@ class Popup(QWidget):
         self.hide()
 
     def _apply_frame_stylesheet(self):
-        bg_color = QColor(config.color_background)
-        r, g, b = bg_color.red(), bg_color.green(), bg_color.blue()
-        a = config.background_opacity
         self.probe_label.setFont(QFont(config.font_family))
-        self.frame.setStyleSheet(f"""
-            QFrame {{
-                background-color: rgba({r}, {g}, {b}, {a});
-                color: {config.color_foreground};
-                border-radius: 8px;
-                border: 1px solid #555;
-            }}
-            QLabel {{
-                background-color: transparent;
-                border: none;
-                font-family: "{config.font_family}";
-            }}
-            hr {{
-                border: none;
-                height: 1px;
-            }}
-        """)
+        self.frame.setStyleSheet(frame_stylesheet(
+            config.color_background, config.color_foreground,
+            config.background_opacity, config.font_family))
 
     def _calibrate_empirically(self):
         logger.debug("--- Calibrating Font Metrics Empirically (One-Time) ---")
@@ -327,81 +311,10 @@ class Popup(QWidget):
         screen = QApplication.screenAt(cursor_point) or QApplication.primaryScreen()
         screen_geo = screen.geometry()
         popup_size = self.size()
-        offset = 15
-
         ratio = screen.devicePixelRatio()
         x, y = magpie_manager.transform_raw_to_visual((int(x), int(y)), ratio)
 
-        # --- Positioning logic based on mode ---
-        mode = config.popup_position_mode
-
-        if mode == 'visual_novel_mode':
-            # --- Vertical Position (VN Mode) ---
-            screen_height = screen_geo.height()
-            cursor_y_in_screen = y - screen_geo.top()
-            is_below = True
-            if cursor_y_in_screen > (2 * screen_height / 3):  # Lower third
-                is_below = False  # Place above
-            elif cursor_y_in_screen < (screen_height / 3):  # Upper third
-                is_below = True  # Place below
-            else:  # Middle third
-                is_below = cursor_y_in_screen < (screen_height / 2)
-            final_y = (y + offset) if is_below else (y - popup_size.height() - offset)
-
-            # Vertical Push
-            if final_y < screen_geo.top(): final_y = screen_geo.top()
-            if final_y + popup_size.height() > screen_geo.bottom():
-                final_y = screen_geo.bottom() - popup_size.height()
-
-            # --- Horizontal Position (VN Mode) ---
-            screen_width = screen_geo.width()
-            cursor_x_in_screen = x - screen_geo.left()
-            # Define anchor points for interpolation
-            pos_right = x + offset
-            pos_center = x - popup_size.width() / 2.0
-            pos_left = x - popup_size.width() - offset
-
-            # Interpolate smoothly between right, center, and left alignment
-            if cursor_x_in_screen < screen_width / 2.0:
-                ratio = cursor_x_in_screen / (screen_width / 2.0)
-                final_x = pos_right * (1 - ratio) + pos_center * ratio
-            else:
-                ratio = (cursor_x_in_screen - (screen_width / 2.0)) / (screen_width / 2.0)
-                final_x = pos_center * (1 - ratio) + pos_left * ratio
-
-        elif mode == 'flip_horizontally':
-            # X: Flip, Y: Push
-            preferred_x = x + offset
-            final_x = preferred_x if preferred_x + popup_size.width() <= screen_geo.right() else x - popup_size.width() - offset
-
-            final_y = y + offset
-            if final_y + popup_size.height() > screen_geo.bottom(): final_y = screen_geo.bottom() - popup_size.height()
-            if final_y < screen_geo.top(): final_y = screen_geo.top()
-
-        elif mode == 'flip_vertically':
-            # X: Push, Y: Flip
-            final_x = x + offset
-            if final_x + popup_size.width() > screen_geo.right(): final_x = screen_geo.right() - popup_size.width()
-            if final_x < screen_geo.left(): final_x = screen_geo.left()
-
-            preferred_y = y + offset
-            final_y = preferred_y if preferred_y + popup_size.height() <= screen_geo.bottom() else y - popup_size.height() - offset
-
-        else:  # 'flip_both'
-            # X: Flip
-            preferred_x = x + offset
-            final_x = preferred_x if preferred_x + popup_size.width() <= screen_geo.right() else x - popup_size.width() - offset
-
-            # Y: Flip
-            preferred_y = y + offset
-            final_y = preferred_y if preferred_y + popup_size.height() <= screen_geo.bottom() else y - popup_size.height() - offset
-
-        # Final clamp to ensure the popup is always fully visible.
-        # This acts as a safeguard against any edge cases.
-        final_x = max(screen_geo.left(), min(final_x, screen_geo.right() - popup_size.width()))
-        final_y = max(screen_geo.top(), min(final_y, screen_geo.bottom() - popup_size.height()))
-
-        self.move(int(final_x), int(final_y))
+        self.move(*popup_position(x, y, popup_size, screen_geo, config.popup_position_mode))
 
     def hide_popup(self):
         # logger.debug(f"hide_popup triggered while visibility:{self.is_visible}")
