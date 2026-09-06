@@ -6,6 +6,9 @@ from pathlib import Path
 import shutil
 import tempfile
 
+from meikipop.ocr.scan_cache import ScanCache
+from meikipop.pipeline import REUSE_LAST_VALUE
+
 MODELS = {"det": "PP-OCRv6_small_det", "rec": "PP-OCRv6_small_rec"}
 
 
@@ -77,9 +80,14 @@ class LocalOCR:
             use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False,
             return_word_box=True, device="cpu", enable_mkldnn=False, cpu_threads=4,
         )
+        self.scan_cache = ScanCache()
+
+    def recognize(self, pixels):
+        return list(self.engine.predict(pixels))
 
     def lookup_point(self, pixels, point):
-        for result in self.engine.predict(pixels):
+        results = self.scan_cache.result if pixels is REUSE_LAST_VALUE else self.scan_cache.scan(pixels, self.recognize)
+        for result in results or ():
             hit = hit_word(result, point)
             if hit:
                 return hit

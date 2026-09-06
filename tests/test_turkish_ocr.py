@@ -7,6 +7,26 @@ from meikipop.ocr.turkish_paddle import LocalOCR, hit_word
 
 
 class OCRTests(unittest.TestCase):
+    def test_pointer_moves_reuse_recognition_but_changed_pixels_invalidate(self):
+        import numpy as np
+        from unittest.mock import Mock
+        from meikipop.ocr.scan_cache import ScanCache
+        ocr = LocalOCR.__new__(LocalOCR)
+        ocr.scan_cache = ScanCache()
+        ocr.engine = Mock()
+        ocr.engine.predict.return_value = [{"rec_texts": ["kitap yaz"], "text_word": [["kitap", "yaz"]],
+                                          "text_word_boxes": [[[0, 0, 30, 20], [40, 0, 70, 20]]]}]
+        pixels = np.zeros((30, 80, 3), dtype=np.uint8)
+        self.assertEqual(ocr.lookup_point(pixels, (15, 10)), ("kitap yaz", 0))
+        self.assertEqual(ocr.lookup_point(pixels.copy(), (55, 10)), ("kitap yaz", 6))
+        self.assertIsNone(ocr.lookup_point(pixels, (75, 25)))
+        from meikipop.pipeline import REUSE_LAST_VALUE
+        self.assertEqual(ocr.lookup_point(REUSE_LAST_VALUE, (55, 10)), ("kitap yaz", 6))
+        self.assertEqual(ocr.engine.predict.call_count, 1)
+        pixels[0, 0, 0] = 1
+        ocr.lookup_point(pixels, (15, 10))
+        self.assertEqual(ocr.engine.predict.call_count, 2)
+
     def test_boxes_preserve_context_and_repeated_word_offsets(self):
         result = {"rec_texts": ["kitap ve kitap"], "text_word": [["kitap", "ve", "kitap"]],
                   "text_word_boxes": [[[0, 0, 30, 20], [40, 0, 50, 20], [60, 0, 90, 20]]]}

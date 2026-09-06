@@ -1,5 +1,6 @@
 """Actual-model local OCR smoke, with networking blocked throughout inference."""
 import socket
+from time import perf_counter
 from unittest.mock import patch
 
 
@@ -23,7 +24,20 @@ def main():
         hit = hit_word(result, ((left + right) / 2, (top + bottom) / 2))
         assert hit == (text, text.index("kitap")), hit
         assert hit_word(result, (840, 90)) is None
-    print_json({"offline": True, "text": text, "target": "kitap", "offset": hit[1]})
+        pixels = np.array(image)[:, :, ::-1].copy()
+        started = perf_counter()
+        assert ocr.lookup_point(pixels, ((left + right) / 2, (top + bottom) / 2)) == hit
+        recognition_ms = (perf_counter() - started) * 1000
+        started = perf_counter()
+        offset = 0
+        for word, (left, top, right, bottom) in zip(words, boxes):
+            offset = text.index(word, offset)
+            cached = ocr.lookup_point(pixels, ((left + right) / 2, (top + bottom) / 2))
+            assert cached == (text, offset), cached
+            offset += len(word)
+        cached_hover_ms = (perf_counter() - started) * 1000 / len(words)
+    print_json({"offline": True, "text": text, "target": "kitap", "offset": hit[1],
+                "recognition_ms": round(recognition_ms, 2), "cached_hover_ms": round(cached_hover_ms, 2)})
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from meikipop.config.config import config
 from meikipop.ocr.interface import OcrProvider
 from meikipop.ocr.providers.glensv2 import GoogleLensOcrV2
 from meikipop.pipeline import PipelineValue
+from meikipop.ocr.scan_cache import ScanCache
 
 logger = logging.getLogger(__name__)  # Get the logger
 
@@ -21,6 +22,7 @@ class OcrProcessor(threading.Thread):
         self.shared_state = shared_state
         self.screen_manager = screen_manager
         self.ocr_backend: Optional[OcrProvider] = None
+        self.scan_cache = ScanCache()
 
         self.available_providers = self._discover_providers()
         if not self.available_providers:
@@ -43,7 +45,7 @@ class OcrProcessor(threading.Thread):
                 logger.debug("OCR: Triggered!")
 
                 start_time = time.perf_counter()
-                ocr_result = self.ocr_backend.scan(screenshot)
+                ocr_result = self.scan_cache.scan(screenshot, self.ocr_backend.scan)
                 logger.info(
                     f"{self.ocr_backend.NAME} found {len(ocr_result) if ocr_result else 0} paragraphs in {(time.perf_counter() - start_time):.3f}s.")
                 # todo keep last ocr result?
