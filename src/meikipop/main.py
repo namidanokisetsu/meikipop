@@ -5,21 +5,7 @@ import sys
 import threading
 from collections import deque
 
-from PyQt6.QtCore import qInstallMessageHandler
-from PyQt6.QtWidgets import QApplication
-
-from meikipop.utils.logger import setup_logging
-from meikipop.config.config import config, APP_NAME, APP_VERSION
-from meikipop.dictionary.lookup import Lookup
-from meikipop.gui.input import InputLoop
-from meikipop.gui.popup import Popup
-from meikipop.gui.tray import TrayIcon
-from meikipop.ocr.hit_scan import HitScanner
-from meikipop.ocr.ocr import OcrProcessor
-from meikipop.screenshot.screenmanager import ScreenManager
 from meikipop.utils.lastest_queue import LatestValueQueue
-from meikipop.audio.playback import PronunciationAudioService
-from meikipop.utils.startup import refresh_startup_registration
 
 
 def qt_message_handler(mode, context, message):
@@ -80,6 +66,20 @@ class SharedState:
 
 
 def run_gui():
+    from PyQt6.QtCore import qInstallMessageHandler
+    from PyQt6.QtWidgets import QApplication
+    from meikipop.utils.logger import setup_logging
+    from meikipop.config.config import config, APP_NAME, APP_VERSION
+    from meikipop.dictionary.lookup import Lookup
+    from meikipop.gui.input import InputLoop
+    from meikipop.gui.popup import Popup
+    from meikipop.gui.tray import TrayIcon
+    from meikipop.ocr.hit_scan import HitScanner
+    from meikipop.ocr.ocr import OcrProcessor
+    from meikipop.screenshot.screenmanager import ScreenManager
+    from meikipop.audio.playback import PronunciationAudioService
+    from meikipop.utils.startup import refresh_startup_registration
+
     setup_logging()
     refresh_startup_registration(config.start_with_windows)
     shared_state = SharedState()
@@ -137,6 +137,10 @@ def run_gui():
 
 
 def main():
+    # Dispatch text-only commands before importing any GUI/OCR dependencies.
+    if len(sys.argv) > 1 and sys.argv[1] in ("build-turkish-dict", "setup-turkish-model", "turkish-clipboard", "lookup-turkish"):
+        from meikipop.scripts.turkish import main as turkish_main
+        return turkish_main(sys.argv[1:])
     parser = argparse.ArgumentParser(
         prog="meikipop",
         description="Universal Japanese OCR popup dictionary"
@@ -144,6 +148,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     subparsers.add_parser("build-dict", help="Build the dictionary from source files")
+    for command in ("build-turkish-dict", "setup-turkish-model", "turkish-clipboard", "lookup-turkish"):
+        subparsers.add_parser(command, help="Turkish clipboard proof of concept (use command --help)")
 
     import_html_parser = subparsers.add_parser("import-yomitan-dict-html", help="Import Yomitan dictionary (HTML format)")
     import_html_parser.add_argument("dictionary_files", nargs='+', help="Path(s) to the dictionary zip file(s)")

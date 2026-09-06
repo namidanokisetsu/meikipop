@@ -33,6 +33,9 @@ dependencies = [
 [project.scripts]
 meikipop = "meikipop.main:main"
 
+[project.optional-dependencies]
+turkish = ["stanza==1.14.0", "torch==2.8.0"]
+
 [project.entry-points."meikipop.scripts"]
 build-dict = "meikipop.scripts.build_dictionary:main"
 import-yomitan-dict-html = "meikipop.scripts.import_yomitan_dict_html:main"
@@ -43,4 +46,4 @@ where = ["src"]
 include = ["meikipop*"]
 
 [tool.setuptools.package-data]
-meikipop = ["scripts/deconjugator.json", "resources/icon.ico", "resources/icon.inactive.ico"]
+meikipop = ["scripts/deconjugator.json", "resources/icon.ico", "resources/icon.inactive.ico", "resources/turkish/*.json"]

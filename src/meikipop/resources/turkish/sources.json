@@ -1,0 +1,9 @@
+{
+  "pack_id": "tr-tdk",
+  "schema_version": 1,
+  "importer_version": 1,
+  "repository": "https://github.com/ogun/guncel-turkce-sozluk",
+  "commit": "33a0a561494fb46558e48f9d2e01d1872f1760ab",
+  "artifact": "sozluk/v12/v12.gts.sqlite3.db",
+  "sha256": "9c3e5cb394d929090258e808c8bf3f408f277b5f52ff14b4adeeaddb274916a8"
+}

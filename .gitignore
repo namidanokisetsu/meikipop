@@ -24,6 +24,11 @@ dictionary.pkl
 *.db-journal
 *.db-shm
 *.db-wal
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+*.pt
 *.log
 
 # MacOS things
@@ -35,3 +40,5 @@ src/meikipop.egg-info/
 bundle-repo
 **.flatpak
 python3-deps.json
+
+feedback.md
