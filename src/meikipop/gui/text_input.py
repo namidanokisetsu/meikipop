@@ -3,6 +3,8 @@ from dataclasses import replace
 from html import escape
 import threading
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import quote, unquote
 
@@ -37,6 +39,8 @@ class Signals(QObject):
     hold_changed = pyqtSignal(bool)
     dismissed = pyqtSignal()
     setup_completed = pyqtSignal(str)
+    setup_busy = pyqtSignal(bool)
+    setup_progress = pyqtSignal(str)
 
 
 class TextWorker(threading.Thread):
@@ -193,6 +197,7 @@ class ClipboardWindow(QWidget):
         self.hotkey = hotkey
         self.hold_key = self.settings.value("hold_key", "shift")
         self.setup_thread = None
+        self.setup_status = ""
         self.requests = RequestState()
         self.result = None
         self.history = []
@@ -260,7 +265,7 @@ class ClipboardWindow(QWidget):
         self.auto_action.toggled.connect(self.toggle_clipboard)
         menu.addAction("Settings").triggered.connect(self.open_settings)
         quit_action = menu.addAction("Quit Turkish mode")
-        quit_action.triggered.connect(QApplication.instance().quit)
+        quit_action.triggered.connect(self.request_quit)
         self.tray.setContextMenu(menu)
         self.tray.show()
         QApplication.clipboard().dataChanged.connect(self.clipboard_changed)
@@ -300,6 +305,9 @@ class ClipboardWindow(QWidget):
         self.submit(QApplication.clipboard().text())
 
     def submit(self, text, target=None, scan=None, peek=False, remember=True):
+        if self.setup_thread is not None:
+            self.tray.showMessage("Meikipop", "Installation is running. Lookup resumes when it finishes.")
+            return
         if remember and not peek and self.result is not None:
             previous = (self.result.text, self.result.target)
             if previous != (text, target):
@@ -420,7 +428,7 @@ class ClipboardWindow(QWidget):
             self.hide()
 
     def scan_pointer(self):
-        if not self.holding or self.scan_busy or QApplication.activeModalWidget():
+        if self.setup_thread is not None or not self.holding or self.scan_busy or QApplication.activeModalWidget():
             return
         point = QCursor.pos()
         if self.isVisible() and self.geometry().contains(point):
@@ -537,36 +545,45 @@ class ClipboardWindow(QWidget):
         dialog.exec()
 
     def start_setup(self, kind):
-        if self.setup_thread and self.setup_thread.is_alive():
-            self.hint.setText("Setup is already running. Please wait.")
+        if self.setup_thread is not None:
+            self.tray.showMessage("Meikipop setup", "Installation is already running.")
             return
-        self.hint.setText("Installing… You can continue reading. Downloads may take several minutes.")
+        self.requests.next()
+        self.holding = False
+        self.scan_busy = False
+        self.worker.queue.put(None)
+        worker = self.worker
 
         def install():
+            # Release SQLite handles on their owning thread before replacing packs.
+            worker.join()
             try:
-                if kind == "wordnet":
-                    from meikipop.dictionary.turkish_wordnet import setup_wordnet
-                    setup_wordnet()
-                elif kind == "ocr":
-                    from meikipop.ocr.turkish_paddle import setup_ocr
-                    setup_ocr()
-                elif kind == "model":
-                    from meikipop.language.stanza_analyzer import setup_models
-                    setup_models(self.worker.model_dir)
-                else:
-                    from meikipop.scripts.build_turkish_dictionary import main
-                    main([])
-                message = "Setup complete. Restart Turkish mode to load updated packs/models."
+                run_setup(kind, worker.dictionary, worker.model_dir)
+                message = "Installation complete. Ready to look up text."
             except Exception as error:
-                message = f"Setup failed: {error}. See TURKISH_SETUP.md for installation commands."
+                message = f"Installation failed: {error}"
             self.signals.setup_completed.emit(message)
 
         self.setup_thread = threading.Thread(target=install, daemon=True, name="TurkishSetup")
+        self.setup_status = "Installing… Lookup pauses until installation finishes. You can close Settings."
+        self.signals.setup_progress.emit(self.setup_status)
+        self.signals.setup_busy.emit(True)
         self.setup_thread.start()
 
     def setup_finished(self, message):
-        self.hint.setText(message)
+        self.setup_thread = None
+        old = self.worker
+        self.worker = TextWorker(self.signals, old.dictionary, old.analyzer, old.model_dir)
+        self.worker.start()
+        self.setup_status = message
+        self.signals.setup_busy.emit(False)
         self.tray.showMessage("Meikipop setup", message)
+
+    def request_quit(self):
+        if self.setup_thread is not None:
+            self.tray.showMessage("Meikipop setup", "Please wait for installation to finish before quitting.")
+        else:
+            QApplication.instance().quit()
 
     def dismiss(self):
         self.requests.next()
@@ -597,6 +614,28 @@ class ClipboardWindow(QWidget):
         self.worker.queue.put(None)
         self.worker.join(timeout=3)
         self.tray.hide()
+
+
+def run_setup(kind, dictionary, model_dir=None):
+    # pythonw has no stdout/stderr. Downloaders need real streams even without a console.
+    executable = Path(sys.executable)
+    if executable.name.lower() == "pythonw.exe":
+        executable = executable.with_name("python.exe")
+    commands = {"dictionary": "build-turkish-dict", "model": "setup-turkish-model",
+                "wordnet": "setup-turkish-wordnet", "ocr": "setup-turkish-ocr"}
+    args = [str(executable), "-m", "meikipop.scripts.turkish", commands[kind]]
+    if kind == "dictionary":
+        args.extend(["--output", str(Path(dictionary).parent)])
+    if kind == "model" and model_dir:
+        args.extend(["--model-dir", str(model_dir)])
+    completed = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               encoding="utf-8", errors="replace",
+                               creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    if completed.returncode:
+        detail = (completed.stderr or completed.stdout).strip()
+        if "PermissionError" in detail:
+            raise RuntimeError("The data files are in use or not writable. Close other Meikipop instances and retry.")
+        raise RuntimeError(detail.splitlines()[-1] if detail else f"Installer exited with code {completed.returncode}")
 
 
 def run_clipboard(dictionary, analyzer="stanza", model_dir=None, hotkey="<ctrl>+<alt>+l"):

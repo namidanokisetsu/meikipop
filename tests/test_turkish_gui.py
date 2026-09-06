@@ -12,7 +12,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QUrl, QPoint, QRect, QSettings
 from PyQt6.QtWidgets import QApplication
 
-from meikipop.gui.text_input import ClipboardWindow
+from meikipop.gui.text_input import ClipboardWindow, run_setup
 from meikipop.scripts.build_turkish_dictionary import build
 
 
@@ -187,6 +187,47 @@ class ClipboardTests(unittest.TestCase):
         self.wait_result()
         self.assertTrue(self.window.result.entries)
         self.assertIn("WordNet unavailable", self.window.result.wordnet_status)
+
+
+    def test_setup_releases_database_and_restarts_after_failure(self):
+        self.window.submit("kitap")
+        self.wait_result()
+        old_worker = self.window.worker
+
+        def installer(kind, dictionary, model_dir):
+            self.assertFalse(old_worker.is_alive())
+            # Windows refuses this while the lookup worker holds the SQLite file.
+            moved = dictionary.with_suffix(".moved")
+            dictionary.rename(moved)
+            moved.rename(dictionary)
+            raise RuntimeError("Download unavailable")
+
+        with patch("meikipop.gui.text_input.run_setup", side_effect=installer):
+            self.window.start_setup("dictionary")
+            deadline = time.monotonic() + 3
+            while self.window.setup_thread is not None and time.monotonic() < deadline:
+                self.app.processEvents()
+                time.sleep(.005)
+        self.assertIsNone(self.window.setup_thread)
+        self.assertIn("Download unavailable", self.window.setup_status)
+        self.assertIsNot(old_worker, self.window.worker)
+        self.window.submit("kitap")
+        self.wait_result()
+        self.assertTrue(self.window.result.entries)
+
+
+    def test_console_free_installer_uses_pipes_and_selected_paths(self):
+        with patch("meikipop.gui.text_input.sys.executable", "C:/env/pythonw.exe"), \
+                patch("meikipop.gui.text_input.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run_setup("model", Path("custom/dictionary.sqlite3"), Path("custom/models"))
+            args = run.call_args.args[0]
+            self.assertEqual(Path(args[0]).name, "python.exe")
+            self.assertEqual(args[-2:], ["--model-dir", str(Path("custom/models"))])
+            self.assertIsNotNone(run.call_args.kwargs["stderr"])
+            self.assertIsNotNone(run.call_args.kwargs["stdout"])
+            run_setup("dictionary", Path("custom/dictionary.sqlite3"))
+            self.assertEqual(run.call_args.args[0][-2:], ["--output", "custom"])
 
 
 if __name__ == "__main__":
