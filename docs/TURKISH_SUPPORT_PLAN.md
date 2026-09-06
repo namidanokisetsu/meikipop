@@ -1,6 +1,6 @@
 # Turkish support: Stanza, TDK, and desktop text lookup
 
-Status: diagnostics and bounded morphology/OCR suggestions implemented; next is WordNet and UI refinement. Updated: 2026-09-06. See [Turkish setup and verification](TURKISH_SETUP.md) for installation and launch commands.
+Status: offline KeNet importer/store implemented; desktop popup and local PaddleOCR integration in progress. Updated: 2026-09-06. See [Turkish setup and verification](TURKISH_SETUP.md) for installation and launch commands.
 Branch: `feature/turkish-support`.
 Base: `feature/native-input-audio` at `666b479`.
 Worktree: `../meikipop-turkish` beside the existing checkout.
@@ -25,6 +25,8 @@ Decisions:
 - No analyzer tournament, automatic translation of TDK definitions, or full suffix explanations. Focused before/after checks on real failures remain necessary.
 
 ### Implemented and verified
+
+- KeNet source locked to 718fd441262602db6ea1ac9e2dcf3a5142bda06d: indexed offline SQLite store with distinct synsets, member sense/group IDs, typed relations and attribution. Full import: 78,327 synsets, 110,259 members, 213,403 edges, zero missing targets. Focused fixture checks Turkish casing, ambiguous senses, navigation data, missing targets and failed-build preservation.
 
 - Locked TDK importer, read-only SQLite store, Turkish-aware keys, POS-gated verb aliases, ordered senses/examples, and related expressions. The local pack has 99,209 visible entries; source anomalies are recorded by the build.
 - Lazy Stanza/exact analyzers, explicit offline model setup, bounded context caching, and original parent-token spans for MWT expansions. The adapter currently retains only the first expanded word's lemma/POS.

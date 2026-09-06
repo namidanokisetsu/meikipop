@@ -1,0 +1,8 @@
+{
+  "source": "StarlangSoftware TurkishWordNet-Py / KeNet",
+  "revision": "718fd441262602db6ea1ac9e2dcf3a5142bda06d",
+  "url": "https://raw.githubusercontent.com/StarlangSoftware/TurkishWordNet-Py/718fd441262602db6ea1ac9e2dcf3a5142bda06d/WordNet/data/turkish_wordnet.xml",
+  "sha256": "afe256845a8e8d26ab097eb8efda9627aae61c8018cba69b566adc19699593f5",
+  "license": "GPL-3.0",
+  "license_url": "https://github.com/StarlangSoftware/TurkishWordNet-Py/blob/718fd441262602db6ea1ac9e2dcf3a5142bda06d/LICENSE"
+}
