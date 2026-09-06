@@ -33,6 +33,7 @@ class ClipboardTests(unittest.TestCase):
         with patch("pynput.keyboard.GlobalHotKeys"), patch("pynput.keyboard.Listener"), \
                 patch("meikipop.gui.text_input.QSettings", return_value=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)):
             self.window = ClipboardWindow(root / "pack/dictionary.sqlite3", "exact")
+            self.window.settings.setValue("auto_scan", False)
 
     def tearDown(self):
         self.window.shutdown()
@@ -143,9 +144,11 @@ class ClipboardTests(unittest.TestCase):
         with patch.object(QApplication, "screenAt") as screen:
             area = QRect(-1280, -100, 1280, 720)
             screen.return_value.availableGeometry.return_value = area
-            for point in (QPoint(-2, 618), QPoint(-1278, -98)):
-                self.window.place_popup(point)
-                self.assertTrue(area.contains(self.window.geometry()))
+            for mode in ("visual_novel_mode", "flip_horizontally", "flip_vertically", "flip_both"):
+                with patch("meikipop.gui.text_input.config.popup_position_mode", mode):
+                    for point in (QPoint(-2, 618), QPoint(-1278, -98)):
+                        self.window.place_popup(point)
+                        self.assertTrue(area.contains(self.window.geometry()))
 
     def test_copy_during_scan_invalidates_scan_and_stops_hold(self):
         self.window.submit("kitap", peek=True)
@@ -172,6 +175,9 @@ class ClipboardTests(unittest.TestCase):
         self.window.submit("kitap")
         self.wait_result()
         self.assertEqual(len(self.window.result.wordnet), 1)
+        self.assertNotIn("Yazılı eser", self.window.browser.toPlainText())
+        self.window.navigate(QUrl("section:wordnet"))
+        self.assertIn("Yazılı eser", self.window.browser.toPlainText())
         self.window.navigate(QUrl("word:betik"))
         self.wait_result()
         self.assertEqual(self.window.result.entries, ())
@@ -188,6 +194,30 @@ class ClipboardTests(unittest.TestCase):
         self.assertTrue(self.window.result.entries)
         self.assertIn("WordNet unavailable", self.window.result.wordnet_status)
 
+    def test_pinned_popup_does_not_scan_or_follow_pointer(self):
+        self.window.submit("kitap")
+        self.wait_result()
+        position = self.window.pos()
+        with patch("meikipop.gui.text_input.QCursor.pos", return_value=QPoint(700, 500)), \
+                patch.object(self.window, "capture_pointer") as capture:
+            self.window.set_hold(True)
+            self.window.scan_pointer()
+            self.app.processEvents()
+            capture.assert_not_called()
+            self.assertEqual(self.window.pos(), position)
+        self.window.navigate(QUrl("more:"))
+        self.assertEqual(self.window.pos(), position)
+
+    def test_popup_sizes_to_content_and_scrolls_at_limit(self):
+        self.window.settings.setValue("max_height", 200)
+        self.window.browser.setPlainText("kitap")
+        short_height = self.window.height()
+        self.window.browser.setPlainText("definition\n" * 100)
+        self.window.show()
+        self.app.processEvents()
+        self.assertLess(short_height, self.window.height())
+        self.assertLessEqual(self.window.height(), 200)
+        self.assertGreater(self.window.browser.verticalScrollBar().maximum(), 0)
 
     def test_setup_releases_database_and_restarts_after_failure(self):
         self.window.submit("kitap")
@@ -215,7 +245,6 @@ class ClipboardTests(unittest.TestCase):
         self.wait_result()
         self.assertTrue(self.window.result.entries)
 
-
     def test_console_free_installer_uses_pipes_and_selected_paths(self):
         with patch("meikipop.gui.text_input.sys.executable", "C:/env/pythonw.exe"), \
                 patch("meikipop.gui.text_input.subprocess.run") as run:
@@ -228,6 +257,31 @@ class ClipboardTests(unittest.TestCase):
             self.assertIsNotNone(run.call_args.kwargs["stdout"])
             run_setup("dictionary", Path("custom/dictionary.sqlite3"))
             self.assertEqual(run.call_args.args[0][-2:], ["--output", "custom"])
+
+    def test_background_delivery_never_opens_popup(self):
+        self.window.background_request = self.window.requests.next()
+        self.window.scan_request = self.window.background_request
+        self.window.scan_busy = True
+        self.window.deliver(self.window.background_request, None, "Local OCR failed")
+        self.assertFalse(self.window.isVisible())
+        self.assertFalse(self.window.scan_busy)
+        self.assertTrue(self.window.prefetch_failed)
+
+    def test_visible_peek_reuses_hit_scan_without_recapture(self):
+        from meikipop.pipeline import REUSE_LAST_VALUE
+        self.window.submit("kitap", peek=True)
+        self.wait_result()
+        self.window.move(500, 500)
+        self.window.capture_region = QRect(0, 0, 400, 200)
+        self.window.holding = True
+        text = self.window.browser.toPlainText()
+        with patch("meikipop.gui.text_input.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(self.window.worker.queue, "put") as put, \
+                patch.object(self.window, "capture_pointer") as capture:
+            self.window.scan_pointer()
+            self.assertIs(put.call_args.args[0][3][0], REUSE_LAST_VALUE)
+            self.assertEqual(self.window.browser.toPlainText(), text)
+            capture.assert_not_called()
 
 
 if __name__ == "__main__":

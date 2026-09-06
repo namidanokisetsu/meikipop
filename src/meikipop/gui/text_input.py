@@ -5,18 +5,23 @@ import threading
 import sqlite3
 import subprocess
 import sys
+from time import monotonic
 from pathlib import Path
 from urllib.parse import quote, unquote
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal, QTimer, QSettings, QPoint, QRect, QEvent, QLockFile
-from PyQt6.QtGui import QCursor, QKeySequence, QShortcut, QImage, QIcon
+from PyQt6.QtGui import QCursor, QKeySequence, QShortcut, QImage, QIcon, QFont
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel, QMenu,
                             QPushButton, QSystemTrayIcon, QTextBrowser, QVBoxLayout, QWidget,
-                            QStyle, QDialog, QFormLayout, QComboBox, QSpinBox, QLineEdit, QMessageBox)
+                            QDialog, QFormLayout, QComboBox, QSpinBox, QMessageBox, QFrame, QInputDialog)
 
 from meikipop.dictionary.turkish_lookup import TurkishLookup
 from meikipop.dictionary.turkish_store import TurkishStore
 from meikipop.utils.lastest_queue import LatestValueQueue
+
+from meikipop.config.config import config
+from meikipop.gui.popup_style import frame_stylesheet, popup_position
+from meikipop.pipeline import REUSE_LAST_VALUE
 
 MAX_TEXT = 2000
 
@@ -107,22 +112,27 @@ class TextWorker(threading.Thread):
                 wordnet.close()
 
 
-def render_result(result, show_more=False, examples=True):
-    html = ['<style>a {color: #589bf0;} p {margin:6px 0;} h2 {margin:10px 0 4px;} li {margin-bottom:8px;}</style>']
-    html.append(f"<p><small>{escape(result.status)}</small></p><p>")
-    offset = 0
-    for i, token in enumerate(result.tokens):
-        html.append(escape(result.text[offset:token.start]).replace("\n", "<br>"))
-        label = escape(result.text[token.start:token.end])
-        if i == result.target:
-            label = f"<b>{label}</b>"
-        html.append(f'<a href="token:{i}">{label}</a>')
-        offset = token.end
-    html.append(escape(result.text[offset:]).replace("\n", "<br>") + "</p><hr>")
-    if result.wordnet:
-        html.append(f'<p><a href="section:wordnet">WordNet · {len(result.wordnet)} senses ↓</a></p>')
+def render_result(result, show_more=False, examples=True, wordnet_expanded=False, word_color=None, header_size=None):
+    word_color = word_color or config.color_highlight_word
+    header_size = header_size or config.font_size_header
+    html = [f'<style>a {{color: {word_color}; text-decoration:none;}} '
+            f'p {{margin:3px 0;}} h2 {{font-size:{header_size}px; font-weight:normal; '
+            f'color:{word_color}; margin:2px 0;}} li {{margin-bottom:3px;}}</style>']
+    if result.status.startswith("Exact fallback"):
+        html.append("<p><small>Exact lookup only. Install Stanza models in Settings to analyze word forms.</small></p>")
+    if len(result.tokens) > 1:
+        html.append('<p>')
+        offset = 0
+        for i, token in enumerate(result.tokens):
+            html.append(escape(result.text[offset:token.start]).replace("\n", "<br>"))
+            label = escape(result.text[token.start:token.end])
+            if i == result.target:
+                label = f"<b>{label}</b>"
+            html.append(f'<a href="token:{i}">{label}</a>')
+            offset = token.end
+        html.append(escape(result.text[offset:]).replace("\n", "<br>") + "</p><hr>")
     if not result.entries:
-        html.append("<p>No TDK entry found. Click another word above.</p>")
+        html.append("<p>No TDK entry found.</p>")
     if result.suggestions:
         html.append("<p><b>Did you mean?</b></p><ul>")
         for i, suggestion in enumerate(result.suggestions):
@@ -132,22 +142,23 @@ def render_result(result, show_more=False, examples=True):
     for entry in result.entries:
         html.append(f"<h2>{escape(entry['headword'])}</h2>")
         match = next((m for m in result.matches if m.entry_id == entry["id"]), None)
-        if match is not None:
+        if match is not None and result.text[match.start:match.end] != entry["headword"]:
             surface = result.text[match.start:match.end]
             label = " · casing retry" if match.route == "casing_lemma" else ""
             html.append(f"<p>{escape(surface)} → {escape(entry['headword'])}{label}</p>")
-        elif result.target is not None:
+        elif match is None and result.target is not None:
             token = result.tokens[result.target]
             surface = result.text[token.start:token.end]
             html.append(f"<p>{escape(surface)} → {escape(token.lemma)} · {escape(token.pos or '')}</p>")
-        html.append("<p><b>TDK · Türkçe</b></p><ol>")
+        html.append("<ol style='margin-top:3px; margin-bottom:4px; margin-left:18px;'>")
         for sense in entry["senses"] if show_more else entry["senses"][:3]:
             tags = ", ".join(sense["labels"])
-            html.append(f"<li><i>{escape(tags)}</i> {escape(sense['text'])}")
+            tag_html = f"<i>{escape(tags)}</i> " if config.show_pos or config.show_tags else ""
+            html.append(f"<li>{tag_html}{escape(sense['text'])}")
             if examples:
                 for example in sense["examples"][:1]:
                     author = " — " + escape(example["author"]) if example["author"] else ""
-                    html.append(f"<p>{escape(example['text'])}{author}</p>")
+                    html.append(f"<p><i>{escape(example['text'])}{author}</i></p>")
             html.append("</li>")
         html.append("</ol>")
         if not show_more and len(entry["senses"]) > 3:
@@ -159,7 +170,12 @@ def render_result(result, show_more=False, examples=True):
                     html.append(f'<p><a href="related:{entry["id"]}:{i}">{escape(rel["phrase"])}</a></p>')
             else:
                 html.append('<p><a href="more:">Show related expressions</a></p>')
-    if result.wordnet_status:
+    if result.entries:
+        html.append('<p><small>TDK</small></p>')
+    if result.wordnet and result.entries and not wordnet_expanded:
+        html.append(f'<p><a href="section:wordnet">WordNet · {len(result.wordnet)} senses ▸</a></p>')
+        return "".join(html)
+    if result.wordnet:
         html.append(f'<hr><a name="wordnet"></a><p><b>{escape(result.wordnet_status)}</b></p>')
     if result.wordnet:
         html.append("<p><small>Independent WordNet senses; not aligned to TDK senses.</small></p>")
@@ -186,11 +202,20 @@ class ClipboardWindow(QWidget):
         self.setWindowTitle("Meikipop · Turkish")
         self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.resize(self.settings.value("width", 540, int), self.settings.value("height", 540, int))
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.resize(320, 80)
+        self.wordnet_expanded = False
+        self.reposition = True
         self.pinned = False
         self.holding = False
         self.suppress_hold = False
         self.last_scan = None
+        self.capture_region = None
+        self.capture_scale = (1, 1)
+        self.cached_scan_request = None
+        self.prefetch_failed = False
+        self.background_request = None
+        self.prefetched = None
         self.scan_busy = False
         self.anchor = QCursor.pos()
         self.last_clipboard = QApplication.clipboard().text()
@@ -211,54 +236,59 @@ class ClipboardWindow(QWidget):
         self.worker = TextWorker(self.signals, dictionary, analyzer, model_dir)
         self.worker.start()
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.frame = QFrame(self)
+        layout.addWidget(self.frame)
+        content = QVBoxLayout(self.frame)
+        content.setContentsMargins(10, 10, 10, 10)
+        content.setSpacing(3)
+        self.browser = QTextBrowser()
+        self.browser.setFrameShape(QFrame.Shape.NoFrame)
+        self.browser.setOpenLinks(False)
+        self.browser.setOpenExternalLinks(False)
+        self.browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.browser.anchorClicked.connect(self.navigate)
+        content.addWidget(self.browser)
         controls = QHBoxLayout()
+        controls.setSpacing(4)
         self.back_button = QPushButton("←")
-        self.back_button.setFixedWidth(32)
         self.back_button.setToolTip("Previous lookup")
         self.back_button.setEnabled(False)
         self.back_button.clicked.connect(self.go_back)
-        lookup = QPushButton("Clipboard")
-        lookup.clicked.connect(self.read_clipboard)
-        self.examples = QCheckBox("Examples")
-        self.examples.setChecked(self.settings.value("examples", True, bool))
-        self.examples.toggled.connect(self.render)
-        self.examples.toggled.connect(lambda value: self.settings.setValue("examples", value))
         self.pin_button = QPushButton("Pin")
+        self.pin_button.setToolTip("Keep this result in place (or click the definition)")
         self.pin_button.clicked.connect(self.pin)
-        settings_button = QPushButton("Settings")
-        settings_button.clicked.connect(self.open_settings)
+        self.menu_button = QPushButton("···")
+        self.menu_button.setToolTip("Clipboard, search and settings")
         close = QPushButton("×")
         close.setToolTip("Dismiss (Escape)")
-        close.setFixedWidth(32)
         close.clicked.connect(self.dismiss)
-        for widget in (self.back_button, lookup, self.pin_button, settings_button, close):
+        controls.addWidget(self.back_button)
+        controls.addStretch()
+        for widget in (self.pin_button, self.menu_button, close):
             controls.addWidget(widget)
-        layout.addLayout(controls)
-        self.hint = QLabel(f"Copy to pin · Hold {self.hold_key.title()} to scan · Click to pin · Escape to dismiss")
-        self.hint.setWordWrap(True)
-        layout.addWidget(self.hint)
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Type a Turkish word or sentence…")
-        self.search.setMaxLength(MAX_TEXT)
-        self.search.returnPressed.connect(lambda: self.submit(self.search.text()))
-        layout.addWidget(self.search)
-        self.browser = QTextBrowser()
-        self.browser.setOpenLinks(False)
-        self.browser.setOpenExternalLinks(False)
-        self.browser.anchorClicked.connect(self.navigate)
-        self.browser.setHtml("<h2>Turkish clipboard lookup</h2><p>Copy a word or sentence. "
-                             "Click words in the result to explore their definitions.</p>")
-        layout.addWidget(self.browser)
+        for widget in (self.back_button, self.pin_button, self.menu_button, close):
+            widget.setFlat(True)
+            widget.setFixedHeight(20)
+            widget.setFixedWidth(48 if widget is self.pin_button else 24)
+            widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        content.addLayout(controls)
+        self.examples = QCheckBox(self)
+        self.examples.hide()
+        self.examples.setChecked(self.settings.value("examples", config.show_examples, bool))
+        self.examples.toggled.connect(self.render)
+        self.examples.toggled.connect(lambda value: self.settings.setValue("examples", value))
+        self.browser.textChanged.connect(self.fit_content)
         self.apply_appearance()
         self.escape_shortcut = QShortcut(QKeySequence("Escape"), self)
         self.escape_shortcut.activated.connect(self.dismiss)
-        self.tray = QSystemTrayIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView), self)
-        self.tray.setToolTip("Meikipop Turkish clipboard")
+        from meikipop.utils.paths import paths
+        self.tray = QSystemTrayIcon(QIcon(paths.get_resource_path("icon.ico")), self)
+        self.tray.setToolTip(f"Meikipop · Turkish — Hold {self.hold_key.title()} to scan, copy to pin")
         menu = QMenu(self)
         action = menu.addAction("Look up clipboard")
         action.triggered.connect(self.read_clipboard)
-        show = menu.addAction("Show window")
-        show.triggered.connect(self.show)
+        menu.addAction("Search…").triggered.connect(self.open_search)
         self.auto_action = menu.addAction("Look up copied text automatically")
         self.auto_action.setCheckable(True)
         self.auto_action.setChecked(self.settings.value("auto_clipboard", True, bool))
@@ -267,13 +297,18 @@ class ClipboardWindow(QWidget):
         quit_action = menu.addAction("Quit Turkish mode")
         quit_action.triggered.connect(self.request_quit)
         self.tray.setContextMenu(menu)
+        self.menu_button.setMenu(menu)
         self.tray.show()
         QApplication.clipboard().dataChanged.connect(self.clipboard_changed)
         QApplication.instance().installEventFilter(self)
         self.scan_timer = QTimer(self)
-        self.scan_timer.setInterval(300)
+        self.scan_timer.setInterval(30)
         self.scan_timer.timeout.connect(self.scan_pointer)
         self.scan_timer.start()
+        self.prefetch_timer = QTimer(self)
+        self.prefetch_timer.setInterval(max(100, int(config.auto_scan_interval_seconds * 1000)))
+        self.prefetch_timer.timeout.connect(lambda: self.scan_pointer(background=True))
+        self.prefetch_timer.start()
         self.listener = None
         self.key_listener = None
         try:
@@ -296,12 +331,13 @@ class ClipboardWindow(QWidget):
             self.key_listener = Listener(on_press=lambda k: update(k, True), on_release=lambda k: update(k, False))
             self.key_listener.start()
         except Exception:
-            self.hint.setText("Global shortcut unavailable. Use Look up clipboard here or in the tray.")
+            self.tray.showMessage("Meikipop", "Global shortcut unavailable. Use Look up clipboard in the tray.")
 
     def read_clipboard(self):
         self.holding = False
         self.suppress_hold = True
         self.anchor = QCursor.pos()
+        self.reposition = True
         self.submit(QApplication.clipboard().text())
 
     def submit(self, text, target=None, scan=None, peek=False, remember=True):
@@ -318,7 +354,7 @@ class ClipboardWindow(QWidget):
             self.scan_busy = False
         self.pinned = not peek
         self.pin_button.setText("Pinned" if self.pinned else "Pin")
-        self.place_popup(self.anchor)
+        self.reposition = self.reposition or not self.isVisible() or peek
         self.show()
         if scan is None and (not text.strip() or len(text) > MAX_TEXT):
             self.result = None
@@ -326,14 +362,27 @@ class ClipboardWindow(QWidget):
             return
         self.result = None
         self.show_more = False
-        self.browser.setPlainText("Reading screen locally… First model load can take a moment." if scan is not None else
-                                  "Looking up… First Stanza model load can take a moment.")
+        self.wordnet_expanded = False
+        if scan is None or scan[0] is not REUSE_LAST_VALUE:
+            self.browser.setPlainText("Reading…" if scan is not None else "Looking up…")
         self.worker.queue.put((request_id, text, target, scan))
 
     def deliver(self, request_id, result, error):
         if request_id == getattr(self, "scan_request", None):
             self.scan_busy = False
         if not self.requests.accepts(request_id):
+            return
+        if request_id == self.cached_scan_request and result is None:
+            self.hide()
+            self.last_scan = None
+            self.scan_pointer()
+            return
+        if request_id == self.background_request:
+            self.prefetch_failed = error.startswith(("Local OCR failed", "Lookup failed"))
+            self.prefetched = (result, QPoint(self.last_scan), monotonic()) if result is not None else None
+            if self.holding:
+                self.last_scan = None
+                self.scan_pointer()
             return
         self.result = result
         if error:
@@ -343,13 +392,17 @@ class ClipboardWindow(QWidget):
 
     def render(self):
         if self.result is not None:
-            self.browser.setHtml(render_result(self.result, self.show_more, self.examples.isChecked()))
+            self.browser.setToolTip(self.result.status)
+            self.browser.setHtml(render_result(self.result, self.show_more, self.examples.isChecked(),
+                                               self.wordnet_expanded, self.word_color, self.header_size))
 
     def navigate(self, url):
         if self.result is None:
             return
         self.pin()
         if url.scheme() == "section":
+            self.wordnet_expanded = True
+            self.render()
             self.browser.scrollToAnchor(url.path())
         elif url.scheme() == "word":
             self.submit(unquote(url.path()))
@@ -387,16 +440,19 @@ class ClipboardWindow(QWidget):
                 or len(text) > MAX_TEXT or QApplication.activeWindow() is not None):
             return
         self.anchor = QCursor.pos()
+        self.reposition = True
         self.holding = False
         self.suppress_hold = True
         self.submit(text)
 
     def pin(self):
         self.pinned = True
+        self.holding = False
+        self.suppress_hold = True
         self.pin_button.setText("Pinned")
 
     def eventFilter(self, watched, event):
-        if (event.type() == QEvent.Type.MouseButtonPress and isinstance(watched, QWidget)
+        if (self.isVisible() and event.type() == QEvent.Type.MouseButtonPress and isinstance(watched, QWidget)
                 and (watched is self or self.isAncestorOf(watched))):
             self.pin()
         return super().eventFilter(watched, event)
@@ -404,47 +460,87 @@ class ClipboardWindow(QWidget):
     def place_popup(self, anchor):
         screen = QApplication.screenAt(anchor) or QApplication.primaryScreen()
         area = screen.availableGeometry()
-        self.resize(min(self.settings.value("width", 540, int), area.width()),
-                    min(self.settings.value("height", 540, int), area.height()))
-        x, y = anchor.x() + 18, anchor.y() + 24
-        if x + self.width() > area.right() + 1:
-            x = anchor.x() - self.width() - 18
-        if y + self.height() > area.bottom() + 1:
-            y = anchor.y() - self.height() - 24
-        self.move(max(area.left(), min(x, area.right() + 1 - self.width())),
-                  max(area.top(), min(y, area.bottom() + 1 - self.height())))
+        self.resize(min(self.width(), area.width()), min(self.height(), area.height()))
+        self.move(*popup_position(anchor.x(), anchor.y(), self.size(), area, config.popup_position_mode))
+
+    def fit_content(self):
+        screen = QApplication.screenAt(self.anchor) or QApplication.primaryScreen()
+        area = screen.availableGeometry()
+        max_width = min(self.settings.value("max_width", 560, int), int(area.width() * .4))
+        max_width = min(area.width(), max(240, max_width))
+        doc = self.browser.document().clone()
+        doc.setTextWidth(max_width - 24)
+        width = min(max_width, max(240, int(doc.idealWidth()) + 24))
+        doc.setTextWidth(width - 24)
+        height = min(self.settings.value("max_height", 600, int), area.height(), int(doc.size().height()) + 48)
+        doc.deleteLater()
+        self.resize(width, max(72, height))
+        self.layout().activate()
+        if self.reposition or not self.pinned:
+            self.place_popup(self.anchor)
+            # Keep positioning the initial loading/result pair at the source word.
+            if self.result is not None:
+                self.reposition = False
+        else:
+            self.move(max(area.left(), min(self.x(), area.right() + 1 - self.width())),
+                      max(area.top(), min(self.y(), area.bottom() + 1 - self.height())))
 
     def set_hold(self, active):
         if not active:
             self.suppress_hold = False
+            self.prefetched = None
         if self.suppress_hold or active == self.holding:
             return
         self.holding = active
         if active:
+            # Like the original auto-scan path, activation can use the latest frame.
+            if self.prefetched is not None and not self.pinned:
+                result, point, timestamp = self.prefetched
+                if (QCursor.pos() - point).manhattanLength() < 3 and monotonic() - timestamp < .75:
+                    self.result = result
+                    self.anchor = point
+                    self.reposition = True
+                    self.last_scan = point
+                    self.pin_button.setText("Pin")
+                    self.render()
+                    self.show()
+                    return
             self.last_scan = None
             self.scan_pointer()
         elif not self.pinned:
             self.requests.next()
             self.hide()
 
-    def scan_pointer(self):
-        if self.setup_thread is not None or not self.holding or self.scan_busy or QApplication.activeModalWidget():
+    def scan_pointer(self, background=False):
+        if background and (self.isVisible() or self.holding or self.prefetch_failed
+                           or not self.settings.value("auto_scan", config.auto_scan_mode, bool)):
+            return
+        if self.setup_thread is not None or self.pinned or (not self.holding and not background) or self.scan_busy or QApplication.activeModalWidget():
             return
         point = QCursor.pos()
         if self.isVisible() and self.geometry().contains(point):
             return
-        if self.last_scan is not None and (point - self.last_scan).manhattanLength() < 14:
+        if not background and self.last_scan is not None and (point - self.last_scan).manhattanLength() < 3:
             return
         self.last_scan = QPoint(point)
         self.anchor = QPoint(point)
+        if self.isVisible() and self.capture_region is not None and self.capture_region.contains(point):
+            # Original HitScanner also reuses the last OCR while the popup covers the screen.
+            sx, sy = self.capture_scale
+            target = ((point.x() - self.capture_region.x()) * sx, (point.y() - self.capture_region.y()) * sy)
+            self.scan_busy = True
+            self.submit("", scan=(REUSE_LAST_VALUE, target), peek=True)
+            self.scan_request = self.cached_scan_request = self.requests.current
+            return
+        was_visible = self.isVisible()
         self.hide()
         generation = self.requests.next()
         self.scan_busy = True
         self.scan_request = generation
-        QTimer.singleShot(60, lambda: self.capture_pointer(point, generation))
+        QTimer.singleShot(60 if was_visible else 0, lambda: self.capture_pointer(point, generation, background))
 
-    def capture_pointer(self, point, generation):
-        if not self.requests.accepts(generation) or not self.holding:
+    def capture_pointer(self, point, generation, background=False):
+        if not self.requests.accepts(generation) or (not self.holding and not background):
             self.scan_busy = False
             return
         try:
@@ -455,7 +551,11 @@ class ClipboardWindow(QWidget):
             if pixmap.isNull():
                 raise RuntimeError("Screen capture unavailable")
             sx, sy = pixmap.width() / geometry.width(), pixmap.height() / geometry.height()
-            region = QRect(point.x() - 440, point.y() - 110, 880, 220).intersected(geometry)
+            self.capture_scale = (sx, sy)
+            region = self.capture_region
+            if region is None or not geometry.contains(region) or not region.adjusted(16, 16, -16, -16).contains(point):
+                region = QRect(point.x() - 440, point.y() - 110, 880, 220).intersected(geometry)
+                self.capture_region = QRect(region)
             image = pixmap.toImage().copy(
                 round((region.x() - geometry.x()) * sx), round((region.y() - geometry.y()) * sy),
                 round(region.width() * sx), round(region.height() * sy)).convertToFormat(QImage.Format.Format_RGB888)
@@ -464,46 +564,80 @@ class ClipboardWindow(QWidget):
             pixels = np.frombuffer(bits, dtype=np.uint8).reshape(image.height(), image.bytesPerLine())
             pixels = pixels[:, :image.width() * 3].reshape(image.height(), image.width(), 3)[:, :, ::-1].copy()
             target = ((point.x() - region.x()) * sx, (point.y() - region.y()) * sy)
-            self.submit("", scan=(pixels, target), peek=True)
+            if background:
+                self.background_request = generation
+                self.worker.queue.put((generation, "", None, (pixels, target)))
+            else:
+                self.submit("", scan=(pixels, target), peek=True)
             self.scan_request = self.requests.current
         except Exception:
             self.scan_busy = False
+            if background:
+                self.prefetch_failed = True
+                return
             self.submit("")
             self.browser.setPlainText("Screen capture failed. You can still copy text to look it up.")
 
     def apply_appearance(self):
-        dark = self.settings.value("theme", "dark") == "dark"
-        bg, fg, border = ("#20232b", "#edf0f5", "#404756") if dark else ("#fafafa", "#202530", "#c7ccd4")
-        size = self.settings.value("font_size", 12, int)
-        self.setStyleSheet(f"QWidget {{background:{bg}; color:{fg}; font-family:'Segoe UI'; font-size:{size}pt;}} "
-                           f"QPushButton,QComboBox,QSpinBox,QLineEdit {{padding:5px; border:1px solid {border}; border-radius:5px;}} "
-                           f"QTextBrowser {{border:1px solid {border}; padding:8px;}} QPushButton:hover {{border-color:#589bf0;}}")
-        self.browser.document().setDefaultStyleSheet(f"body {{font-size:{size}pt;}} a {{color:#589bf0;}}")
+        theme = self.settings.value("popup_theme", "Meikipop")
+        bg, fg = config.color_background, config.color_foreground
+        self.word_color = config.color_highlight_word
+        if theme == "light":
+            bg, fg, self.word_color = "#fafafa", "#202530", "#176b96"
+        elif theme == "dark":
+            bg, fg, self.word_color = "#2E2E2E", "#F0F0F0", "#88D8FF"
+        size = self.settings.value("text_pixels", config.font_size_definitions, int)
+        self.header_size = size + config.font_size_header - config.font_size_definitions
+        self.setStyleSheet("ClipboardWindow {background: transparent;}")
+        self.frame.setStyleSheet(frame_stylesheet(bg, fg, config.background_opacity, config.font_family) + f"""
+            QTextBrowser {{background:transparent; color:{fg}; border:0; border-radius:0; padding:0;}}
+            QPushButton {{background:transparent; color:{fg}; border:0; padding:0;}}
+            QPushButton:hover {{color:{self.word_color}; background:{bg};}}
+            QPushButton:disabled {{color:#777;}}
+            QPushButton::menu-indicator {{image:none; width:0;}}
+        """)
+        font = QFont(config.font_family)
+        font.setPixelSize(size)
+        self.browser.setFont(font)
+        self.browser.document().setDefaultFont(font)
+
+    def open_search(self):
+        text, accepted = QInputDialog.getText(self, "Meikipop · Search", "Turkish word or sentence:")
+        if accepted and text.strip():
+            self.anchor = QCursor.pos()
+            self.reposition = True
+            self.submit(text)
 
     def open_settings(self):
-        self.pin()
+        if self.isVisible():
+            self.pin()
         dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.setWindowTitle("Meikipop · Turkish settings")
         form = QFormLayout(dialog)
         automatic = QCheckBox("Open a pinned popup when I copy text")
         automatic.setChecked(self.auto_action.isChecked())
         automatic.toggled.connect(self.auto_action.setChecked)
         form.addRow(automatic)
+        auto_scan = QCheckBox("Prepare OCR in the background for faster hover lookup")
+        auto_scan.setChecked(self.settings.value("auto_scan", config.auto_scan_mode, bool))
+        auto_scan.toggled.connect(lambda enabled: self.settings.setValue("auto_scan", enabled))
+        form.addRow(auto_scan)
         examples = QCheckBox("Show examples")
         examples.setChecked(self.examples.isChecked())
         examples.toggled.connect(self.examples.setChecked)
         form.addRow(examples)
         theme = QComboBox()
-        theme.addItems(["dark", "light"])
-        theme.setCurrentText(self.settings.value("theme", "dark"))
+        theme.addItems(["Meikipop", "dark", "light"])
+        theme.setCurrentText(self.settings.value("popup_theme", "Meikipop"))
         form.addRow("Theme", theme)
         hold = QComboBox()
         hold.addItems(["shift", "alt"])
         hold.setCurrentText(self.hold_key)
         form.addRow("Hold to scan locally", hold)
         fields = {}
-        for key, label, minimum, maximum, default in (("font_size", "Text size", 9, 24, 12),
-                ("width", "Popup width", 380, 1000, 540), ("height", "Popup height", 280, 1000, 540)):
+        for key, label, minimum, maximum, default in (("text_pixels", "Text size (pixels)", 10, 32, config.font_size_definitions),
+                ("max_width", "Maximum popup width", 240, 1000, 560), ("max_height", "Maximum popup height", 160, 1000, 600)):
             field = QSpinBox()
             field.setRange(minimum, maximum)
             field.setValue(self.settings.value(key, default, int))
@@ -517,13 +651,20 @@ class ClipboardWindow(QWidget):
         status = QLabel(f"TDK: {'installed' if self.worker.dictionary.exists() else 'missing'}\n"
                         f"WordNet: {'installed' if default_wordnet_path().exists() else 'missing'}\n"
                         f"OCR models: {'installed' if (model_root() / 'manifest.json').exists() else 'missing'}")
+        status.setWordWrap(True)
+        status.setMaximumWidth(480)
+        status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if self.setup_status:
+            status.setText(self.setup_status)
         form.addRow(status)
         self.signals.setup_completed.connect(status.setText)
+        self.signals.setup_progress.connect(status.setText)
         for key, label in (("dictionary", "Install TDK"), ("wordnet", "Install WordNet"),
                            ("model", "Install Stanza models"), ("ocr", "Install local OCR models")):
             button = QPushButton(label)
+            button.setDisabled(self.setup_thread is not None)
+            self.signals.setup_busy.connect(button.setDisabled)
             button.clicked.connect(lambda _, k=key: self.start_setup(k))
-            button.clicked.connect(lambda: status.setText("Installing… You can close Settings while setup runs."))
             form.addRow(button)
         form.addRow(QLabel("KeNet / StarlangSoftware · GPL-3.0\nTDK snapshot: ogun/guncel-turkce-sozluk v12"))
         done = QPushButton("Save settings")
@@ -532,10 +673,10 @@ class ClipboardWindow(QWidget):
         def save():
             for key, field in fields.items():
                 self.settings.setValue(key, field.value())
-            self.settings.setValue("theme", theme.currentText())
+            self.settings.setValue("popup_theme", theme.currentText())
             self.hold_key = hold.currentText()
             self.settings.setValue("hold_key", self.hold_key)
-            self.hint.setText(f"Copy to pin · Hold {self.hold_key.title()} to scan · Click to pin · Escape to dismiss")
+            self.tray.setToolTip(f"Meikipop · Turkish — Hold {self.hold_key.title()} to scan, copy to pin")
             self.apply_appearance()
             self.place_popup(self.anchor)
             self.render()
@@ -550,6 +691,7 @@ class ClipboardWindow(QWidget):
             return
         self.requests.next()
         self.holding = False
+        self.prefetched = None
         self.scan_busy = False
         self.worker.queue.put(None)
         worker = self.worker
@@ -572,6 +714,7 @@ class ClipboardWindow(QWidget):
 
     def setup_finished(self, message):
         self.setup_thread = None
+        self.prefetch_failed = False
         old = self.worker
         self.worker = TextWorker(self.signals, old.dictionary, old.analyzer, old.model_dir)
         self.worker.start()
@@ -591,6 +734,7 @@ class ClipboardWindow(QWidget):
         self.holding = False
         self.suppress_hold = True
         self.result = None
+        self.prefetched = None
         self.history.clear()
         self.back_button.setEnabled(False)
         self.browser.clear()
@@ -603,6 +747,7 @@ class ClipboardWindow(QWidget):
     def shutdown(self):
         self.requests.next()
         self.scan_timer.stop()
+        self.prefetch_timer.stop()
         QApplication.instance().removeEventFilter(self)
         QApplication.clipboard().dataChanged.disconnect(self.clipboard_changed)
         if self.listener:
@@ -649,6 +794,5 @@ def run_clipboard(dictionary, analyzer="stanza", model_dir=None, hotkey="<ctrl>+
     app.setQuitOnLastWindowClosed(False)
     window = ClipboardWindow(dictionary, analyzer, model_dir, hotkey)
     app.aboutToQuit.connect(window.shutdown)
-    window.place_popup(QCursor.pos())
-    window.show()
+    window.tray.showMessage("Meikipop · Turkish", f"Hold {window.hold_key.title()} over a word to read. Copy text to keep a result open. Settings are in the tray.")
     return app.exec()

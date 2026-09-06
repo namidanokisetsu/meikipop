@@ -1,6 +1,6 @@
 # Turkish desktop MVP setup
 
-Turkish runs as a desktop popup with TDK definitions, Stanza analysis, KeNet
+Turkish runs as a Meikipop reading popup with TDK definitions, Stanza analysis, KeNet
 synonyms/semantic links, local PaddleOCR, clickable sentence tokens and examples.
 It starts without Japanese dictionary or OCR setup. See the
 [support plan](TURKISH_SUPPORT_PLAN.md) for implementation status and remaining scope.
@@ -33,12 +33,14 @@ Runtime lookup disables model downloads and works offline after setup.
 
 Double-click [Start-Turkish.cmd](../Start-Turkish.cmd), or run
 `.\.venv\Scripts\meikipop.exe turkish-clipboard`. The launcher uses this checkout's
-environment and opens no console. Only one Turkish instance runs at a time.
+environment and opens no console. It starts in the tray, without a search window.
+Only one Turkish instance runs at a time. Quit an older running copy before launching
+updated source code.
 
 Select text in another application and press **Ctrl+C**: a pinned popup opens
 beside the pointer, clamped inside that monitor's available area. Automatic copy
 lookup is **on by default** for this MVP; disable it in Settings or the tray.
-**Ctrl+Alt+L**, the **Clipboard** button and the tray action explicitly read the
+**Ctrl+Alt+L**, **Look up clipboard** in the popup's **···** menu, and the tray action read the
 clipboard even with monitoring off. Try `Dün kitaplarımdan birini okudum.`
 and click `okudum`; try `Bunu hemen fark etti.` and click `etti` for `fark etmek`.
 The whole copied phrase is looked up first, otherwise the first word is selected.
@@ -46,17 +48,23 @@ The whole copied phrase is looked up first, otherwise the first word is selected
 Hold **Shift** with the pointer over a word to scan locally. Move to another
 word while holding it to scan again. Click the popup (or **Pin**) before releasing
 Shift to keep it open. Unpinned previews disappear on release; copied lookups pin
-immediately. Global **Escape** or **×** dismisses the popup. Use the tray to quit.
+immediately. Pinned results stay in place and suspend background scans until dismissed.
+Global **Escape** or **×** dismisses the popup. Use the tray to quit.
 
-Type in the search field and press Enter for manual lookup. Click tokens,
+Choose **Search…** from the tray or **···** menu for manual lookup. Click tokens,
 suggestions, related expressions or WordNet members to navigate; **←** goes back.
-WordNet has an independent section with sense groups and typed semantic links.
-Its definitions remain available when a linked word has no TDK entry.
+Expand **WordNet** for its independent sense groups and typed semantic links.
+WordNet definitions appear immediately when a linked word has no TDK entry.
 
-Settings persist the automatic clipboard toggle, Shift/Alt scan key, light/dark
-theme, text size, popup size and example visibility. Installation buttons download
-TDK, Stanza, WordNet or local OCR models explicitly in the background; restart
-Turkish mode after installing updated packs/models. Install the OCR Python extra
+Settings are in the tray and **···** menu. The default appearance inherits the original
+Meikipop font, colors, opacity and positioning. The popup grows with its definitions
+and scrolls at its maximum size. Settings persist clipboard monitoring, background
+OCR preparation, Shift/Alt scan key, appearance overrides, maximum size and examples.
+Installation buttons download TDK, Stanza, WordNet or OCR models explicitly. Lookup
+pauses during installation so Windows can replace the open data files, then resumes
+automatically with fresh models and caches. Failed installs show their error in Settings;
+closing Settings does not interrupt setup. Wait for installation to finish before quitting.
+Install the OCR Python extra
 below before using the OCR model button. No pip command runs from the GUI.
 
 Clipboard lookup is limited to 2,000 characters. Duplicate notifications,
@@ -64,7 +72,13 @@ empty/oversized payloads and copies while Meikipop owns focus are ignored.
 Enabling monitoring does not read pre-existing content. The 32-entry Back history
 is in memory and cleared on dismissal; clipboard text and screen images are not
 logged or uploaded. Inference and dictionary lookup run off the Qt thread.
-The first scan includes model loading and can take several seconds.
+With background preparation enabled, OCR runs before activation, as in original
+Meikipop. Hovering nearby words reuses recognition if the captured pixels are unchanged.
+A recent prepared result can appear immediately on activation. While a preview is open,
+pointer movement reuses its captured text, as in original Meikipop; release the scan key
+and scan again after scrolling or changing the source. Model loading and new
+or changing screen content still require inference; cached-hover speed is not a promise
+about cold startup or a changing game scene.
 
 Override the shortcut using pynput syntax:
 
@@ -86,7 +100,8 @@ Keep downloads, model weights, generated packs, and `.venv` out of Git.
 Pass `--dictionary <database>` and `--model-dir <directory>` to override runtime
 locations. Missing or incompatible models visibly fall back to exact lookup;
 `--analyzer exact` explicitly selects lookup without Stanza. A TDK pack is required.
-Close Turkish mode before rebuilding its installed dictionary.
+Close Turkish mode before rebuilding its installed dictionary from the CLI. The Settings
+installer releases its own dictionary handles automatically.
 
 The dictionary builder accepts `--source <locked-v12-file>` and `--output <directory>`.
 With both supplied it requires only the standard library, including under
@@ -112,7 +127,9 @@ These checks do not replace manual desktop focus/shortcut or packaging acceptanc
 On this Windows desktop, separate-app Ctrl+C → pinned popup → global Escape
 passed. Real screen capture with the global Shift listener → Paddle word box →
 Stanza → TDK/KeNet → click pin → Shift release also passed. The unit suite has
-58 checks. Multi-monitor placement has synthetic negative-coordinate coverage;
+66 checks, including content sizing, pin stability, installer recovery and OCR cache
+invalidation. TDK and Stanza installation followed by lookup also passed through the
+actual console-free `pythonw` path. Multi-monitor placement has negative-coordinate coverage;
 mixed-DPI hardware, browser/PDF combinations and a clean-machine executable
 remain acceptance work. This is a usable source-environment MVP, not an installer.
 
