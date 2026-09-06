@@ -5,13 +5,13 @@ from PyQt6.QtCore import Qt, QPoint, QRect, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPen, QMouseEvent, QKeyEvent, QGuiApplication, QCursor
 from PyQt6.QtWidgets import QDialog
 
-from meikipop.gui.input import InputLoop
-
 logger = logging.getLogger(__name__)
 
 class RegionSelector(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        from pynput.mouse import Controller
+        self.mouse_controller = Controller()
 
         self.setGeometry(self.get_current_screen(QCursor.pos()).geometry())
 
@@ -65,7 +65,7 @@ class RegionSelector(QDialog):
         self.end_logical = self.begin_logical
 
         # Store the physical position for the final result
-        px, py = InputLoop.get_mouse_pos()
+        px, py = self.mouse_controller.position
         self.begin_physical = QPoint(px, py)
 
         self.has_selection_started = True
@@ -87,7 +87,7 @@ class RegionSelector(QDialog):
         self.update_timer.stop()
 
         # Get the final physical position
-        px, py = InputLoop.get_mouse_pos()
+        px, py = self.mouse_controller.position
         end_physical = QPoint(px, py)
 
         # Create the final selection rectangle using the stored physical coordinates
