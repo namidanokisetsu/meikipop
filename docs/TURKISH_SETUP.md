@@ -1,7 +1,7 @@
-# Turkish text lookup setup
+# Turkish desktop MVP setup
 
-Turkish currently runs as a separate clipboard window with TDK definitions,
-Stanza analysis, clickable sentence tokens, examples, and related expressions.
+Turkish runs as a desktop popup with TDK definitions, Stanza analysis, KeNet
+synonyms/semantic links, local PaddleOCR, clickable sentence tokens and examples.
 It starts without Japanese dictionary or OCR setup. See the
 [support plan](TURKISH_SUPPORT_PLAN.md) for implementation status and remaining scope.
 
@@ -29,17 +29,42 @@ required character language models and embeddings. Existing no-CharLM
 installations must rerun `setup-turkish-model` once for the new lemma weights.
 Runtime lookup disables model downloads and works offline after setup.
 
-## Use the clipboard window
+## Use the app
 
-Copy Turkish text in another application and press **Ctrl+Alt+L**, or click
-**Look up clipboard** in the window or tray. Try `Dün kitaplarımdan birini okudum.`
+Double-click [Start-Turkish.cmd](../Start-Turkish.cmd), or run
+`.\.venv\Scripts\meikipop.exe turkish-clipboard`. The launcher uses this checkout's
+environment and opens no console. Only one Turkish instance runs at a time.
+
+Select text in another application and press **Ctrl+C**: a pinned popup opens
+beside the pointer, clamped inside that monitor's available area. Automatic copy
+lookup is **on by default** for this MVP; disable it in Settings or the tray.
+**Ctrl+Alt+L**, the **Clipboard** button and the tray action explicitly read the
+clipboard even with monitoring off. Try `Dün kitaplarımdan birini okudum.`
 and click `okudum`; try `Bunu hemen fark etti.` and click `etti` for `fark etmek`.
 The whole copied phrase is looked up first, otherwise the first word is selected.
 
-The window stays open after shortcut release. **Close** or Escape while focused
-dismisses it; use the tray menu to exit. Repeating an explicit lookup works.
-Clipboard text is read only on request, limited to 2,000 characters, and is not
-logged. Model loading and lookup run off the Qt thread.
+Hold **Shift** with the pointer over a word to scan locally. Move to another
+word while holding it to scan again. Click the popup (or **Pin**) before releasing
+Shift to keep it open. Unpinned previews disappear on release; copied lookups pin
+immediately. Global **Escape** or **×** dismisses the popup. Use the tray to quit.
+
+Type in the search field and press Enter for manual lookup. Click tokens,
+suggestions, related expressions or WordNet members to navigate; **←** goes back.
+WordNet has an independent section with sense groups and typed semantic links.
+Its definitions remain available when a linked word has no TDK entry.
+
+Settings persist the automatic clipboard toggle, Shift/Alt scan key, light/dark
+theme, text size, popup size and example visibility. Installation buttons download
+TDK, Stanza, WordNet or local OCR models explicitly in the background; restart
+Turkish mode after installing updated packs/models. Install the OCR Python extra
+below before using the OCR model button. No pip command runs from the GUI.
+
+Clipboard lookup is limited to 2,000 characters. Duplicate notifications,
+empty/oversized payloads and copies while Meikipop owns focus are ignored.
+Enabling monitoring does not read pre-existing content. The 32-entry Back history
+is in memory and cleared on dismissal; clipboard text and screen images are not
+logged or uploaded. Inference and dictionary lookup run off the Qt thread.
+The first scan includes model loading and can take several seconds.
 
 Override the shortcut using pynput syntax:
 
@@ -83,6 +108,13 @@ Unit tests use small fixtures and offscreen Qt with mocked keyboard/clipboard
 access. The separate smoke script requires the installed full TDK pack and real
 Stanza models; it blocks socket connections during initialization and lookup.
 These checks do not replace manual desktop focus/shortcut or packaging acceptance.
+
+On this Windows desktop, separate-app Ctrl+C → pinned popup → global Escape
+passed. Real screen capture with the global Shift listener → Paddle word box →
+Stanza → TDK/KeNet → click pin → Shift release also passed. The unit suite has
+58 checks. Multi-monitor placement has synthetic negative-coordinate coverage;
+mixed-DPI hardware, browser/PDF combinations and a clean-machine executable
+remain acceptance work. This is a usable source-environment MVP, not an installer.
 
 CLI lookup and smoke reports emit UTF-8 JSON, including when redirected on Windows.
 `--debug` adds raw Stanza tokens, all expanded Words, lemma/POS/features, and

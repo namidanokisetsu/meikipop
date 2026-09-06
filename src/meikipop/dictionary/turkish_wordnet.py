@@ -87,7 +87,8 @@ class WordNetStore:
         self.db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
         self.db.row_factory = sqlite3.Row
         try:
-            if json.loads(self.db.execute("SELECT value FROM metadata WHERE key='schema'").fetchone()[0]) != 1:
+            row = self.db.execute("SELECT value FROM metadata WHERE key='schema'").fetchone()
+            if row is None or json.loads(row[0]) != 1:
                 raise ValueError("Unsupported WordNet schema")
         except Exception:
             self.db.close()

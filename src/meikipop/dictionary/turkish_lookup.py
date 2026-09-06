@@ -40,6 +40,8 @@ class TextResult:
     matches: tuple[Match, ...] = ()
     suggestions: tuple[Suggestion, ...] = ()
     attempts: tuple = ()
+    wordnet: tuple = ()
+    wordnet_status: str = ""
 
 
 class TurkishLookup:

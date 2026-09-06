@@ -1,6 +1,6 @@
 # Turkish support: Stanza, TDK, and desktop text lookup
 
-Status: offline KeNet importer/store implemented; desktop popup and local PaddleOCR integration in progress. Updated: 2026-09-06. See [Turkish setup and verification](TURKISH_SETUP.md) for installation and launch commands.
+Status: source-environment desktop MVP implemented and verified on Windows: KeNet, automatic copy-to-pin, Shift OCR previews, click-to-pin, global Escape and persistent settings. Updated: 2026-09-06. See [Turkish setup and verification](TURKISH_SETUP.md) for installation and launch commands.
 Branch: `feature/turkish-support`.
 Base: `feature/native-input-audio` at `666b479`.
 Worktree: `../meikipop-turkish` beside the existing checkout.
@@ -19,7 +19,7 @@ Decisions:
 - Runtime dictionary: a compact, indexed SQLite database prepared by our importer. No Turkish pickle, MongoDB server, custom binary format, or enumeration of inflected forms.
 - English: optional separate pack made from Kaikki's English-Wiktionary Turkish entries, after the TDK flow works.
 - Audio: optional offline TDK recording pack using the existing `android.db` reader schema; validate live recording access before building the full pack.
-- Input: existing OCR, explicit clipboard lookup, optional automatic clipboard lookup, and a Windows selected-text shortcut.
+- Input: local PaddleOCR 3.7.0, explicit clipboard lookup and automatic copy-to-pin enabled by default per the MVP request. A separate selection-capture shortcut remains future work; ordinary Ctrl+C already handles copyable selections.
 - UI: preserve Meikipop's Japanese interaction conventions and use Hiku as a content/navigation reference. Turkish gets compact definitions, progressive disclosure, and explicit phrase/correction provenance.
 - Recovery: Turkish-aware casing retry, dictionary-validated morphology, and bounded diacritic/edit suggestions. Preserve source text and distinguish suggestions from analyzed base forms.
 - No analyzer tournament, automatic translation of TDK definitions, or full suffix explanations. Focused before/after checks on real failures remain necessary.
@@ -42,7 +42,9 @@ Decisions:
 - Phrase results now retain the original span, lookup candidate, route, and source-qualified entry ID. The clipboard entry header displays `fark etti → fark etmek` when either phrase token is selected.
 - Hiku's Turkish adapter already retries ASCII diacritic variants through TRmorph and records edit costs. Reuse the approach, not its current generate-all-then-truncate implementation: candidate generation itself must be bounded.
 
-Still pending: WordNet, unified Peek/Persistent UI, Turkish OCR, automatic clipboard monitoring, selection capture, English/audio packs, release/update installation, and clean-machine Windows packaging.
+MVP delivered: independent KeNet groups and linked semantic navigation; automatic clipboard lookup; pointer-anchored Peek/Pinned UI with global Escape; local PaddleOCR 3.7.0 / PP-OCRv6 small; persistent settings and explicit background setup; console-free source launcher. The Turkish worker serializes OCR/analysis/lookup, preserving request-generation rejection without changing Japanese workers or holding their screen lock.
+
+Still pending outside this source MVP: selection-copy injection, optional English/audio packs, shared Japanese/Turkish popup-class consolidation, versioned release/update installation and clean-machine Windows packaging. Do not describe these as completed. Existing Japanese code paths remain unchanged.
 
 ## 2. Git organization and maintenance
 
@@ -165,7 +167,7 @@ Add a configurable global action, suggested default `Ctrl+Alt+L`, which reads cu
 
 ### Automatic clipboard lookup
 
-Add **Look up copied text automatically**, off by default, with a visible tray toggle. Observe `QClipboard.dataChanged` on Windows. A short copied word opens its entry; a sentence opens a token-selectable context strip. Do not infer a target from the current mouse position when the copied text supplies no target span.
+Implemented **Look up copied text automatically**, on by default for the requested MVP, with visible tray and Settings toggles. Observe `QClipboard.dataChanged` on Windows. A short copied word opens its entry; a sentence opens a token-selectable context strip. The pointer anchors the popup, not the selected token within copied text.
 
 Coalesce duplicate clipboard events, ignore non-text/empty content and app-owned copy events, and skip large payloads (initial limit: 2,000 characters). Explicit lookup of an oversized selection can show a concise size message; automatic monitoring should stay quiet. Enabling monitoring must not immediately process pre-existing clipboard content. Do not write copied text into logs or keep clipboard history. Duplicate suppression must not prevent an explicit shortcut from looking up the same word again.
 
@@ -289,7 +291,7 @@ The local-first requirement supersedes the earlier Lens-first proposal. Turkish 
 
 The popup captures a bounded region around the pointer on its own monitor. Qt screen coordinates are converted to screenshot pixels using the actual captured dimensions. Paddle's `text_word_boxes` map a hit to an offset in the full recognized line, then the existing Turkish analyzer chooses the token. No character-width estimates or Japanese-only text filtering. Screen images remain in memory.
 
-Verification: the real PP-OCRv6 small models recognize `Bug?n ?ocuklar kitap okuyor.` with Turkish glyphs intact and select `kitap` at offset 15; the smoke blocks socket connections throughout model initialization and inference. Focused fixtures cover repeated words, box misses and missing-model failure before imports/downloads. Desktop capture and popup acceptance are recorded below separately.
+Verification: the real PP-OCRv6 small models recognize `Bugün çocuklar kitap okuyor.` with Turkish glyphs intact and select `kitap` at offset 15; the smoke blocks socket connections throughout model initialization and inference. Focused fixtures cover repeated words, box misses and missing-model failure before imports/downloads. Desktop capture and popup acceptance are recorded below separately.
 
 ## 10. Implementation sequence and likely files
 
@@ -297,9 +299,9 @@ Completed milestone: TDK pack + Stanza + explicit clipboard + standalone persist
 
 1. **Development conventions and lemma upgrade — complete.** Added the slim `AGENTS.md`, switched lemma to `imst_charlm`, updated analyzer identity, and installed the new weights locally. Offline checks preserve the six original smoke cases. CharLM alone still mislemmatizes `BENZERLİĞİ` as `benüzlik`; lowercase/title case resolve to `benzerlik`, and `hayırdır` retains `[0:8]`. Keep the no-CharLM findings above as the baseline.
 2. **Lookup recovery and provenance — initial implementation complete.** Results now include original phrase spans, candidates, routes, and source-qualified entry IDs. Failed token lookup retries Turkish-aware lowercase context once, maps normalized boundaries back to the original text, and accepts only an aligned dictionary match. Original analysis stays intact; the clipboard header labels casing recovery. `BENZERLİĞİ` now reaches `benzerlik`. `lookup-turkish --debug` now includes raw expanded Words and dictionary query attempts. Failed lookups offer bounded dictionary-validated nominal, diacritic, and spelling suggestions; corrected spellings can also be analyzed in context. See limits below. The ten-sentence span investigation is complete; revisit only with new evidence.
-3. **WordNet pack and lookup.** Add a pinned KeNet importer/store, then expose sense-grouped synonyms and semantic links in clipboard results. Keep setup explicit and runtime offline; this precedes optional English and audio work.
-4. **UI refinement and shared integration.** Refine `gui/text_input.py` using actual TDK/WordNet entries and phrase/correction examples. Integrate Peek/Persistent behavior through `gui/input.py`, `gui/popup.py`, `pipeline.py`, settings, and tray without rewriting Japanese deconjugation. Resolve focus, screen-lock lifetime, and stale-result behavior. Add automatic clipboard lookup, then Windows selection capture.
-5. **Turkish OCR.** Update `ocr/interface.py`, `ocr/hit_scan.py`, provider filtering/separators and postprocessing; preserve original token offsets and lazy startup. Reuse the tested recovery layer for OCR text.
+3. **WordNet pack and lookup — complete for MVP.** Locked KeNet importer/store and explicit setup command; sense-grouped definitions, synonyms and typed semantic links in the popup. Missing/corrupt optional WordNet does not break TDK. WordNet-only members remain navigable. Groups remain separate from TDK senses; POS ranking is future refinement.
+4. **UI refinement — complete for source MVP.** Extended `gui/text_input.py` with automatic copy-to-pin, Peek/Pinned state, global Escape, screen-edge placement, bounded in-memory Back navigation, manual search, persistent appearance/input settings, tray controls, setup actions and a single-instance source launcher. Turkish retains its own window/worker rather than altering Japanese input and popup classes. Selection injection and cross-language class consolidation are deferred.
+5. **Turkish OCR — complete for MVP.** Current local PaddleOCR API and PP-OCRv6 small models, explicit staged setup, checksummed local runtime paths, real word-box-to-source offsets, bounded capture region and background inference. No Turkish cloud fallback. Existing recovery runs on full OCR-line context.
 6. **Optional English pack.** Add a locked Kaikki importer using raw English-Wiktionary entries filtered to Turkish. Preserve glosses, POS, labels, examples, and form-of links; do not align its sense numbers with TDK or WordNet.
 7. **Offline audio.** Verify live mappings/recordings, add a resumable builder, and adapt playback/settings/speaker actions using the existing audio reader and worker. Text and semantic lookup remain usable without audio.
 8. **Distribution and acceptance.** Add separate dictionary workflows, a Turkish-enabled Windows build, and download/update UI. Run clean-machine/manual checks. Keep setup guidance in `TURKISH_SETUP.md`; edit README only when explicitly requested or required by agreed release scope.
@@ -317,7 +319,7 @@ Completed milestone: TDK pack + Stanza + explicit clipboard + standalone persist
 
 Use [TurkishWordNet-Py / KeNet](https://github.com/starlangsoftware/TurkishWordNet-Py) as linguistic data infrastructure. Pin the selected upstream revision and actual data artifacts/checksums before implementation; record attribution and bundled license notices. The repository advertises GPL-3.0 and Meikipop already declares GPL-3.0. Inspect the chosen data files and dependencies rather than inferring their contents from repository totals.
 
-Build a separate `tr-wordnet` SQLite pack under `languages/tr/packs/tr-wordnet/<version>/`, installed explicitly alongside TDK. Retain synset IDs, member spellings and sense identifiers, definitions/POS where supplied, and typed semantic edges. Index member keys with the same Turkish-aware normalizer. Validate referenced synsets and report missing targets during import. Prefer a build-time importer and a small read-only runtime store over loading the complete upstream object graph on every lookup.
+Implemented a separate `tr-kenet` SQLite pack under `languages/tr/packs/tr-kenet/1/`, installed explicitly alongside TDK. It retains synset IDs, member spellings, sense/group identifiers, definitions/POS and typed semantic edges. Turkish-aware member keys are indexed. Import reports missing relation targets; runtime uses indexed read-only queries instead of the upstream object graph. Attribution and source identity are stored as pack metadata.
 
 Query by the validated canonical headword, preserving all relevant synsets and their member groups. Use available POS to rank compatible groups; spelling or POS alone does not establish a TDK-sense-to-synset mapping. Show synonyms and named relations such as broader/narrower concepts or antonyms only when the chosen data supplies them. Clicking a member starts a normal lookup; if TDK has no definition, retain the labeled WordNet information rather than creating a dead link or inventing a TDK entry.
 
@@ -347,11 +349,13 @@ Manual Windows acceptance:
 2. Turn on automatic clipboard lookup; one copy produces one persistent popup, including sentence token selection. Turn it off and verify normal copying no longer opens popups.
 3. Use selection shortcut with existing clipboard text and with no selection; no stale clipboard result appears on failure, and focus stays in the source app until interaction with the popup.
 4. Read/scroll examples and switch tokens without the popup following the pointer or disappearing on key release.
-5. Try a Turkish OCR line using Lens and a Japanese OCR line using the existing Japanese setup.
+5. Try a Turkish OCR line using local PaddleOCR and a Japanese OCR line using the existing Japanese setup.
 6. Restart offline after setup; text analysis and definitions work without downloads. Test absent/corrupt model and failed dictionary update separately.
 7. Run the packaged Turkish-enabled app on Windows without Python installed. Clipboard-only mode starts without OCR setup.
 
 Keep a small permanent regression set of real reading failures and a few targeted contrasts; grow it when new bugs appear. No throughput study, analyzer tournament, large corpus collection, model training, or performance dashboard is required.
+
+MVP verification on 2026-09-06: **58 unit tests pass**, fourteen real-model offline Stanza cases pass, and the real-model offline PaddleOCR smoke passes. Desktop checks used a separate controlled application for actual Ctrl+C/global Escape, and a visible Turkish fixture for actual global Shift, Qt screen capture, word-box selection, Stanza/TDK/KeNet delivery, click pin and release. Both passed. Rendered popup inspected with real Windows fonts. Negative-coordinate monitor clamping is covered by fixtures; actual mixed-DPI multi-monitor hardware, broader browser/PDF focus behavior, Japanese live OCR and clean-machine packaging remain unverified.
 
 ## References and inspected evidence
 
@@ -360,6 +364,7 @@ Keep a small permanent regression set of real reading failures and a few targete
 - [Autocomplete-only update workflow](https://github.com/ogun/guncel-turkce-sozluk/blob/master/.github/workflows/download-autocomplete-json.yml)
 - [Stanza releases](https://github.com/stanfordnlp/stanza/releases) and [1.14 model resource manifest](https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main/resources_1.14.0.json)
 - [TurkishWordNet-Py / KeNet](https://github.com/starlangsoftware/TurkishWordNet-Py)
+- [PaddleOCR current upstream](https://github.com/PaddlePaddle/PaddleOCR) and [local pipeline API](https://github.com/PaddlePaddle/PaddleOCR/blob/main/paddleocr/_pipelines/ocr.py)
 - [Tureng scraper repository](https://github.com/helallao/tureng) and [Tureng terms](https://tureng.com/en/termsofuse)
 - [Kaikki Turkish overview](https://kaikki.org/dictionary/Turkish/index.html) and [recommended raw downloads](https://kaikki.org/dictionary/rawdata.html)
 - [Qt clipboard behavior and platform notes](https://doc.qt.io/qt-6/qclipboard.html)
