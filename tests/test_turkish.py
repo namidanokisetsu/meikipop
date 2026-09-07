@@ -77,7 +77,8 @@ class TurkishTests(unittest.TestCase):
             self.assertEqual((match.start, match.end, match.candidate), (0, 9, "fark et"))
             self.assertEqual(match.route, "phrase_lemma")
             from meikipop.gui.turkish.window import render_result
-            self.assertIn("fark etti → fark etmek", render_result(result))
+            self.assertIn("fark etmek", render_result(result))
+            self.assertNotIn("→", render_result(result))
         self.assertEqual(lookup.analyzer.calls, 1)
         self.assertEqual(TurkishLookup(self.store, "exact").lookup("kitap kurdu").target, None)
 

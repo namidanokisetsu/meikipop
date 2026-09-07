@@ -15,6 +15,41 @@ SOURCE = '''<SYNSETS>
 
 
 class WordNetTests(unittest.TestCase):
+    def test_order_uses_clicked_lemma_senses_and_hides_ambiguous_derivations(self):
+        from dataclasses import replace
+        from meikipop.dictionary.turkish_lookup import TextResult
+        from meikipop.gui.turkish.rendering import render_result
+        source_text = '''<SYNSETS>
+        <SYNSET><ID>001</ID><SYNONYM><LITERAL>yırtmak<SENSE>3</SENSE></LITERAL>
+        <LITERAL>kırmak<SENSE>1</SENSE></LITERAL></SYNONYM><POS>v</POS><DEF>Destroy</DEF>
+        <EXAMPLE>First.|Second.</EXAMPLE><SR>003<TYPE>DERIVATION_RELATED</TYPE></SR></SYNSET>
+        <SYNSET><ID>002</ID><SYNONYM><LITERAL>yırtmak<SENSE>1</SENSE></LITERAL></SYNONYM>
+        <POS>v</POS><DEF>Tear fabric</DEF><SR>004<TYPE>DERIVATION_RELATED</TYPE></SR></SYNSET>
+        <SYNSET><ID>003</ID><SYNONYM><LITERAL>buzkıran<SENSE>1</SENSE></LITERAL></SYNONYM></SYNSET>
+        <SYNSET><ID>004</ID><SYNONYM><LITERAL>yırtmaç<SENSE>1</SENSE></LITERAL></SYNONYM></SYNSET>
+        </SYNSETS>'''
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "source.xml").write_text(source_text, encoding="utf-8")
+            build(root / "source.xml", root / "pack.sqlite3")
+            store = WordNetStore(root / "pack.sqlite3")
+            try:
+                groups = store.lookup(["yırtmak"], "VERB")
+                self.assertEqual([g["id"] for g in groups], ["002", "001"])
+                self.assertEqual(groups[1]["relations"], [])
+                result = TextResult("yırtmak", (), None, (), "", wordnet=groups)
+                preview = render_result(result)
+                self.assertNotIn("buzkıran", preview)
+                self.assertNotIn("yırtmaç", preview)
+                self.assertNotIn("word:y%C4%B1rtmak", preview)
+                self.assertNotIn("|", preview)
+                expanded = render_result(result, show_more=True)
+                self.assertIn("yırtmaç", expanded)
+                self.assertIn("Second.", expanded)
+                self.assertNotIn("buzkıran", expanded)
+            finally:
+                store.close()
+
     def test_senses_edges_and_turkish_keys(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

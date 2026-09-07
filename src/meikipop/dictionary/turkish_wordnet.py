@@ -94,20 +94,29 @@ class WordNetStore:
             self.db.close()
             raise
 
-    def lookup(self, headwords):
+    def lookup(self, headwords, pos=None):
         groups = {}
+        keys = {normalize(word) for word in headwords}
         for word in headwords:
             for row in self.db.execute("SELECT DISTINCT s.* FROM synsets s JOIN members m ON m.synset=s.id WHERE m.key=? ORDER BY s.id", (normalize(word),)):
                 if row["id"] in groups:
                     continue
                 group = dict(row)
                 group["members"] = [dict(m) for m in self.db.execute("SELECT spelling,sense,group_id FROM members WHERE synset=?", (row["id"],))]
+                group["matched_members"] = [m for m in group["members"] if normalize(m["spelling"]) in keys]
                 group["relations"] = [dict(e) for e in self.db.execute('''
                     SELECT e.kind, e.target, e.target_sense, m.spelling FROM edges e
                     JOIN members m ON m.synset=e.target WHERE e.source=? ORDER BY e.kind,e.target,m.rowid
                 ''', (row["id"],))]
+                # The locked pack has synset-level edges, not source-lemma edges.
+                if len({normalize(m["spelling"]) for m in group["members"]}) != 1:
+                    group["relations"] = [r for r in group["relations"] if r["kind"] != "DERIVATION_RELATED"]
                 groups[row["id"]] = group
-        return tuple(groups.values())
+        expected = {"NOUN": "n", "PROPN": "n", "VERB": "v", "AUX": "v", "ADJ": "a", "ADV": "r"}.get(pos)
+        def order(group):
+            senses = [int(m["sense"]) for m in group["matched_members"] if m["sense"].isdigit()]
+            return (bool(expected and group["pos"] != expected), min(senses, default=999999), group["id"])
+        return tuple(sorted(groups.values(), key=order))
 
     def close(self):
         self.db.close()

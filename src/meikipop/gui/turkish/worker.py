@@ -57,7 +57,8 @@ class TextWorker(threading.Thread):
                             if result.target is not None:
                                 token = result.tokens[result.target]
                                 words.extend((text[token.start:token.end], token.lemma))
-                        result = replace(result, wordnet=wordnet.lookup(words), wordnet_status="KeNet · Turkish WordNet")
+                        pos = result.tokens[result.target].pos if result.target is not None else None
+                        result = replace(result, wordnet=wordnet.lookup(words, pos), wordnet_status="KeNet")
                     except (OSError, ValueError, sqlite3.Error):
                         result = replace(result, wordnet_status="WordNet unavailable · install it in Settings")
                     self.signals.completed.emit(request_id, result, "")
