@@ -69,7 +69,8 @@ class ClipboardLookup(QObject):
         self.double_click_timer.setInterval(60)
         self.double_click_timer.timeout.connect(self.capture_double_click)
         self.mouse_clicked.connect(self.on_click)
-        self.clicks = mouse.Listener(on_click=self.mouse_clicked.emit)
+        self.clicks = mouse.Listener(
+            on_click=lambda x, y, button, down: self.mouse_clicked.emit(x, y, button, down))
         self.clicks.start()
 
     def apply_shortcuts(self, values):

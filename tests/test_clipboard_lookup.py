@@ -30,10 +30,11 @@ class ClipboardLookupTests(unittest.TestCase):
         self.tray.menu.addAction("Settings")
         self.shared = SimpleNamespace(lookup_queue=LatestValueQueue())
         with patch("meikipop.gui.clipboard_lookup.TextHotKeys"), \
-                patch("meikipop.gui.clipboard_lookup.mouse.Listener"), \
+                patch("meikipop.gui.clipboard_lookup.mouse.Listener") as listener, \
                 patch("meikipop.gui.clipboard_lookup.QSettings", return_value=QSettings(
                     str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)):
             self.controller = ClipboardLookup(self.shared, self.popup, self.tray)
+            self.click_callback = listener.call_args.kwargs["on_click"]
 
     def tearDown(self):
         self.controller.shutdown()
@@ -44,6 +45,15 @@ class ClipboardLookupTests(unittest.TestCase):
         with patch.object(QApplication, "clipboard") as clipboard:
             clipboard.return_value.text.return_value = text
             self.controller.read()
+
+    def test_mouse_callback_accepts_real_listener_and_forwards_click(self):
+        from pynput import mouse
+        listener = mouse.Listener(on_click=self.click_callback)
+        self.controller.mouse_clicked.disconnect(self.controller.on_click)
+        received = Mock()
+        self.controller.mouse_clicked.connect(received)
+        listener.on_click(10, 20, mouse.Button.left, True, False)
+        received.assert_called_once_with(10, 20, mouse.Button.left, True)
 
     def test_reuses_lookup_and_dismissal_rejects_pending_result(self):
         self.read("食べました")
