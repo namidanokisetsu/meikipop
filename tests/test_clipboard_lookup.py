@@ -28,7 +28,7 @@ class ClipboardLookupTests(unittest.TestCase):
         self.tray.geometry = lambda: QRect(20, 20, 24, 24)
         self.tray.menu.addAction("Settings")
         self.shared = SimpleNamespace(lookup_queue=LatestValueQueue())
-        with patch("meikipop.gui.clipboard_lookup.keyboard.GlobalHotKeys"), \
+        with patch("meikipop.gui.clipboard_lookup.TextHotKeys"), \
                 patch("meikipop.gui.clipboard_lookup.mouse.Listener"), \
                 patch("meikipop.gui.clipboard_lookup.QSettings", return_value=QSettings(
                     str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)):
