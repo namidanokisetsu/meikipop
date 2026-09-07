@@ -96,3 +96,17 @@ class ClipboardLookupTests(unittest.TestCase):
             revision = self.controller.revision
             self.controller.changed()
             self.assertEqual(self.controller.revision, revision)
+
+    def test_selection_uses_lookup_and_suppresses_automatic_copy(self):
+        with patch.object(self.controller.selection, "start") as start:
+            self.controller.selection_requested.emit()
+            start.assert_called_once_with(wait_for_modifiers=True)
+        self.controller.automatic.setChecked(True)
+        self.controller.selection.pending = True
+        with patch.object(QApplication, "clipboard") as clipboard:
+            clipboard.return_value.text.return_value = "selected"
+            self.controller.changed()
+        self.assertFalse(self.controller.active)
+        self.controller.selection.completed.emit("selected")
+        self.controller.process(lambda text: [text])
+        self.popup.set_latest_data.assert_called_with(["selected"])
