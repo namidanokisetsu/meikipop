@@ -30,7 +30,7 @@ class ClipboardTests(unittest.TestCase):
         wordnet_path = patch("meikipop.dictionary.turkish_wordnet.default_wordnet_path", return_value=root / "missing.sqlite3")
         wordnet_path.start()
         self.addCleanup(wordnet_path.stop)
-        with patch("pynput.keyboard.GlobalHotKeys"), patch("pynput.keyboard.Listener"), patch("pynput.mouse.Listener"), \
+        with patch("meikipop.gui.turkish.desktop_input.TextHotKeys"), patch("pynput.keyboard.Listener"), patch("pynput.mouse.Listener"), \
                 patch("meikipop.gui.turkish.window.QSettings", return_value=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)):
             self.window = ClipboardWindow(root / "pack/dictionary.sqlite3", "exact")
             self.window.settings.setValue("auto_scan", False)

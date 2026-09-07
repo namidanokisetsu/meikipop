@@ -7,6 +7,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from pynput import keyboard, mouse
 
 from meikipop.gui.activation import ActivationState, normalise_pynput_key, normalise_pynput_button
+from meikipop.gui.text_shortcuts import TextHotKeys
 
 
 class DesktopInput(QObject):
@@ -36,7 +37,7 @@ class DesktopInput(QObject):
     def set_shortcuts(self, clipboard_hotkey, search_hotkey):
         if keyboard.HotKey.parse(clipboard_hotkey) == keyboard.HotKey.parse(search_hotkey):
             raise ValueError("Clipboard and search shortcuts must differ.")
-        replacement = keyboard.GlobalHotKeys({clipboard_hotkey: self.clipboard_requested.emit,
+        replacement = TextHotKeys({clipboard_hotkey: self.clipboard_requested.emit,
                                                search_hotkey: self.search_requested.emit})
         replacement.start()
         previous, self.shortcuts = self.shortcuts, replacement

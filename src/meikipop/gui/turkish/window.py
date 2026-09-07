@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel, QMenu
 from .worker import TextWorker
 from .rendering import render_result
 from .desktop_input import DesktopInput
-from .selection import SelectionCapture
+from meikipop.gui.selection import SelectionCapture
 from meikipop.gui.themes import THEMES
 
 from meikipop.config.config import config
