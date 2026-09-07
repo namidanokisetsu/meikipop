@@ -19,3 +19,16 @@ class TextHotKeys(GlobalHotKeys):
     def _on_release(self, key, injected=False):
         for hotkey in self._hotkeys:
             hotkey.release(self.canonical(key))
+
+
+def validate_shortcuts(values):
+    """Blank disables a binding; compare parsed keys to catch reordered duplicates."""
+    from pynput.keyboard import HotKey
+    seen = []
+    for value in values:
+        if not value:
+            continue
+        keys = frozenset(HotKey.parse(value))
+        if not keys or keys in seen:
+            raise ValueError("Shortcuts must be nonempty and distinct.")
+        seen.append(keys)
