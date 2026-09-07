@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QTabWidget, QWid
 from meikipop.config.config import config
 from meikipop.gui.activation import parse_activation_bindings, serialise_activation_bindings
 from meikipop.gui.themes import THEMES
+from meikipop.gui.shortcut_edit import ShortcutEdit
 
 
 class SettingsDialog(QDialog):
@@ -64,9 +65,7 @@ class SettingsDialog(QDialog):
             general.addRow("Mouse activation:" if token == "middle" else "", field)
         for key, label, value in (("clipboard_hotkey", "Clipboard shortcut:", window.hotkey),
                                    ("search_hotkey", "Search shortcut:", window.search_hotkey)):
-            field = QLineEdit(value)
-            field.setPlaceholderText("Disabled")
-            field.setToolTip("Leave blank to disable. Example: <ctrl>+<alt>+l")
+            field = ShortcutEdit(value, window.settings.value(key + "_preset", "Ctrl+Alt+L" if key == "clipboard_hotkey" else "Ctrl+Alt+D"))
             general.addRow(label, field)
             self.fields[key] = field
         check(general, "auto_clipboard", "Look up copied text:", False)
@@ -158,6 +157,8 @@ class SettingsDialog(QDialog):
         for key, field in self.fields.items():
             value = field.isChecked() if isinstance(field, QCheckBox) else field.value() if isinstance(field, QSpinBox) else field.text().strip()
             settings.setValue(key, value)
+            if isinstance(field, ShortcutEdit):
+                settings.setValue(key + "_preset", field.recorder.keySequence().toString())
         for key, button in self.colors.items():
             settings.setValue(key, button.text())
         settings.setValue("font_family", self.font.currentFont().family())

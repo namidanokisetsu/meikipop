@@ -118,7 +118,9 @@ class ClipboardTests(unittest.TestCase):
         original = dict(config.__dict__)
         dialog = SettingsDialog(self.window)
         dialog.theme.setCurrentText("Academic")
-        dialog.fields["search_hotkey"].setText("<ctrl>+<alt>+k")
+        from PyQt6.QtGui import QKeySequence
+        dialog.fields["search_hotkey"].recorder.setKeySequence(QKeySequence("Ctrl+Alt+K"))
+        dialog.fields["search_hotkey"].enabled.setChecked(True)
         with patch.object(self.window.input, "set_shortcuts"):
             dialog.save()
         self.assertEqual(config.__dict__, original)
