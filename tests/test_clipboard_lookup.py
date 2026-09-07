@@ -55,6 +55,14 @@ class ClipboardLookupTests(unittest.TestCase):
         listener.on_click(10, 20, mouse.Button.left, True, False)
         received.assert_called_once_with(10, 20, mouse.Button.left, True)
 
+    def test_dragged_selection_starts_copy_capture(self):
+        from pynput import mouse
+        self.controller.settings.setValue("double_click", True)
+        with patch.object(self.controller.selection, "start") as start:
+            self.controller.on_click(10, 10, mouse.Button.left, True)
+            self.controller.on_click(30, 10, mouse.Button.left, False)
+            start.assert_called_once_with(wait_for_modifiers=True)
+
     def test_reuses_lookup_and_dismissal_rejects_pending_result(self):
         self.read("食べました")
         revision = self.controller.revision

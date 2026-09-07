@@ -65,6 +65,7 @@ class ClipboardLookup(QObject):
         self.apply_shortcuts({name: self.settings.value(name + "_hotkey", "")
                               for name in ("clipboard", "search", "selection")})
         self._last_click = None
+        self._drag_start = None
         self.double_click_timer = QTimer(self)
         self.double_click_timer.setSingleShot(True)
         self.double_click_timer.setInterval(60)
@@ -109,7 +110,7 @@ class ClipboardLookup(QObject):
         page.double_click = QCheckBox()
         page.double_click.setChecked(self.settings.value("double_click", False, bool))
         page.double_click.setEnabled(sys.platform == "win32")
-        form.addRow("Look up double-clicked text:", page.double_click)
+        form.addRow("Look up selected text:", page.double_click)
         return page
 
     def save_settings_page(self, page):
@@ -124,9 +125,19 @@ class ClipboardLookup(QObject):
         if down:
             self.double_click_timer.stop()
             self.dismiss()
+            if button == mouse.Button.left:
+                self._drag_start = (x, y)
             return
         if button != mouse.Button.left:
             self._last_click = None
+            self._drag_start = None
+            return
+        drag_start = getattr(self, "_drag_start", None)
+        self._drag_start = None
+        if drag_start and (abs(x - drag_start[0]) > 4 or abs(y - drag_start[1]) > 4):
+            self._last_click = None
+            if self.settings.value("double_click", False, bool):
+                self.selection.start(wait_for_modifiers=True)
             return
         now = monotonic()
         previous, self._last_click = self._last_click, (now, x, y)
