@@ -37,19 +37,18 @@ environment and opens no console. It starts in the tray, without a search window
 Only one Turkish instance runs at a time. Quit an older running copy before launching
 updated source code.
 
-Select text in another application and press **Ctrl+C**: a pinned popup opens
-beside the pointer, clamped inside that monitor's available area. Automatic copy
-lookup is **on by default** for this MVP; disable it in Settings or the tray.
-**Ctrl+Alt+L**, **Look up clipboard** in the popup's **···** menu, and the tray action read the
-clipboard even with monitoring off. Try `Dün kitaplarımdan birini okudum.`
-and click `okudum`; try `Bunu hemen fark etti.` and click `etti` for `fark etmek`.
+Text shortcuts, automatic clipboard lookup and double-click capture are **off by default**.
+Enable only the inputs you want in Settings. Older default-on Turkish text settings
+reset once on upgrade. Manual **Look up clipboard** and **Search?** remain in the menus.
+With automatic lookup enabled, copying text opens a pinned popup beside the pointer.
+Try `D?n kitaplar?mdan birini okudum.` and click `okudum`.
 The whole copied phrase is looked up first, otherwise the first word is selected.
 
 Hold **Shift** with the pointer over a word to scan locally. Move to another
 word while holding it to scan again. Move into the popup after releasing Shift to read it; a 350 ms grace period lets you cross the gap. Click a word or **Pin** to keep it open. Copied lookups pin immediately. Pinned results stay in place and suspend background scans until dismissed.
 Click outside, press **Escape**, or use **×** to dismiss. On Windows, Escape is intercepted only while this popup is visible, including its key-up event, so it does not also exit a video. Left-click the tray icon to pause or resume; use its menu to quit.
 
-Press **Ctrl+Alt+D** or choose **Search…** from the tray or **···** menu for a compact search field beside the tray. Type a word and press Enter; results use the same dictionary surface. Clipboard and search shortcuts are separately configurable in Settings (pynput syntax) or through `--hotkey` and `--search-hotkey`. Click tokens,
+Press **Ctrl+Alt+D** or choose **Search…** from the tray or **···** menu for a compact search field beside the tray. Type a word and press Enter; results use the same dictionary surface. Clipboard and search shortcuts are separately configurable in Settings (pynput syntax; blank disables) or through `--hotkey` and `--search-hotkey`. Click tokens,
 suggestions, related expressions or WordNet members to navigate; **←** goes back.
 Expand **WordNet** for its independent sense groups and typed semantic links.
 WordNet definitions appear immediately when a linked word has no TDK entry.
@@ -64,7 +63,7 @@ closing Settings does not interrupt setup. Wait for installation to finish befor
 Install the OCR Python extra
 below before using the OCR model button. No pip command runs from the GUI.
 
-On Windows, double-clicking selectable text also looks it up by default; disable **Look up double-clicked text** in Settings if unwanted. This uses a short Ctrl+C capture, waits for a fresh clipboard change, and restores the previous clipboard formats. Held modifiers, focus changes and timeouts cancel the attempt. Applications must support copying the selected text; image-only text still needs OCR.
+On Windows, enable **Look up double-clicked text** in Settings to capture selectable text. This uses a short Ctrl+C capture, waits for a fresh clipboard change, and restores the previous clipboard formats. Held modifiers, focus changes and timeouts cancel the attempt. Applications must support copying the selected text; image-only text still needs OCR.
 
 Clipboard lookup is limited to 2,000 characters. Duplicate notifications,
 empty/oversized payloads and copies while Meikipop owns focus are ignored.
@@ -126,7 +125,7 @@ These checks do not replace manual desktop focus/shortcut or packaging acceptanc
 On this Windows desktop, separate-app Ctrl+C → pinned popup → global Escape
 passed. Real screen capture with the global Shift listener → Paddle word box →
 Stanza → TDK/KeNet → click pin → Shift release also passed. The unit suite has
-66 checks, including content sizing, pin stability, installer recovery and OCR cache
+85 checks, including content sizing, pin stability, installer recovery and OCR cache
 invalidation. TDK and Stanza installation followed by lookup also passed through the
 actual console-free `pythonw` path. Multi-monitor placement has negative-coordinate coverage;
 mixed-DPI hardware, browser/PDF combinations and a clean-machine executable
@@ -168,10 +167,11 @@ The Japanese build on `feature/japanese-clipboard` keeps the original dictionary
 deconjugation, popup, OCR and audio. Its Windows executable is installed at
 `%LOCALAPPDATA%\Programs\meikipop\meikipop.exe` using the existing shortcuts.
 
-- **Ctrl+Alt+L**: look up clipboard text.
-- **Ctrl+Alt+D**: open compact typed search.
-- **Ctrl+Alt+S**: look up selected text in a copyable Windows application. Release
-  the shortcut keys to complete capture; the previous clipboard formats are restored.
+Open **Settings ? Text Lookup** to assign clipboard, search and selected-text
+shortcuts. All start disabled. Enter pynput syntax such as `<ctrl>+<alt>+l`, or clear
+a field to disable it. Duplicate bindings are rejected; changes apply on Save.
+Selected-text capture waits for key release and restores previous clipboard formats.
+
 - **Look up copied text automatically** in the tray: optional automatic lookup.
 
 Click to dismiss the Japanese text popup. Selection timeouts and focus changes
