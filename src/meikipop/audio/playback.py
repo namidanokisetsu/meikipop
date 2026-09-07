@@ -9,6 +9,7 @@ from PyQt6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 
 from meikipop.audio.worker import AudioRequest, AudioWorker
 from meikipop.config.config import config
+from meikipop.pipeline import LookupResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class PronunciationAudioService(QObject):
         self.player.setAudioOutput(self.output)
         self._bytes = None
         self._buffer = None
+        self._pending_clip = None
         self._played: dict[int, set[tuple[str, str]]] = {}
         self._latest_key: tuple[int, tuple[str, str] | None] = (0, None)
         self._dedupe_lock = threading.Lock()
@@ -52,10 +54,20 @@ class PronunciationAudioService(QObject):
         return tuple(item.strip() for item in config.audio_preferred_sources.split(",") if item.strip())
 
     def handle_lookup_result(self, result):
-        if not config.audio_autoplay_enabled or not result.activation_id:
+        if not config.audio_autoplay_enabled:
             return
         current_id, active = self.shared_state.activation_snapshot()
-        if not active or current_id != result.activation_id:
+        clipboard = getattr(self.shared_state, "clipboard_lookup", None)
+        if result.activation_id < 0:
+            if not clipboard or not clipboard.active or clipboard.revision != -result.activation_id:
+                return
+        elif clipboard and clipboard.active:
+            return
+        elif result.activation_id and current_id != result.activation_id:
+            return
+        # A zero activation is the auto-scan OCR path. Do not let it interrupt
+        # a manually held OCR activation, but allow it when the cursor is idle.
+        if not result.activation_id and active:
             return
         if not result.entries:
             with self._dedupe_lock:
@@ -68,13 +80,20 @@ class PronunciationAudioService(QObject):
             return
         key = (top.written_form, top.reading or "")
         with self._dedupe_lock:
-            self._latest_key = (result.activation_id, key)
-            played = self._played.setdefault(result.activation_id, set())
-            if key in played:
+            if self._latest_key == (result.activation_id, key):
                 return
-            played.add(key)
-            self._played = {result.activation_id: played}
+            self._latest_key = (result.activation_id, key)
+            if result.activation_id:
+                played = self._played.setdefault(result.activation_id, set())
+                if key in played:
+                    return
+                played.add(key)
+                self._played = {result.activation_id: played}
         self.worker.submit(AudioRequest(result.activation_id, key, config.audio_database_path, self._preferences()))
+
+    def handle_text_result(self, revision, entries):
+        # Negative IDs keep text revisions separate from OCR activations.
+        self.handle_lookup_result(LookupResult(-revision, None, tuple(entries or ())))
 
     def apply_settings(self, validate=True):
         self.output.setVolume(max(0, min(100, config.audio_volume)) / 100.0)
@@ -93,7 +112,25 @@ class PronunciationAudioService(QObject):
         current_id, active = self.shared_state.activation_snapshot()
         with self._dedupe_lock:
             is_latest = self._latest_key == (clip.activation_id, clip.key)
-        if not config.audio_autoplay_enabled or not active or clip.activation_id != current_id or not is_latest:
+        if not config.audio_autoplay_enabled or not is_latest:
+            return
+        clipboard = getattr(self.shared_state, "clipboard_lookup", None)
+        if clip.activation_id < 0:
+            if not clipboard or not clipboard.active or clipboard.revision != -clip.activation_id:
+                return
+        elif clipboard and clipboard.active:
+            return
+        elif clip.activation_id and clip.activation_id != current_id:
+            return
+        # Background OCR uses activation 0 and must not race a manual lookup.
+        # Manual clips remain valid when the user releases the activation key
+        # while the local audio worker is reading the database.
+        if not clip.activation_id and active:
+            return
+        if self._buffer is not None:
+            # Finish the current pronunciation; rapid OCR hits retain only the
+            # latest next clip, revalidated when playback finishes.
+            self._pending_clip = clip
             return
         self.player.stop()
         self._release_buffer()
@@ -108,6 +145,9 @@ class PronunciationAudioService(QObject):
             self._last_playback_error = None
         if status in (QMediaPlayer.MediaStatus.EndOfMedia, QMediaPlayer.MediaStatus.InvalidMedia):
             self._release_buffer()
+            pending, self._pending_clip = self._pending_clip, None
+            if pending is not None:
+                self._play_clip(pending)
 
     def _on_error(self, _error, error_string):
         if error_string != self._last_playback_error:
@@ -127,6 +167,7 @@ class PronunciationAudioService(QObject):
         self.last_status = status
 
     def shutdown(self):
+        self._pending_clip = None
         self.player.stop()
         self._release_buffer()
         self.worker.stop()
