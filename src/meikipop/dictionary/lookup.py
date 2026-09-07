@@ -69,6 +69,11 @@ class Lookup(threading.Thread):
             try:
                 request = self.shared_state.lookup_queue.get()
                 if not self.shared_state.running: break
+                clipboard = getattr(self.shared_state, "clipboard_lookup", None)
+                if clipboard and clipboard.active:
+                    clipboard.process(self.lookup)
+                    continue
+                clipboard_revision = clipboard.revision if clipboard else None
                 if isinstance(request, PipelineValue):
                     activation_id, hit_result = request.activation_id, request.value
                 else:
@@ -89,6 +94,8 @@ class Lookup(threading.Thread):
                 lookup_result = self.lookup(self.last_hit_result) if self.last_hit_result else None
                 message = LookupResult(activation_id, hit_result, tuple(lookup_result or ()))
                 current_id, _active = self.shared_state.activation_snapshot()
+                if clipboard and (clipboard.active or clipboard.revision != clipboard_revision):
+                    continue
                 if not activation_id or activation_id == current_id:
                     self.popup_window.set_latest_data(list(message.entries) or None)
                     if self.audio_service:

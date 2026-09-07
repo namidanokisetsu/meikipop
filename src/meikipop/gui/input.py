@@ -83,6 +83,9 @@ class InputLoop(threading.Thread):
                     observed_activation_id = self.activation.activation_id
                     self.shared_state.set_activation(observed_activation_id, False)
                     continue
+                clipboard = getattr(self.shared_state, "clipboard_lookup", None)
+                if clipboard and clipboard.active:
+                    continue
                 active = self.activation.active
                 activation_id = self.activation.activation_id
                 if activation_id != observed_activation_id:
@@ -123,7 +126,8 @@ class InputLoop(threading.Thread):
                 listener.stop()
 
     def is_virtual_hotkey_down(self):
-        return self.activation.active or (config.auto_scan_mode and config.auto_scan_mode_lookups_without_hotkey)
+        clipboard = getattr(self.shared_state, "clipboard_lookup", None)
+        return bool(clipboard and clipboard.active) or self.activation.active or (config.auto_scan_mode and config.auto_scan_mode_lookups_without_hotkey)
 
     def reapply_settings(self):
         logger.debug("InputLoop: applying activation bindings %r", config.activation_bindings)
