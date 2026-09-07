@@ -5,6 +5,8 @@ synonyms/semantic links, local PaddleOCR, clickable sentence tokens and examples
 It starts without Japanese dictionary or OCR setup. See the
 [support plan](TURKISH_SUPPORT_PLAN.md) for implementation status and remaining scope.
 
+Frozen for personal use on 2026-09-07. Japanese is accepted; Turkish remains a source-install MVP. Optional features and packaging are deferred.
+
 ## Install from source
 
 Use Python 3.13 for the pinned NLP packages. This minimal Windows environment
@@ -48,7 +50,7 @@ Hold **Shift** with the pointer over a word to scan locally. Move to another
 word while holding it to scan again. Move into the popup after releasing Shift to read it; a 350 ms grace period lets you cross the gap. Click a word or **Pin** to keep it open. Copied lookups pin immediately. Pinned results stay in place and suspend background scans until dismissed.
 Click outside, press **Escape**, or use **×** to dismiss. On Windows, Escape is intercepted only while this popup is visible, including its key-up event, so it does not also exit a video. Left-click the tray icon to pause or resume; use its menu to quit.
 
-Press **Ctrl+Alt+D** or choose **Search…** from the tray or **···** menu for a compact search field beside the tray. Type a word and press Enter; results use the same dictionary surface. Clipboard and search shortcuts are separately configurable in Settings (click a recorder, press the keys, and check its enable box) or through `--hotkey` and `--search-hotkey`. Click tokens,
+Enable the Search shortcut in Settings, then press **Ctrl+Alt+D**, or choose **Search…** from the tray or **···** menu for a compact search field beside the tray. Type a word and press Enter; results use the same dictionary surface. Clipboard and search shortcuts are separately configurable in Settings (click a recorder, press the keys, and check its enable box) or through `--hotkey` and `--search-hotkey`. Click tokens,
 suggestions, related expressions or WordNet members to navigate; **←** goes back.
 Expand **WordNet** for its independent sense groups and typed semantic links.
 WordNet definitions appear immediately when a linked word has no TDK entry.
@@ -125,7 +127,7 @@ These checks do not replace manual desktop focus/shortcut or packaging acceptanc
 On this Windows desktop, separate-app Ctrl+C → pinned popup → global Escape
 passed. Real screen capture with the global Shift listener → Paddle word box →
 Stanza → TDK/KeNet → click pin → Shift release also passed. The unit suite has
-86 checks, including content sizing, pin stability, installer recovery and OCR cache
+95 checks, including content sizing, pin stability, installer recovery and OCR cache
 invalidation. TDK and Stanza installation followed by lookup also passed through the
 actual console-free `pythonw` path. Multi-monitor placement has negative-coordinate coverage;
 mixed-DPI hardware, browser/PDF combinations and a clean-machine executable
@@ -171,8 +173,8 @@ Open **Settings ? Text Lookup** to assign clipboard, search and selected-text
 shortcuts. Click a recorder and press the desired keys. Check its box to enable it.
 Presets: Ctrl+Alt+L for clipboard, Ctrl+Alt+D for search and Ctrl+Alt+S for selection.
 All start unchecked; unchecking preserves the recorded combination. Duplicate enabled
-bindings are rejected; changes apply on Save. Enable **Look up double-clicked text**
-to look up words by double-clicking them in copyable Windows applications.
+bindings are rejected; changes apply on Save. Enable **Look up selected text**
+to look up words by dragging a selection or double-clicking them in copyable Windows applications.
 Selected-text capture waits for key release and restores previous clipboard formats.
 
 - **Look up copied text automatically** in the tray: optional automatic lookup.
