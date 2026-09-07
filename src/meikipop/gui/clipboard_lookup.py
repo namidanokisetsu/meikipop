@@ -1,4 +1,5 @@
 """Clipboard input for the existing Japanese lookup worker and popup."""
+import sys
 import threading
 
 from PyQt6.QtCore import QObject, pyqtSignal, QSettings, Qt
@@ -8,11 +9,13 @@ from pynput import keyboard, mouse
 
 from meikipop.config.config import config
 from meikipop.gui.text_shortcuts import TextHotKeys
+from meikipop.gui.selection import SelectionCapture
 
 
 class ClipboardLookup(QObject):
     requested = pyqtSignal()
     search_requested = pyqtSignal()
+    selection_requested = pyqtSignal()
     dismissed = pyqtSignal()
     completed = pyqtSignal(int, object)
 
@@ -28,6 +31,9 @@ class ClipboardLookup(QObject):
         self.search_requested.connect(self.open_search)
         self.dismissed.connect(self.dismiss)
         self.completed.connect(self.deliver)
+        self.selection = SelectionCapture(self)
+        self.selection.completed.connect(self.lookup_text)
+        self.selection_requested.connect(self.read_selection)
         action = QAction("Look up clipboard", tray.menu)
         tray.menu.insertAction(tray.menu.actions()[0], action)
         action.triggered.connect(self.read)
@@ -51,8 +57,13 @@ class ClipboardLookup(QObject):
         self.automatic.setChecked(self.settings.value("automatic", False, bool))
         self.automatic.toggled.connect(lambda value: self.settings.setValue("automatic", value))
         QApplication.clipboard().dataChanged.connect(self.changed)
-        self.keys = TextHotKeys({"<ctrl>+<alt>+l": self.requested.emit,
-                                            "<ctrl>+<alt>+d": self.search_requested.emit})
+        shortcuts = {"<ctrl>+<alt>+l": self.requested.emit,
+                     "<ctrl>+<alt>+d": self.search_requested.emit}
+        if sys.platform == "win32":
+            shortcuts["<ctrl>+<alt>+s"] = self.selection_requested.emit
+        action.setToolTip("Ctrl+Alt+L")
+        search_action.setToolTip("Ctrl+Alt+D")
+        self.keys = TextHotKeys(shortcuts)
         self.clicks = mouse.Listener(on_click=lambda x, y, button, down: self.dismissed.emit() if down else None)
         self.keys.start()
         self.clicks.start()
@@ -67,10 +78,16 @@ class ClipboardLookup(QObject):
         with self._lock:
             return self._text is not None
 
+    def read_selection(self):
+        if config.is_enabled:
+            self.selection.start(wait_for_modifiers=True)
+
     def read(self):
+        self.selection.cancel()
         self.lookup_text(QApplication.clipboard().text())
 
     def lookup_text(self, text):
+        self.selection.cancel()
         text = text.strip()
         if not config.is_enabled or not text or len(text) > 2000:
             return
@@ -109,7 +126,7 @@ class ClipboardLookup(QObject):
     def changed(self):
         text = QApplication.clipboard().text()
         previous, self.previous = self.previous, text
-        if self.automatic.isChecked() and text != previous and QApplication.activeWindow() is None:
+        if not self.selection.pending and self.automatic.isChecked() and text != previous and QApplication.activeWindow() is None:
             self.read()
 
     def process(self, lookup):
@@ -130,6 +147,7 @@ class ClipboardLookup(QObject):
             self.dismiss()
 
     def dismiss(self):
+        self.selection.cancel()
         with self._lock:
             if self._text is None:
                 return
