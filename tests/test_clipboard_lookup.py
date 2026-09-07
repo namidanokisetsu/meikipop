@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QSettings, QRect
 from PyQt6.QtWidgets import QApplication, QWidget, QMenu
 
 from meikipop.gui.clipboard_lookup import ClipboardLookup
@@ -22,8 +22,10 @@ class ClipboardLookupTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.popup = QWidget()
+        self.popup.frame = QWidget()
         self.popup.set_latest_data = Mock()
         self.tray = SimpleNamespace(menu=QMenu())
+        self.tray.geometry = lambda: QRect(20, 20, 24, 24)
         self.tray.menu.addAction("Settings")
         self.shared = SimpleNamespace(lookup_queue=LatestValueQueue())
         with patch("meikipop.gui.clipboard_lookup.keyboard.GlobalHotKeys"), \
@@ -68,6 +70,18 @@ class ClipboardLookupTests(unittest.TestCase):
         self.read("猫")
         self.controller.process(lambda text: [text])
         self.popup.set_latest_data.assert_called_with(["猫"])
+
+    def test_search_uses_existing_lookup_without_touching_clipboard(self):
+        self.controller.search_requested.emit()
+        self.assertTrue(self.controller.search_window.isVisible())
+        self.assertLessEqual(self.controller.search_window.height(), 64)
+        self.controller.search.setText("食べました")
+        with patch.object(QApplication, "clipboard") as clipboard:
+            self.controller.search.returnPressed.emit()
+            self.controller.process(lambda text: [text])
+            clipboard.assert_not_called()
+        self.popup.set_latest_data.assert_called_with(["食べました"])
+        self.assertFalse(self.controller.search_window.isVisible())
 
     def test_monitor_is_opt_in_and_deduplicates(self):
         self.assertFalse(self.controller.automatic.isChecked())
