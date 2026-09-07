@@ -12,7 +12,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QUrl, QPoint, QRect, QSettings
 from PyQt6.QtWidgets import QApplication
 
-from meikipop.gui.text_input import ClipboardWindow, run_setup
+from meikipop.gui.turkish.window import ClipboardWindow, run_setup
 from meikipop.scripts.build_turkish_dictionary import build
 
 
@@ -31,7 +31,7 @@ class ClipboardTests(unittest.TestCase):
         wordnet_path.start()
         self.addCleanup(wordnet_path.stop)
         with patch("pynput.keyboard.GlobalHotKeys"), patch("pynput.keyboard.Listener"), \
-                patch("meikipop.gui.text_input.QSettings", return_value=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)):
+                patch("meikipop.gui.turkish.window.QSettings", return_value=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)):
             self.window = ClipboardWindow(root / "pack/dictionary.sqlite3", "exact")
             self.window.settings.setValue("auto_scan", False)
 
@@ -145,7 +145,7 @@ class ClipboardTests(unittest.TestCase):
             area = QRect(-1280, -100, 1280, 720)
             screen.return_value.availableGeometry.return_value = area
             for mode in ("visual_novel_mode", "flip_horizontally", "flip_vertically", "flip_both"):
-                with patch("meikipop.gui.text_input.config.popup_position_mode", mode):
+                with patch("meikipop.gui.turkish.window.config.popup_position_mode", mode):
                     for point in (QPoint(-2, 618), QPoint(-1278, -98)):
                         self.window.place_popup(point)
                         self.assertTrue(area.contains(self.window.geometry()))
@@ -198,7 +198,7 @@ class ClipboardTests(unittest.TestCase):
         self.window.submit("kitap")
         self.wait_result()
         position = self.window.pos()
-        with patch("meikipop.gui.text_input.QCursor.pos", return_value=QPoint(700, 500)), \
+        with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=QPoint(700, 500)), \
                 patch.object(self.window, "capture_pointer") as capture:
             self.window.set_hold(True)
             self.window.scan_pointer()
@@ -232,7 +232,7 @@ class ClipboardTests(unittest.TestCase):
             moved.rename(dictionary)
             raise RuntimeError("Download unavailable")
 
-        with patch("meikipop.gui.text_input.run_setup", side_effect=installer):
+        with patch("meikipop.gui.turkish.window.run_setup", side_effect=installer):
             self.window.start_setup("dictionary")
             deadline = time.monotonic() + 3
             while self.window.setup_thread is not None and time.monotonic() < deadline:
@@ -246,8 +246,8 @@ class ClipboardTests(unittest.TestCase):
         self.assertTrue(self.window.result.entries)
 
     def test_console_free_installer_uses_pipes_and_selected_paths(self):
-        with patch("meikipop.gui.text_input.sys.executable", "C:/env/pythonw.exe"), \
-                patch("meikipop.gui.text_input.subprocess.run") as run:
+        with patch("meikipop.gui.turkish.window.sys.executable", "C:/env/pythonw.exe"), \
+                patch("meikipop.gui.turkish.window.subprocess.run") as run:
             run.return_value.returncode = 0
             run_setup("model", Path("custom/dictionary.sqlite3"), Path("custom/models"))
             args = run.call_args.args[0]
@@ -275,7 +275,7 @@ class ClipboardTests(unittest.TestCase):
         self.window.capture_region = QRect(0, 0, 400, 200)
         self.window.holding = True
         text = self.window.browser.toPlainText()
-        with patch("meikipop.gui.text_input.QCursor.pos", return_value=QPoint(100, 100)), \
+        with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=QPoint(100, 100)), \
                 patch.object(self.window.worker.queue, "put") as put, \
                 patch.object(self.window, "capture_pointer") as capture:
             self.window.scan_pointer()

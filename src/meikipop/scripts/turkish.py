@@ -58,7 +58,7 @@ def main(argv=None):
     from meikipop.dictionary.turkish_store import default_dictionary_path, TurkishStore
     dictionary = args.dictionary or default_dictionary_path()
     if args.command == "turkish-clipboard":
-        from meikipop.gui.text_input import run_clipboard
+        from meikipop.gui.turkish.window import run_clipboard
         return run_clipboard(dictionary, args.analyzer, args.model_dir, args.hotkey)
     if not args.text.strip() or len(args.text) > 2000:
         parser.error("Text must contain 1–2,000 characters")
@@ -79,6 +79,10 @@ def main(argv=None):
         print_json(output)
     finally:
         store.close()
+
+
+def desktop():
+    return main(["turkish-clipboard", *sys.argv[1:]])
 
 
 if __name__ == "__main__":

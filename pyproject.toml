@@ -32,6 +32,7 @@ dependencies = [
 
 [project.scripts]
 meikipop = "meikipop.main:main"
+meikipop-turkish = "meikipop.scripts.turkish:desktop"
 
 [project.optional-dependencies]
 turkish = ["stanza==1.14.0", "torch==2.8.0"]

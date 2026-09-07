@@ -76,7 +76,7 @@ class TurkishTests(unittest.TestCase):
             match = next(m for m in result.matches if m.entry_id == result.entries[0]["id"])
             self.assertEqual((match.start, match.end, match.candidate), (0, 9, "fark et"))
             self.assertEqual(match.route, "phrase_lemma")
-            from meikipop.gui.text_input import render_result
+            from meikipop.gui.turkish.window import render_result
             self.assertIn("fark etti → fark etmek", render_result(result))
         self.assertEqual(lookup.analyzer.calls, 1)
         self.assertEqual(TurkishLookup(self.store, "exact").lookup("kitap kurdu").target, None)
@@ -176,7 +176,7 @@ class TurkishTests(unittest.TestCase):
         self.assertIn("lemma=imst_charlm", analyzer.identity)
 
     def test_html_escapes_source_and_examples_can_be_disabled(self):
-        from meikipop.gui.text_input import render_result
+        from meikipop.gui.turkish.window import render_result
         result = TurkishLookup(self.store, "exact").lookup("kitap")
         html = render_result(result)
         self.assertIn("&lt;script&gt;", html)
