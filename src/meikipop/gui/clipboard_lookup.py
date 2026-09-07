@@ -1,8 +1,9 @@
 """Clipboard input for the existing Japanese lookup worker and popup."""
 import sys
 import threading
+from time import monotonic
 
-from PyQt6.QtCore import QObject, pyqtSignal, QSettings, Qt
+from PyQt6.QtCore import QObject, pyqtSignal, QSettings, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QDialog, QFrame, QVBoxLayout, QLineEdit, QWidget, QFormLayout, QCheckBox
 from PyQt6.QtGui import QAction, QCursor, QFont
 from pynput import keyboard, mouse
@@ -10,6 +11,7 @@ from pynput import keyboard, mouse
 from meikipop.config.config import config
 from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
 from meikipop.gui.selection import SelectionCapture
+from meikipop.gui.shortcut_edit import ShortcutEdit
 
 
 class ClipboardLookup(QObject):
@@ -17,6 +19,7 @@ class ClipboardLookup(QObject):
     search_requested = pyqtSignal()
     selection_requested = pyqtSignal()
     dismissed = pyqtSignal()
+    mouse_clicked = pyqtSignal(int, int, object, bool)
     completed = pyqtSignal(int, object)
 
     def __init__(self, shared, popup, tray):
@@ -27,8 +30,8 @@ class ClipboardLookup(QObject):
         self._revision, self._text, self._processed = 0, None, -1
         self.settings = QSettings("Meikipop", "JapaneseClipboard")
         self.previous = QApplication.clipboard().text()
-        self.requested.connect(self.read)
-        self.search_requested.connect(self.open_search)
+        self.requested.connect(lambda: self.read() if QApplication.activeWindow() is None else None)
+        self.search_requested.connect(lambda: self.open_search() if QApplication.activeWindow() is None else None)
         self.dismissed.connect(self.dismiss)
         self.completed.connect(self.deliver)
         self.selection = SelectionCapture(self)
@@ -60,7 +63,13 @@ class ClipboardLookup(QObject):
         self.keys = None
         self.apply_shortcuts({name: self.settings.value(name + "_hotkey", "")
                               for name in ("clipboard", "search", "selection")})
-        self.clicks = mouse.Listener(on_click=lambda x, y, button, down: self.dismissed.emit() if down else None)
+        self._last_click = None
+        self.double_click_timer = QTimer(self)
+        self.double_click_timer.setSingleShot(True)
+        self.double_click_timer.setInterval(60)
+        self.double_click_timer.timeout.connect(self.capture_double_click)
+        self.mouse_clicked.connect(self.on_click)
+        self.clicks = mouse.Listener(on_click=self.mouse_clicked.emit)
         self.clicks.start()
 
     def apply_shortcuts(self, values):
@@ -86,20 +95,47 @@ class ClipboardLookup(QObject):
         page.shortcuts = {}
         for name, label in (("clipboard", "Clipboard shortcut:"), ("search", "Search shortcut:"),
                             ("selection", "Selected text shortcut:")):
-            field = QLineEdit(self.settings.value(name + "_hotkey", ""))
-            field.setPlaceholderText("Disabled")
-            field.setToolTip("Leave blank to disable. Example: <ctrl>+<alt>+l")
+            presets = {"clipboard": "Ctrl+Alt+L", "search": "Ctrl+Alt+D", "selection": "Ctrl+Alt+S"}
+            field = ShortcutEdit(self.settings.value(name + "_hotkey", ""),
+                                 self.settings.value(name + "_preset", presets[name]))
             field.setEnabled(name != "selection" or sys.platform == "win32")
             page.shortcuts[name] = field
             form.addRow(label, field)
         page.automatic = QCheckBox()
         page.automatic.setChecked(self.automatic.isChecked())
         form.addRow("Look up copied text:", page.automatic)
+        page.double_click = QCheckBox()
+        page.double_click.setChecked(self.settings.value("double_click", False, bool))
+        page.double_click.setEnabled(sys.platform == "win32")
+        form.addRow("Look up double-clicked text:", page.double_click)
         return page
 
     def save_settings_page(self, page):
         self.apply_shortcuts({name: field.text().strip() for name, field in page.shortcuts.items()})
+        for name, field in page.shortcuts.items():
+            self.settings.setValue(name + "_preset", field.recorder.keySequence().toString())
         self.automatic.setChecked(page.automatic.isChecked())
+        self.settings.setValue("double_click", page.double_click.isChecked())
+        self.double_click_timer.stop()
+
+    def on_click(self, x, y, button, down):
+        if down:
+            self.double_click_timer.stop()
+            self.dismiss()
+            return
+        if button != mouse.Button.left:
+            self._last_click = None
+            return
+        now = monotonic()
+        previous, self._last_click = self._last_click, (now, x, y)
+        if previous and now - previous[0] <= QApplication.doubleClickInterval() / 1000 and abs(x - previous[1]) <= 4 and abs(y - previous[2]) <= 4:
+            self._last_click = None
+            if self.settings.value("double_click", False, bool):
+                self.double_click_timer.start()
+
+    def capture_double_click(self):
+        if config.is_enabled and self.settings.value("double_click", False, bool):
+            self.selection.start()
 
     @property
     def revision(self):
@@ -189,6 +225,7 @@ class ClipboardLookup(QObject):
         self.popup.set_latest_data(None)
 
     def shutdown(self):
+        self.double_click_timer.stop()
         self.dismiss()
         self.search_window.hide()
         QApplication.clipboard().dataChanged.disconnect(self.changed)

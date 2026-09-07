@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from PyQt6.QtCore import QSettings, QRect
+from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QApplication, QWidget, QMenu
 
 from meikipop.gui.clipboard_lookup import ClipboardLookup
@@ -115,17 +116,39 @@ class ClipboardLookupTests(unittest.TestCase):
         self.assertIsNone(self.controller.keys)
         page = self.controller.settings_page()
         self.assertTrue(all(not field.text() for field in page.shortcuts.values()))
-        page.shortcuts["clipboard"].setText("<ctrl>+<shift>+k")
+        page.shortcuts["clipboard"].recorder.setKeySequence(QKeySequence("Ctrl+Shift+K"))
+        page.shortcuts["clipboard"].enabled.setChecked(True)
         with patch("meikipop.gui.clipboard_lookup.TextHotKeys") as listener:
             self.controller.save_settings_page(page)
             self.assertIn("<ctrl>+<shift>+k", listener.call_args.args[0])
-            page.shortcuts["search"].setText("<shift>+<ctrl>+k")
+            page.shortcuts["search"].recorder.setKeySequence(QKeySequence("Ctrl+Shift+K"))
+            page.shortcuts["search"].enabled.setChecked(True)
             with self.assertRaises(ValueError):
                 self.controller.save_settings_page(page)
             self.assertEqual(self.controller.settings.value("search_hotkey"), "")
-            page.shortcuts["search"].clear()
-            page.shortcuts["clipboard"].clear()
+            page.shortcuts["search"].enabled.setChecked(False)
+            page.shortcuts["clipboard"].enabled.setChecked(False)
             self.controller.save_settings_page(page)
             listener.return_value.stop.assert_called_once()
             self.assertIsNone(self.controller.keys)
+        page.deleteLater()
+
+    def test_recorded_defaults_and_double_click_opt_in(self):
+        from pynput import mouse
+        page = self.controller.settings_page()
+        self.assertEqual(page.shortcuts["selection"].binding(), "<ctrl>+<alt>+s")
+        self.assertFalse(page.double_click.isChecked())
+        with patch.object(self.controller.selection, "start") as start:
+            for _ in range(2):
+                self.controller.on_click(10, 10, mouse.Button.left, True)
+                self.controller.on_click(10, 10, mouse.Button.left, False)
+            self.assertFalse(self.controller.double_click_timer.isActive())
+            self.controller.settings.setValue("double_click", True)
+            for _ in range(2):
+                self.controller.on_click(10, 10, mouse.Button.left, True)
+                self.controller.on_click(10, 10, mouse.Button.left, False)
+            self.assertTrue(self.controller.double_click_timer.isActive())
+            self.controller.double_click_timer.stop()
+            self.controller.capture_double_click()
+            start.assert_called_once_with()
         page.deleteLater()
