@@ -10,6 +10,7 @@ class ShortcutEdit(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.enabled = QCheckBox()
+        self.enabled.setText("Enable")
         self.enabled.setToolTip("Enable shortcut")
         self.enabled.setChecked(bool(value))
         layout.addWidget(self.enabled)
