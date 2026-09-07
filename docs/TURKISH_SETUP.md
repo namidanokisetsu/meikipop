@@ -46,26 +46,25 @@ and click `okudum`; try `Bunu hemen fark etti.` and click `etti` for `fark etmek
 The whole copied phrase is looked up first, otherwise the first word is selected.
 
 Hold **Shift** with the pointer over a word to scan locally. Move to another
-word while holding it to scan again. Click the popup (or **Pin**) before releasing
-Shift to keep it open. Unpinned previews disappear on release; copied lookups pin
-immediately. Pinned results stay in place and suspend background scans until dismissed.
-Global **Escape** or **×** dismisses the popup. Use the tray to quit.
+word while holding it to scan again. Move into the popup after releasing Shift to read it; a 350 ms grace period lets you cross the gap. Click a word or **Pin** to keep it open. Copied lookups pin immediately. Pinned results stay in place and suspend background scans until dismissed.
+Click outside, press **Escape**, or use **×** to dismiss. On Windows, Escape is intercepted only while this popup is visible, including its key-up event, so it does not also exit a video. Left-click the tray icon to pause or resume; use its menu to quit.
 
-Choose **Search…** from the tray or **···** menu for manual lookup. Click tokens,
+Press **Ctrl+Alt+D** or choose **Search…** from the tray or **···** menu for a compact search field beside the tray. Type a word and press Enter; results use the same dictionary surface. Clipboard and search shortcuts are separately configurable in Settings (pynput syntax) or through `--hotkey` and `--search-hotkey`. Click tokens,
 suggestions, related expressions or WordNet members to navigate; **←** goes back.
 Expand **WordNet** for its independent sense groups and typed semantic links.
 WordNet definitions appear immediately when a linked word has no TDK entry.
 
 Settings are in the tray and **···** menu. The default appearance inherits the original
 Meikipop font, colors, opacity and positioning. The popup grows with its definitions
-and scrolls at its maximum size. Settings persist clipboard monitoring, background
-OCR preparation, Shift/Alt scan key, appearance overrides, maximum size and examples.
+and scrolls at its maximum size. Settings persist clipboard and selection lookup, background OCR interval, keyboard/mouse activation, separate search/clipboard shortcuts, original Meikipop theme presets, font, colors, opacity, placement, size and examples. Turkish settings do not write Japanese configuration. Fonts are checked for Turkish glyph coverage.
 Installation buttons download TDK, Stanza, WordNet or OCR models explicitly. Lookup
 pauses during installation so Windows can replace the open data files, then resumes
 automatically with fresh models and caches. Failed installs show their error in Settings;
 closing Settings does not interrupt setup. Wait for installation to finish before quitting.
 Install the OCR Python extra
 below before using the OCR model button. No pip command runs from the GUI.
+
+On Windows, double-clicking selectable text also looks it up by default; disable **Look up double-clicked text** in Settings if unwanted. This uses a short Ctrl+C capture, waits for a fresh clipboard change, and restores the previous clipboard formats. Held modifiers, focus changes and timeouts cancel the attempt. Applications must support copying the selected text; image-only text still needs OCR.
 
 Clipboard lookup is limited to 2,000 characters. Duplicate notifications,
 empty/oversized payloads and copies while Meikipop owns focus are ignored.
@@ -100,7 +99,7 @@ Keep downloads, model weights, generated packs, and `.venv` out of Git.
 Pass `--dictionary <database>` and `--model-dir <directory>` to override runtime
 locations. Missing or incompatible models visibly fall back to exact lookup;
 `--analyzer exact` explicitly selects lookup without Stanza. A TDK pack is required.
-Close Turkish mode before rebuilding its installed dictionary from the CLI. The Settings
+Close the Turkish app before rebuilding its installed dictionary from the CLI. The Settings
 installer releases its own dictionary handles automatically.
 
 The dictionary builder accepts `--source <locked-v12-file>` and `--output <directory>`.
@@ -162,3 +161,7 @@ and the checked-in `resources/turkish/wordnet.json` source lock.
 The OCR smoke uses Windows Arial to generate a small Turkish fixture and blocks
 network connections during real model initialization, recognition, and word-box lookup.
 It is separate from the fast fixture-based unit suite.
+
+## Japanese clipboard addition
+
+`feature/japanese-clipboard` starts from `feature/native-input-audio` and contains only Japanese clipboard input. **Ctrl+Alt+L** and the tray action feed copied text to the existing Japanese lookup worker and popup. Automatic copy lookup is opt-in in the tray. Click to dismiss. The renderer, dictionary/deconjugation, themes and original OCR/audio behavior are retained; clipboard lookups do not introduce new autoplay behavior. The Turkish branch includes this independent commit too.

@@ -31,7 +31,8 @@ def main(argv=None):
         cmd.add_argument("--model-dir", type=Path)
         cmd.add_argument("--analyzer", choices=("stanza", "exact"), default="stanza")
         if command == "turkish-clipboard":
-            cmd.add_argument("--hotkey", default="<ctrl>+<alt>+l", help="pynput shortcut syntax")
+            cmd.add_argument("--hotkey", help="Clipboard shortcut in pynput syntax")
+            cmd.add_argument("--search-hotkey", help="Typed-search shortcut in pynput syntax")
         else:
             cmd.add_argument("text")
             cmd.add_argument("--debug", action="store_true", help="Include raw analysis and attempted lookup routes")
@@ -59,7 +60,7 @@ def main(argv=None):
     dictionary = args.dictionary or default_dictionary_path()
     if args.command == "turkish-clipboard":
         from meikipop.gui.turkish.window import run_clipboard
-        return run_clipboard(dictionary, args.analyzer, args.model_dir, args.hotkey)
+        return run_clipboard(dictionary, args.analyzer, args.model_dir, args.hotkey, args.search_hotkey)
     if not args.text.strip() or len(args.text) > 2000:
         parser.error("Text must contain 1–2,000 characters")
     from meikipop.dictionary.turkish_lookup import TurkishLookup

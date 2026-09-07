@@ -30,7 +30,7 @@ class ClipboardTests(unittest.TestCase):
         wordnet_path = patch("meikipop.dictionary.turkish_wordnet.default_wordnet_path", return_value=root / "missing.sqlite3")
         wordnet_path.start()
         self.addCleanup(wordnet_path.stop)
-        with patch("pynput.keyboard.GlobalHotKeys"), patch("pynput.keyboard.Listener"), \
+        with patch("pynput.keyboard.GlobalHotKeys"), patch("pynput.keyboard.Listener"), patch("pynput.mouse.Listener"), \
                 patch("meikipop.gui.turkish.window.QSettings", return_value=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)):
             self.window = ClipboardWindow(root / "pack/dictionary.sqlite3", "exact")
             self.window.settings.setValue("auto_scan", False)
@@ -60,6 +60,70 @@ class ClipboardTests(unittest.TestCase):
         self.assertGreater(self.window.requests.current, first)
         self.assertTrue(self.window.isVisible())
         self.assertIn("Bir eser", self.window.browser.toPlainText())
+
+    def test_search_shortcut_opens_compact_input_and_uses_same_worker(self):
+        self.window.input.search_requested.emit()
+        self.assertTrue(self.window.search.isVisible())
+        self.assertTrue(self.window.pinned)
+        self.assertLess(self.window.height(), 120)
+        self.window.search.setText("kitap")
+        self.window.search.returnPressed.emit()
+        self.wait_result()
+        self.assertIn("Bir eser", self.window.browser.toPlainText())
+        self.assertTrue(self.window.search.isVisible())
+
+    def test_empty_clipboard_and_empty_ocr_do_not_show_window(self):
+        self.window.submit("")
+        self.assertFalse(self.window.isVisible())
+        current = self.window.requests.next()
+        self.window.deliver(current, None, "No text under the pointer.")
+        self.assertFalse(self.window.isVisible())
+
+    def test_outside_click_dismisses_and_rejects_pending_result(self):
+        self.window.submit("kitap")
+        self.wait_result()
+        old, result = self.window.requests.current, self.window.result
+        with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=QPoint(-5000, -5000)):
+            self.window.outside_click()
+        self.window.deliver(old, result, "")
+        self.assertFalse(self.window.isVisible())
+
+    def test_peek_has_grace_period_but_pinned_result_survives(self):
+        self.window.submit("kitap", peek=True)
+        self.window.holding = True
+        self.wait_result()
+        with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=QPoint(-5000, -5000)):
+            self.window.set_hold(False)
+            self.assertTrue(self.window.isVisible())
+            self.assertTrue(self.window.leave_timer.isActive())
+            self.window.pin()
+            self.window.finish_peek()
+            self.assertTrue(self.window.isVisible())
+            self.window.pinned = False
+            self.window.finish_peek()
+            self.assertFalse(self.window.isVisible())
+
+    def test_tray_toggle_pauses_clipboard_and_ocr(self):
+        from PyQt6.QtWidgets import QSystemTrayIcon
+        self.window.tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
+        self.assertFalse(self.window.enabled)
+        self.window.submit("kitap")
+        self.assertIsNone(self.window.result)
+        self.window.tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
+        self.assertTrue(self.window.enabled)
+
+    def test_settings_keep_japanese_configuration_unchanged(self):
+        from meikipop.gui.turkish.settings import SettingsDialog
+        from meikipop.config.config import config
+        original = dict(config.__dict__)
+        dialog = SettingsDialog(self.window)
+        dialog.theme.setCurrentText("Academic")
+        dialog.fields["search_hotkey"].setText("<ctrl>+<alt>+k")
+        with patch.object(self.window.input, "set_shortcuts"):
+            dialog.save()
+        self.assertEqual(config.__dict__, original)
+        self.assertEqual(self.window.search_hotkey, "<ctrl>+<alt>+k")
+        self.assertEqual(self.window.word_color, "#8C2121")
 
     def test_newer_request_and_dismissal_reject_old_delivery(self):
         self.window.submit("kitap")
