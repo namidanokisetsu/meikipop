@@ -162,6 +162,28 @@ The OCR smoke uses Windows Arial to generate a small Turkish fixture and blocks
 network connections during real model initialization, recognition, and word-box lookup.
 It is separate from the fast fixture-based unit suite.
 
-## Japanese clipboard addition
+## Japanese text input
 
-`feature/japanese-clipboard` starts from `feature/native-input-audio` and contains only Japanese clipboard input. **Ctrl+Alt+L** and the tray action feed copied text to the existing Japanese lookup worker and popup. Automatic copy lookup is opt-in in the tray. Click to dismiss. The renderer, dictionary/deconjugation, themes and original OCR/audio behavior are retained; clipboard lookups do not introduce new autoplay behavior. The Turkish branch includes this independent commit too.
+The Japanese build on `feature/japanese-clipboard` keeps the original dictionary,
+deconjugation, popup, OCR and audio. Its Windows executable is installed at
+`%LOCALAPPDATA%\Programs\meikipop\meikipop.exe` using the existing shortcuts.
+
+- **Ctrl+Alt+L**: look up clipboard text.
+- **Ctrl+Alt+D**: open compact typed search.
+- **Ctrl+Alt+S**: look up selected text in a copyable Windows application. Release
+  the shortcut keys to complete capture; the previous clipboard formats are restored.
+- **Look up copied text automatically** in the tray: optional automatic lookup.
+
+Click to dismiss the Japanese text popup. Selection timeouts and focus changes
+cancel capture without looking up old clipboard content. These additions reuse the
+existing Japanese lookup worker and renderer; the Turkish branch includes them too.
+
+The standard Japanese dictionary builder combines JMdict English with KANJIDIC2,
+kanji decomposition and frequency data. There is no dictionary import UI.
+`import-yomitan-dict-html` in a source environment converts one or more term ZIPs
+into a single replacement pickle; use `-o <new-file.pkl>` to avoid overwriting the
+working dictionary. Term/monolingual/grammar/name banks are convertible, with
+limited HTML support. Standalone frequency ZIPs do not rank other imported packs;
+pitch and kanji banks are unsupported. Conversion currently leaves kanji entries
+empty. More terms increase startup memory/loading and may add duplicate results;
+ordinary lookup uses an in-memory index. The installed dictionary is unchanged.
