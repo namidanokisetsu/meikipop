@@ -102,6 +102,10 @@ def run_gui():
     hit_scanner = HitScanner(shared_state, input_loop, screen_manager)
     tray_icon = TrayIcon(screen_manager, ocr_processor, popup_window, input_loop, lookup)
 
+    from meikipop.gui.clipboard_lookup import ClipboardLookup
+    shared_state.clipboard_lookup = ClipboardLookup(shared_state, popup_window, tray_icon)
+    app.aboutToQuit.connect(shared_state.clipboard_lookup.shutdown)
+
     for t in [lookup, hit_scanner, ocr_processor, screen_manager, input_loop]:
         t.start()
 
