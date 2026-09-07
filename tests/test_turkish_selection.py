@@ -20,3 +20,15 @@ class DesktopInputTests(unittest.TestCase):
             self.assertEqual(inputs.keys.suppress_event.call_count, 2)
         finally:
             inputs.shutdown()
+
+    def test_text_shortcuts_can_be_disabled_individually(self):
+        with patch("pynput.keyboard.Listener"), patch("meikipop.gui.turkish.desktop_input.TextHotKeys") as shortcuts, patch("pynput.mouse.Listener"):
+            inputs = DesktopInput("shift", "", "", 400)
+            try:
+                shortcuts.assert_not_called()
+                inputs.set_shortcuts("", "<ctrl>+k")
+                self.assertEqual(list(shortcuts.call_args.args[0]), ["<ctrl>+k"])
+                inputs.set_shortcuts("", "")
+                self.assertIsNone(inputs.shortcuts)
+            finally:
+                inputs.shutdown()

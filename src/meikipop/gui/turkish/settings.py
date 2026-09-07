@@ -65,10 +65,12 @@ class SettingsDialog(QDialog):
         for key, label, value in (("clipboard_hotkey", "Clipboard shortcut:", window.hotkey),
                                    ("search_hotkey", "Search shortcut:", window.search_hotkey)):
             field = QLineEdit(value)
+            field.setPlaceholderText("Disabled")
+            field.setToolTip("Leave blank to disable. Example: <ctrl>+<alt>+l")
             general.addRow(label, field)
             self.fields[key] = field
-        check(general, "auto_clipboard", "Look up copied text:", True)
-        selection = check(general, "selection_lookup", "Look up double-clicked text:", sys.platform == "win32")
+        check(general, "auto_clipboard", "Look up copied text:", False)
+        selection = check(general, "selection_lookup", "Look up double-clicked text:", False)
         selection.setEnabled(sys.platform == "win32")
         check(general, "auto_scan", "Enable Auto Scan:", config.auto_scan_mode)
         spin(general, "auto_scan_ms", "Scan interval (ms):", max(100, int(config.auto_scan_interval_seconds * 1000)), 100, 60000)
@@ -166,7 +168,7 @@ class SettingsDialog(QDialog):
         self.window.input.activation.set_bindings(bindings)
         self.window.hotkey = settings.value("clipboard_hotkey")
         self.window.search_hotkey = settings.value("search_hotkey")
-        self.window.auto_action.setChecked(settings.value("auto_clipboard", True, bool))
+        self.window.auto_action.setChecked(settings.value("auto_clipboard", False, bool))
         self.window.examples.setChecked(settings.value("examples", True, bool))
         self.window.prefetch_timer.setInterval(settings.value("auto_scan_ms", 500, int))
         self.window.apply_appearance()

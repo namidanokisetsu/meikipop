@@ -54,6 +54,13 @@ class ClipboardWindow(QWidget):
     def __init__(self, dictionary, analyzer="stanza", model_dir=None, hotkey=None, search_hotkey=None):
         super().__init__()
         self.settings = QSettings("Meikipop", "Turkish")
+        if not self.settings.value("text_input_opt_in", False, bool):
+            # Previous versions enabled these by default, without user opt-in.
+            for key in ("auto_clipboard", "selection_lookup"):
+                self.settings.setValue(key, False)
+            for key in ("clipboard_hotkey", "search_hotkey"):
+                self.settings.setValue(key, "")
+            self.settings.setValue("text_input_opt_in", True)
         self.setWindowTitle("Meikipop · Turkish")
         self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -74,8 +81,8 @@ class ClipboardWindow(QWidget):
         self.scan_busy = False
         self.anchor = QCursor.pos()
         self.last_clipboard = QApplication.clipboard().text()
-        self.hotkey = hotkey or self.settings.value("clipboard_hotkey", "<ctrl>+<alt>+l")
-        self.search_hotkey = search_hotkey or self.settings.value("search_hotkey", "<ctrl>+<alt>+d")
+        self.hotkey = hotkey if hotkey is not None else self.settings.value("clipboard_hotkey", "")
+        self.search_hotkey = search_hotkey if search_hotkey is not None else self.settings.value("search_hotkey", "")
         self.bindings = self.settings.value("activation_bindings", self.settings.value("hold_key", config.activation_bindings))
         self.enabled = True
         self.searching = False
@@ -163,7 +170,7 @@ class ClipboardWindow(QWidget):
         menu.addAction("Search…").triggered.connect(self.open_search)
         self.auto_action = menu.addAction("Look up copied text automatically")
         self.auto_action.setCheckable(True)
-        self.auto_action.setChecked(self.settings.value("auto_clipboard", True, bool))
+        self.auto_action.setChecked(self.settings.value("auto_clipboard", False, bool))
         self.auto_action.toggled.connect(self.toggle_clipboard)
         menu.addAction("Settings").triggered.connect(self.open_settings)
         self.pause_action = menu.addAction("Pause meikipop")
@@ -216,7 +223,7 @@ class ClipboardWindow(QWidget):
             self.selection.cancel()
 
     def selection_requested(self):
-        if self.enabled and self.settings.value("selection_lookup", sys.platform == "win32", bool):
+        if self.enabled and self.settings.value("selection_lookup", False, bool):
             ticket = self.selection_ticket
             QTimer.singleShot(60, lambda: self.selection.start() if self.enabled and ticket == self.selection_ticket else None)
 
