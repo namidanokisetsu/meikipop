@@ -7,6 +7,7 @@ from PyQt6.QtGui import QAction, QCursor, QFont
 from pynput import keyboard, mouse
 
 from meikipop.config.config import config
+from meikipop.gui.text_shortcuts import TextHotKeys
 
 
 class ClipboardLookup(QObject):
@@ -50,7 +51,7 @@ class ClipboardLookup(QObject):
         self.automatic.setChecked(self.settings.value("automatic", False, bool))
         self.automatic.toggled.connect(lambda value: self.settings.setValue("automatic", value))
         QApplication.clipboard().dataChanged.connect(self.changed)
-        self.keys = keyboard.GlobalHotKeys({"<ctrl>+<alt>+l": self.requested.emit,
+        self.keys = TextHotKeys({"<ctrl>+<alt>+l": self.requested.emit,
                                             "<ctrl>+<alt>+d": self.search_requested.emit})
         self.clicks = mouse.Listener(on_click=lambda x, y, button, down: self.dismissed.emit() if down else None)
         self.keys.start()
