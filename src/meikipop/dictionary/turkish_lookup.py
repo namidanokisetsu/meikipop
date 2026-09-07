@@ -138,6 +138,13 @@ class TurkishLookup:
                 if key not in found or cost < found[key].cost:
                     found[key] = suggestion
 
+        # An inflected ASCII word can have a useful lemma even when its surface
+        # correction falls beyond the bounded context-reanalysis budget.
+        if not isinstance(self.analyzer, ExactAnalyzer) and normalize(token.lemma) != surface:
+            for candidate, cost in diacritic_candidates(token.lemma):
+                if cost:
+                    offer(candidate, token.pos, "diacritic_analyzed_lemma", cost)
+
         # Validate a proposed nominal stem by generating a supported inflected form.
         spellings = dict(variants)
         for stem in nominal_stems(surface):

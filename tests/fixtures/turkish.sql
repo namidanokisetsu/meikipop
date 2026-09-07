@@ -31,3 +31,6 @@ INSERT INTO anlam VALUES
  (111,11,1,'Küçük yaştaki insan.',0),(121,12,1,'İnsan.',0),
  (131,13,1,'Soğuk mevsim.',0),(141,14,1,'Benzer olma durumu.',0);
 INSERT INTO anlam_ozellik VALUES(111,1),(121,1),(131,1),(141,1);
+INSERT INTO madde VALUES(15,'içerik',NULL,NULL,NULL);
+INSERT INTO anlam VALUES(151,15,1,'Bir şeyin bütünü.',0);
+INSERT INTO anlam_ozellik VALUES(151,1);

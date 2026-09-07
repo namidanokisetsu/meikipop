@@ -43,7 +43,8 @@ def run_checks():
                            "routes": list(dict.fromkeys(m.route for m in result.matches)),
                            "lemma": token.lemma, "entries": words, "passed": expected in words})
         for text, expected in (("cocuk", {"çocuk"}), ("cocugu", {"çocuk"}),
-                               ("kisi", {"kişi", "kış"}), ("kitpa", {"kitap"})):
+                               ("kisi", {"kişi", "kış"}), ("kitpa", {"kitap"}),
+                               ("Icerikleriniz", {"içerik"})):
             result = lookup.lookup(text)
             suggestions = {s.headword for s in result.suggestions}
             span_ok = len(result.tokens) == 1 and (result.tokens[0].start, result.tokens[0].end) == (0, len(text))

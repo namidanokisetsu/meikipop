@@ -121,6 +121,18 @@ class TurkishTests(unittest.TestCase):
         self.assertEqual(result.entries[0]["headword"], "kitap")
         lookup.analyzer.analyze.assert_called_once_with("KİTAP")
 
+    def test_ascii_inflected_lemma_suggestion_preserves_original_analysis(self):
+        from unittest.mock import Mock
+        lookup = TurkishLookup(self.store, "exact")
+        lookup.analyzer = Mock()
+        lookup.analyzer.analyze.return_value = (Token(0, 13, "icerik", "NOUN"),)
+        result = lookup.lookup("Icerikleriniz")
+        self.assertFalse(result.entries)
+        self.assertEqual(result.tokens[0].lemma, "icerik")
+        suggestion = next(s for s in result.suggestions if s.headword == "içerik")
+        self.assertEqual((suggestion.start, suggestion.end), (0, 13))
+        self.assertEqual(suggestion.route, "diacritic_analyzed_lemma")
+
     def test_stanza_expansion_keeps_original_span(self):
         from types import SimpleNamespace as NS
         from meikipop.language.stanza_analyzer import StanzaAnalyzer
