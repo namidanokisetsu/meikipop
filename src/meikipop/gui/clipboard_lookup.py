@@ -3,12 +3,12 @@ import sys
 import threading
 
 from PyQt6.QtCore import QObject, pyqtSignal, QSettings, Qt
-from PyQt6.QtWidgets import QApplication, QDialog, QFrame, QVBoxLayout, QLineEdit
+from PyQt6.QtWidgets import QApplication, QDialog, QFrame, QVBoxLayout, QLineEdit, QWidget, QFormLayout, QCheckBox
 from PyQt6.QtGui import QAction, QCursor, QFont
 from pynput import keyboard, mouse
 
 from meikipop.config.config import config
-from meikipop.gui.text_shortcuts import TextHotKeys
+from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
 from meikipop.gui.selection import SelectionCapture
 
 
@@ -57,16 +57,49 @@ class ClipboardLookup(QObject):
         self.automatic.setChecked(self.settings.value("automatic", False, bool))
         self.automatic.toggled.connect(lambda value: self.settings.setValue("automatic", value))
         QApplication.clipboard().dataChanged.connect(self.changed)
-        shortcuts = {"<ctrl>+<alt>+l": self.requested.emit,
-                     "<ctrl>+<alt>+d": self.search_requested.emit}
-        if sys.platform == "win32":
-            shortcuts["<ctrl>+<alt>+s"] = self.selection_requested.emit
-        action.setToolTip("Ctrl+Alt+L")
-        search_action.setToolTip("Ctrl+Alt+D")
-        self.keys = TextHotKeys(shortcuts)
+        self.keys = None
+        self.apply_shortcuts({name: self.settings.value(name + "_hotkey", "")
+                              for name in ("clipboard", "search", "selection")})
         self.clicks = mouse.Listener(on_click=lambda x, y, button, down: self.dismissed.emit() if down else None)
-        self.keys.start()
         self.clicks.start()
+
+    def apply_shortcuts(self, values):
+        validate_shortcuts(values.values())
+        signals = {"clipboard": self.requested, "search": self.search_requested,
+                   "selection": self.selection_requested}
+        bindings = {value: signals[name].emit for name, value in values.items()
+                    if value and (name != "selection" or sys.platform == "win32")}
+        replacement = TextHotKeys(bindings) if bindings else None
+        if replacement:
+            replacement.start()
+        previous, self.keys = self.keys, replacement
+        if previous:
+            previous.stop()
+            previous.join(timeout=2)
+        for name, value in values.items():
+            self.settings.setValue(name + "_hotkey", value)
+        self.dismiss()
+
+    def settings_page(self):
+        page = QWidget()
+        form = QFormLayout(page)
+        page.shortcuts = {}
+        for name, label in (("clipboard", "Clipboard shortcut:"), ("search", "Search shortcut:"),
+                            ("selection", "Selected text shortcut:")):
+            field = QLineEdit(self.settings.value(name + "_hotkey", ""))
+            field.setPlaceholderText("Disabled")
+            field.setToolTip("Leave blank to disable. Example: <ctrl>+<alt>+l")
+            field.setEnabled(name != "selection" or sys.platform == "win32")
+            page.shortcuts[name] = field
+            form.addRow(label, field)
+        page.automatic = QCheckBox()
+        page.automatic.setChecked(self.automatic.isChecked())
+        form.addRow("Look up copied text:", page.automatic)
+        return page
+
+    def save_settings_page(self, page):
+        self.apply_shortcuts({name: field.text().strip() for name, field in page.shortcuts.items()})
+        self.automatic.setChecked(page.automatic.isChecked())
 
     @property
     def revision(self):
@@ -160,5 +193,6 @@ class ClipboardLookup(QObject):
         self.search_window.hide()
         QApplication.clipboard().dataChanged.disconnect(self.changed)
         for listener in (self.keys, self.clicks):
-            listener.stop()
-            listener.join(timeout=2)
+            if listener:
+                listener.stop()
+                listener.join(timeout=2)

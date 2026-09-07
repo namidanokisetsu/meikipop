@@ -110,3 +110,22 @@ class ClipboardLookupTests(unittest.TestCase):
         self.controller.selection.completed.emit("selected")
         self.controller.process(lambda text: [text])
         self.popup.set_latest_data.assert_called_with(["selected"])
+
+    def test_shortcuts_opt_in_reconfigure_disable_and_reject_duplicates(self):
+        self.assertIsNone(self.controller.keys)
+        page = self.controller.settings_page()
+        self.assertTrue(all(not field.text() for field in page.shortcuts.values()))
+        page.shortcuts["clipboard"].setText("<ctrl>+<shift>+k")
+        with patch("meikipop.gui.clipboard_lookup.TextHotKeys") as listener:
+            self.controller.save_settings_page(page)
+            self.assertIn("<ctrl>+<shift>+k", listener.call_args.args[0])
+            page.shortcuts["search"].setText("<shift>+<ctrl>+k")
+            with self.assertRaises(ValueError):
+                self.controller.save_settings_page(page)
+            self.assertEqual(self.controller.settings.value("search_hotkey"), "")
+            page.shortcuts["search"].clear()
+            page.shortcuts["clipboard"].clear()
+            self.controller.save_settings_page(page)
+            listener.return_value.stop.assert_called_once()
+            self.assertIsNone(self.controller.keys)
+        page.deleteLater()

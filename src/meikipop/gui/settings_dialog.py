@@ -61,6 +61,8 @@ class SettingsDialog(QDialog):
 
         # Create the Tab Widget
         self.tabs = QTabWidget()
+        self.text_lookup = getattr(popup_window.shared_state, "clipboard_lookup", None)
+        self.text_lookup_page = None
 
         # ==========================================
         # TAB 1: General
@@ -384,6 +386,9 @@ class SettingsDialog(QDialog):
 
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        if self.text_lookup:
+            self.text_lookup_page = self.text_lookup.settings_page()
+            self.tabs.addTab(self.text_lookup_page, "Text Lookup")
         buttons.accepted.connect(self.save_and_accept)
         buttons.rejected.connect(self.reject)
         main_layout.addWidget(buttons)
@@ -487,6 +492,12 @@ class SettingsDialog(QDialog):
             self._mark_as_custom()
 
     def save_and_accept(self):
+        if self.text_lookup_page is not None:
+            try:
+                self.text_lookup.save_settings_page(self.text_lookup_page)
+            except (ValueError, OSError) as error:
+                QMessageBox.warning(self, "Shortcut", str(error))
+                return
         # Update OCR Provider
         selected_provider = self.ocr_provider_combo.currentText()
         if selected_provider != config.ocr_provider:
