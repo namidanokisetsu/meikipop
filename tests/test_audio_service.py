@@ -1,5 +1,7 @@
 import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -103,6 +105,75 @@ class AudioServiceTests(unittest.TestCase):
         self.assertTrue(self.service._buffer.isOpen())
         self.service._on_media_status(QMediaPlayer.MediaStatus.EndOfMedia)
         self.assertIsNone(self.service._buffer)
+
+    def test_background_ocr_submits_audio_when_idle(self):
+        self.shared.active = False
+        self.service.handle_lookup_result(self._result(0, "一"))
+        self.assertEqual([request.activation_id for request in self.spy.requests], [0])
+
+    def test_background_ocr_does_not_restart_same_word(self):
+        self.shared.active = False
+        self.service.handle_lookup_result(self._result(0, "one"))
+        self.service.handle_lookup_result(self._result(0, "one"))
+        self.assertEqual(len(self.spy.requests), 1)
+        self.service.handle_lookup_result(LookupResult(0, None, ()))
+        self.service.handle_lookup_result(self._result(0, "one"))
+        self.assertEqual(len(self.spy.requests), 2)
+
+    def test_text_audio_uses_revision_and_rejects_dismissed_results(self):
+        clipboard = SimpleNamespace(active=True, revision=7)
+        self.shared.clipboard_lookup = clipboard
+        entries = self._result(0, "one").entries
+        self.service.handle_text_result(7, entries)
+        self.assertEqual(self.spy.requests[-1].activation_id, -7)
+        self.service.player = Mock()
+        clip = AudioClip(-7, self.spy.requests[-1].key, "one.mp3", "x", b"fixture")
+        clipboard.active = False
+        self.service._play_clip(clip)
+        self.service.player.play.assert_not_called()
+        clipboard.active = True
+        clipboard.revision = 8
+        self.service._play_clip(clip)
+        self.service.player.play.assert_not_called()
+        self.service.handle_text_result(8, entries)
+        clip = AudioClip(-8, self.spy.requests[-1].key, "one.mp3", "x", b"fixture")
+        self.service._play_clip(clip)
+        self.service.player.play.assert_called_once()
+
+    def test_rapid_ocr_finishes_current_clip_then_plays_latest(self):
+        self.service.player = Mock()
+        for word in ("one", "two", "three"):
+            self.service.handle_lookup_result(self._result(4, word))
+            request = self.spy.requests[-1]
+            self.service._play_clip(AudioClip(4, request.key, word + ".mp3", "x", b"fixture"))
+        self.service.player.play.assert_called_once()
+        self.service._on_media_status(QMediaPlayer.MediaStatus.EndOfMedia)
+        self.assertEqual(self.service.player.play.call_count, 2)
+        self.assertEqual(self.service.player.setSourceDevice.call_args.args[1].fileName(), "three.mp3")
+
+    def test_queued_clip_is_discarded_after_new_activation(self):
+        self.service.player = Mock()
+        for word in ("one", "two"):
+            self.service.handle_lookup_result(self._result(4, word))
+            request = self.spy.requests[-1]
+            self.service._play_clip(AudioClip(4, request.key, word + ".mp3", "x", b"fixture"))
+        self.shared.activation_id = 5
+        self.service._on_media_status(QMediaPlayer.MediaStatus.EndOfMedia)
+        self.service.player.play.assert_called_once()
+
+    def test_clip_can_play_after_activation_key_release(self):
+        class PlayerSpy:
+            def stop(self): pass
+            def setSourceDevice(self, device, url):
+                self.device, self.url = device, url
+            def play(self): pass
+
+        self.service.handle_lookup_result(self._result(4, "一"))
+        self.shared.active = False
+        self.service.player = PlayerSpy()
+        clip = AudioClip(4, ("一", "よみ"), "one.mp3", "x", b"fixture bytes")
+        self.service._play_clip(clip)
+        self.assertIsNotNone(self.service._buffer)
 
     def test_audio_output_follows_new_system_default(self):
         class Device:

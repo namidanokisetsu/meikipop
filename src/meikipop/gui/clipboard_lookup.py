@@ -22,9 +22,10 @@ class ClipboardLookup(QObject):
     mouse_clicked = pyqtSignal(int, int, object, bool)
     completed = pyqtSignal(int, object)
 
-    def __init__(self, shared, popup, tray):
+    def __init__(self, shared, popup, tray, audio_service=None):
         super().__init__(popup)
         self.shared, self.popup = shared, popup
+        self.audio_service = audio_service
         self.tray = tray
         self._lock = threading.Lock()
         self._revision, self._text, self._processed = 0, None, -1
@@ -213,6 +214,8 @@ class ClipboardLookup(QObject):
                 return
         if config.is_enabled:
             self.popup.set_latest_data(entries or None)
+            if self.audio_service:
+                self.audio_service.handle_text_result(revision, entries)
         if not entries:
             self.dismiss()
 

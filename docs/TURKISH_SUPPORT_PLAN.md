@@ -14,6 +14,8 @@ See [setup and usage](TURKISH_SETUP.md) for Turkish installation, commands and d
 - Offline KeNet SQLite pack with independent synsets, typed relations and linked navigation. Compatible POS and the queried member's own sense number determine ordering; TDK sense order stays separate. Ambiguous multi-member derivation edges are hidden.
 - Local PaddleOCR with explicit setup and cached recognition. Turkish inference stays offline; absent Stanza models permit exact lookup. Installer workers release database/model handles before replacing files and resume with fresh caches.
 
+- Japanese pronunciation: selection, clipboard and search results reuse the audio worker with text-revision checks. OCR no longer restarts an unchanged word or interrupts a playing pronunciation; only the latest queued clip plays if still current. Focused fixtures pass (95 tests); audible onset on the user's output device remains a hands-on check.
+
 ## Repository and installed Japanese version
 
 One repository, with separate reviewable branches/worktrees:

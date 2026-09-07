@@ -74,6 +74,16 @@ class ClipboardLookupTests(unittest.TestCase):
             self.read(text)
             self.assertFalse(self.controller.active)
 
+    def test_selection_delivers_audio_only_for_current_result(self):
+        self.controller.audio_service = Mock()
+        self.controller.selection.completed.emit("selected")
+        revision = self.controller.revision
+        self.controller.process(lambda text: [text])
+        self.controller.audio_service.handle_text_result.assert_called_once_with(revision, ["selected"])
+        self.controller.dismiss()
+        self.controller.deliver(revision, ["stale"])
+        self.controller.audio_service.handle_text_result.assert_called_once()
+
     def test_miss_closes_and_new_request_can_repeat_word(self):
         self.read("猫")
         self.controller.process(lambda text: [])
