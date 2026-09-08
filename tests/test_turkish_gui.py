@@ -173,6 +173,43 @@ class ClipboardTests(unittest.TestCase):
         self.wait_result()
         self.assertEqual(self.window.result.text, "kitap")
 
+    def test_popup_selection_shortcut_and_scan_activation_use_local_text(self):
+        self.window.submit("kitap")
+        self.wait_result()
+        cursor = self.window.browser.document().find("eser")
+        self.window.browser.setTextCursor(cursor)
+        point = self.window.browser.viewport().mapToGlobal(self.window.browser.cursorRect(cursor).center())
+        with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=point), \
+                patch.object(self.window.selection, "start") as capture:
+            self.window.read_selection()
+            self.wait_result()
+            self.assertEqual(self.window.result.text, "eser")
+            capture.assert_not_called()
+        self.window.go_back()
+        self.wait_result()
+        cursor = self.window.browser.document().find("eser")
+        point = self.window.browser.viewport().mapToGlobal(self.window.browser.cursorRect(cursor).center() - QPoint(3, 0))
+        with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=point):
+            self.window.set_hold(True)
+            self.wait_result()
+            self.assertEqual(self.window.result.text, "eser")
+
+    def test_drag_inside_definition_looks_up_selected_phrase(self):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        self.window.submit("kitap")
+        self.wait_result()
+        cursor = self.window.browser.document().find("Bir eser")
+        end = self.window.browser.cursorRect(cursor).center()
+        cursor.setPosition(cursor.selectionStart())
+        start = self.window.browser.cursorRect(cursor).center()
+        viewport = self.window.browser.viewport()
+        QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseMove(viewport, end)
+        QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=end)
+        self.wait_result()
+        self.assertEqual(self.window.result.text, "Bir eser")
+
     def test_oversized_input_invalidates_pending_lookup(self):
         self.window.submit("kitap")
         old = self.window.requests.current

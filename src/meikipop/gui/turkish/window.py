@@ -80,6 +80,7 @@ class ClipboardWindow(QWidget):
         self.scan_busy = False
         self.ocr_results = None
         self.last_hit = None
+        self.last_popup_point = None
         self.anchor = QCursor.pos()
         self.last_clipboard = QApplication.clipboard().text()
         self.hotkey = hotkey if hotkey is not None else self.settings.value("clipboard_hotkey", "")
@@ -129,7 +130,7 @@ class ClipboardWindow(QWidget):
         self.search.hide()
         content.addWidget(self.search)
         self.browser = DictionaryBrowser()
-        self.browser.word_selected.connect(self.submit)
+        self.browser.word_selected.connect(self.lookup_popup_text)
         self.browser.setFrameShape(QFrame.Shape.NoFrame)
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)
@@ -243,7 +244,30 @@ class ClipboardWindow(QWidget):
 
     def read_selection(self):
         if self.enabled and self.setup_thread is None:
+            if (self.isVisible() and self.browser.selected_text()
+                    and (self.isActiveWindow() or self.geometry().contains(QCursor.pos()))):
+                self.lookup_popup_text(self.browser.selected_text())
+                return
             self.selection.start(wait_for_modifiers=True)
+
+    def lookup_popup_text(self, text):
+        if not self.enabled or not text.strip() or len(text) > MAX_TEXT:
+            return
+        if getattr(self, "popup_lookup_pending", None) == (self.requests.current, text):
+            return
+        self.submit(text)
+        self.popup_lookup_pending = (self.requests.current, text)
+
+    def lookup_popup_point(self, point):
+        if not self.isVisible() or not self.browser.isVisible():
+            return False
+        local = self.browser.viewport().mapFromGlobal(point)
+        if not self.browser.viewport().rect().contains(local):
+            return False
+        if self.last_popup_point != point:
+            self.last_popup_point = QPoint(point)
+            self.lookup_popup_text(self.browser.text_at(local))
+        return True
 
     def selection_result(self, text):
         self.last_clipboard = QApplication.clipboard().text()
@@ -457,6 +481,10 @@ class ClipboardWindow(QWidget):
             self.suppress_hold = False
             self.ocr_results = None
             self.last_hit = None
+            self.last_popup_point = None
+        if active and self.lookup_popup_point(QCursor.pos()):
+            self.holding = True
+            return
         if self.suppress_hold or active == self.holding:
             return
         self.holding = active
@@ -471,6 +499,9 @@ class ClipboardWindow(QWidget):
                 self.leave_timer.start()
 
     def scan_pointer(self, background=False):
+        if not background and self.enabled and self.holding and self.setup_thread is None:
+            if self.lookup_popup_point(QCursor.pos()):
+                return
         if background and (self.isVisible() or self.holding or self.prefetch_failed
                            or not self.settings.value("auto_scan", config.auto_scan_mode, bool)):
             return
