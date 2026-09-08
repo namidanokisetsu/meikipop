@@ -4,4 +4,4 @@ if not exist "%~dp0.venv\Scripts\pythonw.exe" (
     pause
     exit /b 1
 )
-start "" "%~dp0.venv\Scripts\pythonw.exe" -m meikipop.scripts.turkish turkish-clipboard
+start "" "%~dp0.venv\Scripts\pythonw.exe" -m meikipop.scripts.turkish_desktop

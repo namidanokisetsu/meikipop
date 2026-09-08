@@ -1,70 +1,92 @@
-# Turkish support and shared desktop input
+# Turkish support and Japanese parity
 
-Updated: 2026-09-07. Frozen for personal use: Japanese is accepted by the user; Turkish remains a usable source-install MVP. Further features, OCR tuning and installers are deferred. Resume only for a concrete issue. Preserve the separate Japanese and Turkish branches and freeze tags.
+Updated: 2026-09-09. Turkish is a separate app branded `meikipop-turkish`. The
+Japanese build and its existing UI are the acceptance reference. Do not change
+Japanese behavior or presentation.
 
-See [setup and usage](TURKISH_SETUP.md) for Turkish installation, commands and data locations.
+## Goal
 
-## Delivered
+Make Turkish behaviorally and visually identical to Japanese wherever the
+dictionary backend permits it. Only Turkish OCR, NLP, dictionary data and
+language-specific content may differ. Keep the identities distinct so both apps
+can be installed and used without confusion.
 
-- Japanese clipboard lookup, compact typed search and Windows selected-text lookup. Each global shortcut is disabled by default and independently editable in Settings ? Text Lookup; an enable checkbox controls each recorder. Presets are Ctrl+Alt+L (clipboard), Ctrl+Alt+D (search) and Ctrl+Alt+S (selection). All feed the existing Japanese dictionary/deconjugation worker and popup. Automatic clipboard lookup is separately opt-in in Settings or the tray. Turkish clipboard/search shortcuts and automatic copy/double-click capture also default off; older implicit Turkish defaults reset once on upgrade. Existing Japanese OCR, rendering, configuration and audio behavior are retained.
-- Shared Windows selection capture waits for shortcut modifiers to be released, keeps source focus, requires a fresh clipboard sequence and cancels on focus change or timeout. Automatic monitoring ignores the capture's clipboard events. Existing clipboard MIME formats are restored only while the observed sequence is still current. Japanese reuses this helper for opt-in selected-text lookup, including drag selections and double-clicks; Turkish retains its separate double-click setting.
-- Shared text-shortcut normalization supports Windows virtual-key events from accessibility input tools. Japanese and Turkish share popup placement/style and unchanged-image OCR caching on the Turkish branch; language workers and rendering remain separate.
-- Turkish tray-first popup: TDK definitions/examples, clickable tokens, compact search, automatic copy-to-pin, double-click selection, Shift OCR preview, pinning, Escape/outside-click dismissal, Back navigation and expandable WordNet. Settings retain appearance, input and explicit background data/model installation independently of Japanese settings.
-- Offline TDK SQLite importer/store, lazy Stanza analysis, phrase lookup, Turkish-aware casing retry and bounded dictionary-validated correction suggestions. CLI debugging retains source spans, raw MWT Words and attempted lookup routes.
-- Offline KeNet SQLite pack with independent synsets, typed relations and linked navigation. Compatible POS and the queried member's own sense number determine ordering; TDK sense order stays separate. Ambiguous multi-member derivation edges are hidden.
-- Local PaddleOCR with explicit setup and cached recognition. Turkish inference stays offline; absent Stanza models permit exact lookup. Installer workers release database/model handles before replacing files and resume with fresh caches.
+## Implementation status
 
-- Japanese pronunciation: selection, clipboard and search results reuse the audio worker with text-revision checks. OCR no longer restarts an unchanged word or interrupts a playing pronunciation; only the latest queued clip plays if still current. Focused fixtures pass (95 tests); audible onset on the user's output device remains a hands-on check.
+1. **Japanese input parity implemented.** Clipboard, selected-text shortcut,
+   drag selection, optional double-click and typed search reuse existing shortcut
+   recording and clipboard-restoring selection capture. All text inputs default
+   off and each shortcut is independently configurable. Turkish drag and
+   double-click toggles are separate. Tray actions own search, clipboard,
+   settings, pause and quit; Japanese files and settings are unchanged.
 
-## Repository and installed Japanese version
+2. **Turkish popup implemented.** Shared theme, positioning and popup styling;
+   compact source headers and definition indentation; italic examples; full-width
+   show-more rows; a checked pin icon; click-to-pin, outside-click and Escape
+   dismissal. Inside definitions/examples, dragged selections, double-click,
+   selected-text shortcuts and scan-key lookup share the same history and lookup
+   path, without clipboard capture. Empty OCR hits hide the popup.
+   TDK, Wiktionary and KeNet can be
+   reordered in Settings without combining their senses. KeNet remains collapsed
+   alongside dictionary results, and opens directly when it is the only match.
 
-One repository, with separate reviewable branches/worktrees:
+3. **OCR dispatch separated.** Recognition has its own latest-frame worker;
+   pointer hit-testing reads cached boxes on the Qt thread, and only the latest
+   text lookup waits for Stanza/TDK/KeNet/Wiktionary. Background captures retain
+   the configurable throttle and stale deliveries are rejected. CPU inference
+   and unchanged-image caching remain offline. The historical 237 ms changed
+   frame / 0.1 ms cached-hit measurements are not new-build benchmarks.
 
-- `feature/native-input-audio` in `../meikipop`: original Japanese base at `666b479`.
-- `feature/japanese-clipboard` in `../meikipop-japanese-clipboard`: Japanese clipboard/search/selection additions, without Turkish NLP dependencies.
-- `feature/turkish-support` in this checkout: Turkish implementation plus the shared Japanese input changes.
+4. **Updateable English dictionary implemented.** Import Turkish-to-English
+   Yomitan releases from [wiktionary-to-yomitan](https://github.com/yomidevs/wiktionary-to-yomitan),
+   using the repository's current Hugging Face download feed. Settings explicitly
+   installs/updates a separate SQLite pack; no dictionary snapshot is bundled.
+   Record revision, source SHA-256 and attribution. Reuse the existing Yomitan
+   structured-content converter, preserving upstream glosses, labels, examples
+   and links. Turkish-specific overrides provide compact previews and local
+   link navigation. Upstream plain-text form references remain plain text.
+   No Tureng integration or global sense ranking.
 
-Build the Japanese executable from its dedicated worktree with the existing Windows PyInstaller spec and Japanese project environment. Built and installed on 2026-09-07 at `%LOCALAPPDATA%\Programs\meikipop\meikipop.exe`; retain existing dictionaries, OCR models, settings and startup shortcuts. Clean-rebuilt and reinstalled after fixing a launch crash caused by passing Qt signal `emit` directly to the pynput mouse listener. A Python callback now bridges the signal; regression coverage constructs a real listener without starting a desktop hook. Installed and built executable hashes match; the replacement stays running and logs successful OCR scans. Prior executables are retained as `meikipop.exe.pre-text-input.bak` and a timestamped `meikipop.exe.pre-launch-fix-*.bak`. Generated binaries, environments, data and model weights remain ignored by Git.
+5. **Turkish Windows release process implemented.** Dedicated window, tray,
+   settings, notifications, executable, app ID, shortcuts and per-user Inno Setup
+   installer. Existing `Meikipop/Turkish` settings and `languages/tr` data paths
+   are retained, so no migration or Japanese settings rewrite is needed.
+   First launch opens data settings when TDK is missing. Python, Qt, Stanza,
+   Torch and Paddle dependencies are bundled; data/model downloads remain explicit.
+   Complete staged asset installs record checksums and retain one previous
+   installation for rollback. Optional pronunciation uses an installed Turkish
+   system voice instead of the Japanese audio database. Build locally with
+   `Build-Turkish.ps1` or the Turkish Windows workflow; installer artifacts have
+   SHA-256 sidecars. No publishing or installation on this desktop is automatic.
 
-Keep focused commits. Existing uncommitted Turkish lemma recovery and shortcut fixes were preserved separately. Push both language branches and retain their dated freeze tags. Integration into the maintained base is deferred; keep the separate worktrees.
+## Rules
 
-## Remaining work, in priority order
+- Treat `../meikipop-japanese-clipboard` as the etalon and keep Japanese files,
+  settings and implementation unchanged.
+- Keep Turkish runtime lookup offline, imports lazy, model/data setup explicit,
+  and downloaded data, weights, packs and environments out of Git.
+- Keep Turkish and Japanese work in separate focused commits and worktrees.
+- Extend shared components where that preserves Japanese behavior; document only
+  genuine Turkish divergence.
 
-1. **Japanese accepted and frozen.** The user reports Japanese works well. Further checks are only needed for concrete failures. Selection requires a copyable source; image-only text still uses OCR. No broad automated desktop session is scheduled.
-2. **Turkish OCR responsiveness and user acceptance.** Reader reports noticeably less smooth OCR than Japanese. Code inspection shows CPU PaddleOCR followed by Stanza analysis/recovery and KeNet on one serialized worker, versus Japanese MeikiOCR and dictionary deconjugation. Unchanged-image/text caching exists; cold initialization and changed text still cost inference. The dominant cause has not been measured. This PC has an RTX 5070, but Turkish currently has CPU-only PyTorch 2.8.0 and PaddlePaddle 3.3.1; GPU acceleration requires compatible packages and device selection. Installed Japanese MeikiOCR also reports CPU execution. If requested, distinguish recognition time from analysis/queue delay with one focused trace before changing models or splitting the worker. Browser/PDF focus behavior, mixed-DPI monitors and actual reading examples remain user checks. Revisit the reported missing final `r` in `hay?rd?r` only when the exact failing input is available; previous focused checks did not reproduce it.
-3. **Optional Turkish English definitions, deferred.** A separate locked Kaikki English-Wiktionary pack, filtered to Turkish, should preserve POS, glosses, labels, examples and form-of links. Do not align senses with TDK or KeNet.
-4. **Optional Turkish audio, deferred.** Verify actual recording access and mappings before a resumable offline TDK builder. Reuse the existing `android.db` reader schema and audio worker. Manual persistent-popup replay needs explicit playback intent and request-generation checks. Missing audio must not block text lookup.
-5. **Separate installers, deferred release work.** The current Japanese handoff replaces the existing portable executable; it is not a newly authored setup wizard. Keep Japanese and Turkish installer identities, shortcuts and uninstall targets separate, and keep Turkish dependencies out of the Japanese build. For Turkish: Versioned dictionary release assets, checksum/update/rollback flow and a separate Turkish-enabled Windows build. Reuse the current PyInstaller structure; do not install Python packages from the GUI. Clean-machine acceptance remains unverified. Japanese local reinstallation does not complete this milestone.
+## Validation and user acceptance
 
-Japanese dictionary import also needs a safe UI if requested: the existing source CLI converts term ZIPs into one replacement pickle, with no pack toggles, standalone frequency merging, pitch import or kanji-bank import. Preserve the active dictionary until this is addressed.
+- The fixture suite passed 99 tests. Focused GUI checks passed after the final
+  dispatch cleanup and in-popup lookup additions (28 GUI tests). Standalone dependency/resource imports passed without OCR
+  inference. No new actual-model OCR tests or benchmarks were run, as requested.
+- The user owns hands-on input/focus, popup appearance, audio, OCR accuracy,
+  browser/PDF, mixed-DPI and clean-machine install/upgrade/uninstall acceptance.
+  Code implementation does not establish visual or clean-machine acceptance.
+- This release uses CPU OCR. GPU compatibility and CPU/GPU performance
+  measurements are optional follow-up work, not claimed as completed.
 
-Further Turkish morphology expansion, UI redesign and generic language infrastructure are outside the current request. No analyzer tournament, suffix-explanation engine, translation of TDK definitions, browser extension or Tureng integration.
+## Implementation locations
 
-## Implementation constraints retained
-
-- Stanza 1.14.0/resources 1.14.0 with IMST tokenize/MWT and `imst_charlm` POS/lemma; setup/runtime configuration and analyzer identity agree. No parser, NER or runtime downloads. Imports stay lazy.
-- TDK: locked `ogun/guncel-turkce-sozluk` v12 snapshot, indexed read-only runtime SQLite and Turkish-aware keys. The local pack has 99,209 visible entries. Preserve ordered senses/examples, homographs, POS-gated verb aliases and source anomalies.
-- KeNet: revision `718fd441262602db6ea1ac9e2dcf3a5142bda06d`, 78,327 synsets, 110,259 members and 213,403 edges with no missing targets in the imported pack. Retain attribution, source identity, GPL-3.0 notices and independent sense IDs. Missing KeNet must not break TDK lookup.
-- PaddleOCR 3.7.0, PaddleX 3.7.2, PaddlePaddle 3.3.1 and local PP-OCRv6 small models. Setup stages weights and records hashes; runtime verifies local paths. Japanese continues to use its existing OCR provider.
-- Preserve original text/spans and normalize lookup keys separately (`I` to `?`, `?` to `i`). Parent MWT spans remain selectable; the adapter currently uses the first expanded Word's lemma/POS, with all Words available in diagnostics.
-- Phrase lookup considers up to five tokens and retains source spans and lookup routes (`fark etti` ? `fark etmek`). Normal UI omits infrastructure diagnostics.
-- Recovery follows ordinary lookup and casing retry. Guesses remain separately labeled and dictionary-validated. Nominal recovery supports a conservative single-suffix subset, not arbitrary Turkish suffix chains.
-- Recovery bounds: source words of 2?32 letters; at most 64 diacritic variants, three substitutions and 256 queued states; six nominal stem proposals; eight corrected contexts; 256 single-edit candidates; five distinct headword suggestions. An analyzed ASCII lemma can also supply a bounded diacritic suggestion (`Icerikleriniz` ? `i?erik`). Original analysis remains intact.
-- Text input is limited to 2,000 characters. No clipboard history, screen-image logging or text uploads. Stale generations cannot replace newer lookup results. Pinned Turkish lookup suspends background replacement.
-- Selection capture is Windows-only. It does not elevate, use accessibility frameworks or claim support for every app. Clipboard restoration is a deliberate reuse of the implemented Turkish behavior; native formats not exposed by Qt are not guaranteed.
-
-## Validation
-
-Freeze validation (2026-09-07): **95 unit tests passed** with `.venv/Scripts/python.exe -m unittest discover -s tests`. The dedicated Japanese environment also passed all 37 tests before the clean rebuild. Coverage includes real pynput callback construction and signal forwarding, shared selection modifier waits, fresh-copy/timeout handling, focus-change cancellation, rich clipboard restoration, duplicate suppression and Japanese worker reuse, disabled defaults, live shortcut replacement and duplicate-binding rejection.
-
-The existing offline Stanza and Paddle smoke scripts remain available for specific analysis/OCR failures. They were not rerun for this input-focused handoff. The preserved ASCII-lemma fix has fixture coverage; its newly added actual-model case is not yet verified. Earlier real-model and controlled desktop checks are historical evidence, not a claim of current broad acceptance.
-
-Follow [AGENTS.md](../AGENTS.md): focused fixtures, one appropriate suite run, no repeated live testing or benchmark work without a concrete need. Leave clean-machine packaging, browser/PDF combinations and mixed-DPI hardware checks to user acceptance.
-
-## Source locks and implementation
-
-- [`resources/turkish/sources.json`](../src/meikipop/resources/turkish/sources.json): TDK source/checksum.
-- [`resources/turkish/wordnet.json`](../src/meikipop/resources/turkish/wordnet.json): KeNet source/checksum and attribution.
-- Shared input: `gui/clipboard_lookup.py`, `gui/selection.py`, `gui/text_shortcuts.py`.
-- Turkish adapters: `language/`, `dictionary/turkish_*`, `gui/turkish/`, `scripts/turkish.py`.
-- Optional future sources: [Kaikki raw downloads](https://kaikki.org/dictionary/rawdata.html), [TDK recording client](https://github.com/clydeofficial/tdk-sozluk/blob/main/src/features/ses.js). Live recording access remains unconfirmed.
+- Japanese reference: `../meikipop-japanese-clipboard`, shared popup and input
+  components.
+- Turkish input and popup: `src/meikipop/gui/turkish/`.
+- Turkish dictionaries and analyzers: `src/meikipop/dictionary/` and
+  `src/meikipop/language/`.
+- Turkish OCR: `src/meikipop/ocr/turkish_paddle.py`.
+- Source locks: `src/meikipop/resources/turkish/`.
+- Setup and usage: [TURKISH_SETUP.md](TURKISH_SETUP.md).

@@ -1,194 +1,141 @@
-# Turkish desktop MVP setup
+# meikipop-turkish setup
 
-Turkish runs as a Meikipop reading popup with TDK definitions, Stanza analysis, KeNet
-synonyms/semantic links, local PaddleOCR, clickable sentence tokens and examples.
-It starts without Japanese dictionary or OCR setup. See the
-[support plan](TURKISH_SUPPORT_PLAN.md) for implementation status and remaining scope.
+## Windows installer
 
-Frozen for personal use on 2026-09-07. Japanese is accepted; Turkish remains a source-install MVP. Optional features and packaging are deferred.
+Run `meikipop-turkish-2.0.4-windows-x64-setup.exe` from `dist/` or the
+**Turkish Windows installer** workflow artifact. It installs for the current
+user at `%LOCALAPPDATA%\Programs\meikipop-turkish`, with a Start menu shortcut,
+optional desktop shortcut and uninstaller. No Python installation is needed.
+Japanese keeps its own executable, shortcuts and settings. Upgrades use the same
+Turkish installation directory; uninstall preserves your dictionaries and settings.
 
-## Install from source
+First launch opens Settings if TDK is missing. In **Dictionaries**, install TDK,
+Stanza models and OCR models. Wiktionary and KeNet are optional. Setup needs a
+network connection; normal lookup works offline afterward. Buttons never install
+Python packages. Lookup pauses during setup, and closing Settings does not cancel
+it. Wait for setup to finish before quitting.
 
-Use Python 3.13 for the pinned NLP packages. This minimal Windows environment
-supports Turkish clipboard mode and the tests:
+**Install / update Wiktionary** fetches the current Turkish-to-English pack from
+[yomidevs/wiktionary-to-yomitan](https://github.com/yomidevs/wiktionary-to-yomitan).
+Its current download feed is hosted on Hugging Face. The app imports Yomitan
+structured content into an indexed SQLite pack and records the revision and
+SHA-256. It does not bundle a one-time Wiktionary snapshot or download during
+lookup. TDK and KeNet use their checked-in source locks.
+
+Reorder **TDK**, **Wiktionary** and **KeNet** by dragging or using **Move up/down**,
+then Save. Order changes whole source sections; senses are kept separate.
+**Roll back** restores the previous verified installation of that asset. Failed
+updates leave the existing installation intact. One previous version is retained.
+
+## Controls
+
+Hold **Shift** over a word for local OCR. Clicking a preview, token or pin icon
+keeps the result open. Pinned results stay in place and suspend scans. Click
+outside, press **Escape**, or use the close button to dismiss. Empty OCR hits
+hide the popup. Tray left-click pauses/resumes; the tray menu has clipboard,
+search, settings and quit.
+
+Text inputs are off by default. Enable automatic clipboard lookup, dragged
+selections or double-click capture separately in Settings. Shortcut presets:
+
+| Action | Preset |
+| --- | --- |
+| Clipboard | Ctrl+Alt+L |
+| Search | Ctrl+Alt+D |
+| Selected text | Ctrl+Alt+S |
+
+Each shortcut has its own enable box and key recorder. Selection capture is
+Windows-only, waits for modifiers to be released, and restores the previous
+clipboard formats. Focus changes and timeouts cancel capture. Source applications
+must support copying selected text; image-only text still needs OCR.
+
+Copied and selected text opens a pinned popup. Typed search and clickable tokens,
+suggestions and related expressions use the same lookup. Inside definitions and examples, select text by dragging or double-clicking,
+use the selected-text shortcut, or hold the scan key over a word. These all use
+the same lookup and Back history without reading or replacing the clipboard. Back history is limited
+to 32 entries and cleared on dismissal. Clipboard input is limited to 2,000
+characters. Clipboard contents, lookup history and screenshots are not logged or
+uploaded. KeNet expands independently; **Show more** reveals longer definitions.
+
+The optional **Pronunciation button** uses a Turkish system speech voice. Install
+one through Windows Settings if none is available. It does not use the Japanese
+audio database or download pronunciation files.
+
+## Build a Windows installer
+
+Use Windows x64, Python 3.13, `uv`, and Inno Setup 6. From this checkout:
 
 ```powershell
 uv venv --python 3.13 .venv
-uv pip install --python .venv/Scripts/python.exe "stanza==1.14.0" "torch==2.8.0" PyQt6 pynput platformdirs
+uv pip install --python .venv/Scripts/python.exe -r packaging/requirements-turkish.txt
 uv pip install --python .venv/Scripts/python.exe --no-deps -e .
-.\.venv\Scripts\meikipop.exe build-turkish-dict
-.\.venv\Scripts\meikipop.exe setup-turkish-model
-.\.venv\Scripts\meikipop.exe turkish-clipboard
+.\Build-Turkish.ps1
 ```
 
-For an existing full development installation, `pip install -e ".[turkish]"`
-adds the pinned NLP extra. Install the normal project dependencies to run Japanese OCR.
+The script builds a PyInstaller directory bundle and compiles the installer,
+then writes `dist/*-setup.exe.sha256`. It finds Inno Setup in the standard
+per-user or Program Files installation. Override with `-Python <python.exe>`
+and `-ISCC <ISCC.exe>`. `-SkipBundle` recompiles only the installer from an
+existing bundle. This build includes the local inference libraries, so it is
+larger than the Japanese executable. Downloaded models and dictionaries are
+not included. A bundled console helper runs setup without opening a console.
 
-Dictionary setup downloads the TDK snapshot pinned in
-[`sources.json`](../src/meikipop/resources/turkish/sources.json). Model setup
-downloads Stanza 1.14.0 IMST tokenize/MWT and CharLM POS/lemma models with their
-required character language models and embeddings. Existing no-CharLM
-installations must rerun `setup-turkish-model` once for the new lemma weights.
-Runtime lookup disables model downloads and works offline after setup.
+The GitHub Actions **Turkish Windows installer** workflow supports manual runs
+and `turkish-v*` tags. It uploads the installer and checksum as artifacts; it
+does not publish a GitHub release. Existing Japanese workflows are unchanged.
 
-## Use the app
-
-Double-click [Start-Turkish.cmd](../Start-Turkish.cmd), or run
-`.\.venv\Scripts\meikipop.exe turkish-clipboard`. The launcher uses this checkout's
-environment and opens no console. It starts in the tray, without a search window.
-Only one Turkish instance runs at a time. Quit an older running copy before launching
-updated source code.
-
-Text shortcuts, automatic clipboard lookup and double-click capture are **off by default**.
-Enable only the inputs you want in Settings. Older default-on Turkish text settings
-reset once on upgrade. Manual **Look up clipboard** and **Search?** remain in the menus.
-With automatic lookup enabled, copying text opens a pinned popup beside the pointer.
-Try `D?n kitaplar?mdan birini okudum.` and click `okudum`.
-The whole copied phrase is looked up first, otherwise the first word is selected.
-
-Hold **Shift** with the pointer over a word to scan locally. Move to another
-word while holding it to scan again. Move into the popup after releasing Shift to read it; a 350 ms grace period lets you cross the gap. Click a word or **Pin** to keep it open. Copied lookups pin immediately. Pinned results stay in place and suspend background scans until dismissed.
-Click outside, press **Escape**, or use **×** to dismiss. On Windows, Escape is intercepted only while this popup is visible, including its key-up event, so it does not also exit a video. Left-click the tray icon to pause or resume; use its menu to quit.
-
-Enable the Search shortcut in Settings, then press **Ctrl+Alt+D**, or choose **Search…** from the tray or **···** menu for a compact search field beside the tray. Type a word and press Enter; results use the same dictionary surface. Clipboard and search shortcuts are separately configurable in Settings (click a recorder, press the keys, and check its enable box) or through `--hotkey` and `--search-hotkey`. Click tokens,
-suggestions, related expressions or WordNet members to navigate; **←** goes back.
-Expand **WordNet** for its independent sense groups and typed semantic links.
-WordNet definitions appear immediately when a linked word has no TDK entry.
-
-Settings are in the tray and **···** menu. The default appearance inherits the original
-Meikipop font, colors, opacity and positioning. The popup grows with its definitions
-and scrolls at its maximum size. Settings persist clipboard and selection lookup, background OCR interval, keyboard/mouse activation, separate search/clipboard shortcuts, original Meikipop theme presets, font, colors, opacity, placement, size and examples. Turkish settings do not write Japanese configuration. Fonts are checked for Turkish glyph coverage.
-Installation buttons download TDK, Stanza, WordNet or OCR models explicitly. Lookup
-pauses during installation so Windows can replace the open data files, then resumes
-automatically with fresh models and caches. Failed installs show their error in Settings;
-closing Settings does not interrupt setup. Wait for installation to finish before quitting.
-Install the OCR Python extra
-below before using the OCR model button. No pip command runs from the GUI.
-
-On Windows, enable **Look up double-clicked text** in Settings to capture selectable text. This uses a short Ctrl+C capture, waits for a fresh clipboard change, and restores the previous clipboard formats. Held modifiers, focus changes and timeouts cancel the attempt. Applications must support copying the selected text; image-only text still needs OCR.
-
-Clipboard lookup is limited to 2,000 characters. Duplicate notifications,
-empty/oversized payloads and copies while Meikipop owns focus are ignored.
-Enabling monitoring does not read pre-existing content. The 32-entry Back history
-is in memory and cleared on dismissal; clipboard text and screen images are not
-logged or uploaded. Inference and dictionary lookup run off the Qt thread.
-With background preparation enabled, OCR runs before activation, as in original
-Meikipop. Hovering nearby words reuses recognition if the captured pixels are unchanged.
-A recent prepared result can appear immediately on activation. While a preview is open,
-pointer movement reuses its captured text, as in original Meikipop; release the scan key
-and scan again after scrolling or changing the source. Model loading and new
-or changing screen content still require inference; cached-hover speed is not a promise
-about cold startup or a changing game scene.
-
-Override the shortcut using pynput syntax:
+For a lightweight build check, without model inference:
 
 ```powershell
-.\.venv\Scripts\meikipop.exe turkish-clipboard --hotkey "<ctrl>+<alt>+k"
+.\dist\meikipop-turkish\meikipop-turkish-cli.exe --self-check
 ```
 
-Failed lookups can offer **Did you mean?** links, for example with `cocuk`,
-`cocugu`, `kisi`, or `kitpa`. Suggestions are bounded, dictionary-validated
-guesses; they do not silently replace the original text. The plan records their limits.
+The installer is unsigned. Hands-on clean-machine installation, input/focus,
+mixed-DPI, voice availability and OCR acceptance remain with the user.
 
-## Data locations and fallback
+## Run from source and manage data
 
-Under the application's data directory (normally `%LOCALAPPDATA%\meikipop`
-on Windows), the TDK pack is at `languages/tr/packs/tr-tdk/poc-1/` and models
-are at `languages/tr/stanza/1.14.0/`. Source downloads use `paths.cache_dir`.
-Keep downloads, model weights, generated packs, and `.venv` out of Git.
+After installing the build requirements above, use [Start-Turkish.cmd](../Start-Turkish.cmd)
+or `.\.venv\Scripts\meikipop-turkish.exe`. For clipboard-only development,
+install PyQt6, pynput, platformdirs and the pinned Stanza/Torch packages instead
+of the OCR/build dependencies, followed by `--no-deps -e .`.
 
-Pass `--dictionary <database>` and `--model-dir <directory>` to override runtime
-locations. Missing or incompatible models visibly fall back to exact lookup;
-`--analyzer exact` explicitly selects lookup without Stanza. A TDK pack is required.
-Close the Turkish app before rebuilding its installed dictionary from the CLI. The Settings
-installer releases its own dictionary handles automatically.
+```powershell
+.\.venv\Scripts\meikipop.exe build-turkish-dict
+.\.venv\Scripts\meikipop.exe setup-turkish-model
+.\.venv\Scripts\meikipop.exe setup-turkish-ocr
+.\.venv\Scripts\python.exe -m meikipop.scripts.turkish setup-turkish-wiktionary
+.\.venv\Scripts\meikipop.exe setup-turkish-wordnet
+```
 
-The dictionary builder accepts `--source <locked-v12-file>` and `--output <directory>`.
-With both supplied it requires only the standard library, including under
-`python -S -m meikipop.scripts.build_turkish_dictionary` with `src` on PYTHONPATH.
-Default application paths additionally require `platformdirs`. The builder
-validates the source checksum and SQLite integrity; pack metadata and
-`manifest.json` record source/build identity and source anomalies.
+Packaged commands use
+`meikipop-turkish-cli.exe --setup <command>`. Setup commands support `--rollback`.
+Close the Turkish app before CLI updates. Use dedicated asset directories for
+`--output` or `--model-dir`; managed directories are replaced as a unit.
 
-## Verify and diagnose
+Data remains under `%LOCALAPPDATA%\meikipop\languages\tr` for compatibility:
+TDK `packs/tr-tdk/poc-1`, Wiktionary `packs/tr-wiktionary/1`, KeNet
+`packs/tr-kenet/1`, Stanza `stanza/1.14.0`, and OCR `paddle/3.7.0`.
+`asset.json` records installed-file checksums; a sibling `.previous` directory
+holds the rollback version. Turkish QSettings retain the `Meikipop/Turkish`
+namespace. These locations do not overwrite Japanese dictionary/configuration.
+
+Missing Stanza models fall back to exact lookup. `--analyzer exact` explicitly
+selects it; `--dictionary` and `--model-dir` override runtime paths. Stanza uses
+IMST tokenize/MWT and CharLM POS/lemma models. Paddle uses local PP-OCRv6 small
+models, CPU inference, cached recognition and independent pointer hit-testing.
+Background preparation uses the Settings scan interval. Rescan after changing
+source content; cached boxes are retained during an active preview.
+
+## Validation
+
+The full fixture suite passed 99 tests; the later in-popup lookup additions
+passed the focused 28-test GUI suite. Run it once when changing implementation:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests
-.\.venv\Scripts\python.exe -m meikipop.scripts.smoke_turkish
-.\.venv\Scripts\meikipop.exe lookup-turkish "Bunu hemen fark etti." --target 3
-.\.venv\Scripts\meikipop.exe lookup-turkish "cocugu" --debug
 ```
 
-Unit tests use small fixtures and offscreen Qt with mocked keyboard/clipboard
-access. The separate smoke script requires the installed full TDK pack and real
-Stanza models; it blocks socket connections during initialization and lookup.
-These checks do not replace manual desktop focus/shortcut or packaging acceptance.
-
-On this Windows desktop, separate-app Ctrl+C → pinned popup → global Escape
-passed. Real screen capture with the global Shift listener → Paddle word box →
-Stanza → TDK/KeNet → click pin → Shift release also passed. The unit suite has
-95 checks, including content sizing, pin stability, installer recovery and OCR cache
-invalidation. TDK and Stanza installation followed by lookup also passed through the
-actual console-free `pythonw` path. Multi-monitor placement has negative-coordinate coverage;
-mixed-DPI hardware, browser/PDF combinations and a clean-machine executable
-remain acceptance work. This is a usable source-environment MVP, not an installer.
-
-CLI lookup and smoke reports emit UTF-8 JSON, including when redirected on Windows.
-`--debug` adds raw Stanza tokens, all expanded Words, lemma/POS/features, and
-attempted dictionary routes. Normal CLI output omits those diagnostics; exact
-mode has no raw Stanza analysis. No diagnostic files or clipboard history are saved.
-
-## Local PaddleOCR and WordNet setup
-
-The Turkish OCR extra pins current PaddleOCR 3.7.0, PaddleX 3.7.2 and
-PaddlePaddle 3.3.1. Install it in the project environment:
-
-```powershell
-uv pip install --python .venv/Scripts/python.exe paddleocr==3.7.0 paddlex==3.7.2 paddlepaddle==3.3.1
-.\.venv\Scripts\meikipop.exe setup-turkish-wordnet
-.\.venv\Scripts\meikipop.exe setup-turkish-ocr
-.\.venv\Scripts\python.exe -m meikipop.scripts.smoke_turkish_ocr
-```
-
-A full pip development install can use `pip install -e ".[turkish,turkish-ocr]"`.
-The existing lightweight clipboard install remains supported without OCR dependencies.
-OCR setup downloads PP-OCRv6 small detection/recognition weights explicitly.
-Runtime uses local CPU inference only, with no remote fallback or model downloads.
-Models live at `languages/tr/paddle/3.7.0/`; their local manifest records SHA-256
-checksums. WordNet lives at `languages/tr/packs/tr-kenet/1/wordnet.sqlite3`.
-KeNet source revision, checksum and GPL-3.0 attribution are in the pack metadata
-and the checked-in `resources/turkish/wordnet.json` source lock.
-
-The OCR smoke uses Windows Arial to generate a small Turkish fixture and blocks
-network connections during real model initialization, recognition, and word-box lookup.
-It is separate from the fast fixture-based unit suite.
-
-## Japanese text input
-
-The Japanese build on `feature/japanese-clipboard` keeps the original dictionary,
-deconjugation, popup, OCR and audio. Its Windows executable is installed at
-`%LOCALAPPDATA%\Programs\meikipop\meikipop.exe` using the existing shortcuts.
-
-Open **Settings ? Text Lookup** to assign clipboard, search and selected-text
-shortcuts. Click a recorder and press the desired keys. Check its box to enable it.
-Presets: Ctrl+Alt+L for clipboard, Ctrl+Alt+D for search and Ctrl+Alt+S for selection.
-All start unchecked; unchecking preserves the recorded combination. Duplicate enabled
-bindings are rejected; changes apply on Save. Enable **Look up selected text**
-to look up words by dragging a selection or double-clicking them in copyable Windows applications.
-Selected-text capture waits for key release and restores previous clipboard formats.
-
-- **Look up copied text automatically** in the tray: optional automatic lookup.
-
-Click to dismiss the Japanese text popup. Selection timeouts and focus changes
-cancel capture without looking up old clipboard content. These additions reuse the
-existing Japanese lookup worker and renderer; the Turkish branch includes them too.
-
-The standard Japanese dictionary builder combines JMdict English with KANJIDIC2,
-kanji decomposition and frequency data. There is no dictionary import UI.
-`import-yomitan-dict-html` in a source environment converts one or more term ZIPs
-into a single replacement pickle; use `-o <new-file.pkl>` to avoid overwriting the
-working dictionary. Term/monolingual/grammar/name banks are convertible, with
-limited HTML support. Standalone frequency ZIPs do not rank other imported packs;
-pitch and kanji banks are unsupported. Conversion currently leaves kanji entries
-empty. More terms increase startup memory/loading and may add duplicate results;
-ordinary lookup uses an in-memory index. The installed dictionary is unchanged.
+`smoke_turkish` and `smoke_turkish_ocr` remain available for user-run actual-model
+checks; they were not rerun for this release. See the
+[support plan](TURKISH_SUPPORT_PLAN.md) for acceptance boundaries.
