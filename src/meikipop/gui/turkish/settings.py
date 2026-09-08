@@ -1,12 +1,13 @@
 """Turkish settings using Meikipop's presets and activation conventions."""
 import sys
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QFontDatabase, QColor
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QTabWidget, QWidget,
                             QGroupBox, QCheckBox, QComboBox, QSpinBox, QLineEdit,
                             QFontComboBox, QDialogButtonBox, QPushButton, QLabel,
-                            QMessageBox, QColorDialog)
+                            QMessageBox, QColorDialog, QListWidget, QHBoxLayout, QAbstractItemView)
 
 from meikipop.config.config import config
 from meikipop.gui.activation import parse_activation_bindings, serialise_activation_bindings
@@ -18,7 +19,7 @@ class SettingsDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle("Meikipop Settings")
+        self.setWindowTitle("meikipop-turkish Settings")
         self.setMinimumWidth(440)
         self.window = window
         self.fields = {}
@@ -64,13 +65,19 @@ class SettingsDialog(QDialog):
             self.mouse[token] = field
             general.addRow("Mouse activation:" if token == "middle" else "", field)
         for key, label, value in (("clipboard_hotkey", "Clipboard shortcut:", window.hotkey),
-                                   ("search_hotkey", "Search shortcut:", window.search_hotkey)):
-            field = ShortcutEdit(value, window.settings.value(key + "_preset", "Ctrl+Alt+L" if key == "clipboard_hotkey" else "Ctrl+Alt+D"))
+                                   ("search_hotkey", "Search shortcut:", window.search_hotkey),
+                                   ("selection_hotkey", "Selection shortcut:", window.selection_hotkey)):
+            preset = {"clipboard_hotkey": "Ctrl+Alt+L", "search_hotkey": "Ctrl+Alt+D", "selection_hotkey": "Ctrl+Alt+S"}[key]
+            field = ShortcutEdit(value, window.settings.value(key + "_preset", preset))
+            if key == "selection_hotkey":
+                field.setEnabled(sys.platform == "win32")
             general.addRow(label, field)
             self.fields[key] = field
         check(general, "auto_clipboard", "Look up copied text:", False)
+        check(general, "audio_enabled", "Pronunciation button:", False)
         selection = check(general, "selection_lookup", "Look up double-clicked text:", False)
         selection.setEnabled(sys.platform == "win32")
+        check(general, "drag_lookup", "Look up dragged selections:", False).setEnabled(sys.platform == "win32")
         check(general, "auto_scan", "Enable Auto Scan:", config.auto_scan_mode)
         spin(general, "auto_scan_ms", "Scan interval (ms):", max(100, int(config.auto_scan_interval_seconds * 1000)), 100, 60000)
 
@@ -105,10 +112,27 @@ class SettingsDialog(QDialog):
         self.theme.currentTextChanged.connect(self.apply_theme)
 
         data = tab("Dictionaries")
+        from .rendering import dictionary_order
+        self.order = QListWidget()
+        self.order.addItems(dictionary_order(window.settings.value("dictionary_order")))
+        self.order.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.order.setFixedHeight(90)
+        self.order.setCurrentRow(0)
+        data.addRow("Order:", self.order)
+        arrows = QHBoxLayout()
+        for label, step in (("Move up", -1), ("Move down", 1)):
+            button = QPushButton(label)
+            button.clicked.connect(lambda _, delta=step: self.move_source(delta))
+            arrows.addWidget(button)
+        data.addRow(arrows)
         from meikipop.dictionary.turkish_wordnet import default_wordnet_path
+        from meikipop.dictionary.turkish_wiktionary import default_wiktionary_path
+        from meikipop.language.stanza_analyzer import default_model_dir
         from meikipop.ocr.turkish_paddle import model_root
         status = QLabel(window.setup_status or "\n".join((
             f"TDK: {'installed' if window.worker.dictionary.exists() else 'missing'}",
+            f"Wiktionary: {'installed' if default_wiktionary_path().exists() else 'missing'}",
+            f"Stanza: {'installed' if (Path(window.worker.model_dir or default_model_dir()) / 'tr').exists() else 'missing'}",
             f"KeNet: {'installed' if default_wordnet_path().exists() else 'missing'}",
             f"OCR: {'installed' if (model_root() / 'manifest.json').exists() else 'missing'}")))
         status.setWordWrap(True)
@@ -116,18 +140,38 @@ class SettingsDialog(QDialog):
         data.addRow(status)
         window.signals.setup_completed.connect(status.setText)
         window.signals.setup_progress.connect(status.setText)
-        for key, label in (("dictionary", "Install TDK"), ("wordnet", "Install KeNet"),
+        for key, label in (("dictionary", "Install / update TDK"), ("wiktionary", "Install / update Wiktionary"), ("wordnet", "Install / update KeNet"),
                            ("model", "Install Stanza models"), ("ocr", "Install OCR models")):
             button = QPushButton(label)
             button.setDisabled(window.setup_thread is not None)
             button.clicked.connect(lambda _, k=key: window.start_setup(k))
             window.signals.setup_busy.connect(button.setDisabled)
-            data.addRow(button)
+            row = QHBoxLayout()
+            row.addWidget(button)
+            rollback = QPushButton("Roll back")
+            rollback.setDisabled(window.setup_thread is not None)
+            rollback.clicked.connect(lambda _, k=key: window.start_setup("rollback:" + k))
+            window.signals.setup_busy.connect(rollback.setDisabled)
+            row.addWidget(rollback)
+            data.addRow(row)
         data.addRow(QLabel("KeNet / StarlangSoftware · GPL-3.0\nTDK: ogun/guncel-turkce-sozluk v12"))
+        credits = QLabel('<a href="https://github.com/yomidevs/wiktionary-to-yomitan">Wiktionary via wty / Kaikki</a>'
+                         ' · <a href="https://en.wiktionary.org/wiki/Wiktionary:Copyrights">CC BY-SA / GFDL</a>')
+        credits.setOpenExternalLinks(True)
+        data.addRow(credits)
+        if not window.worker.dictionary.exists():
+            tabs.setCurrentIndex(tabs.count() - 1)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def move_source(self, delta):
+        row = self.order.currentRow()
+        target = row + delta
+        if 0 <= row < self.order.count() and 0 <= target < self.order.count():
+            self.order.insertItem(target, self.order.takeItem(row))
+            self.order.setCurrentRow(target)
 
     def choose_color(self, button):
         color = QColorDialog.getColor(QColor(button.text()), self)
@@ -149,11 +193,13 @@ class SettingsDialog(QDialog):
         try:
             bindings = serialise_activation_bindings(parse_activation_bindings(",".join(bindings)))
             self.window.input.set_shortcuts(self.fields["clipboard_hotkey"].text().strip(),
-                                             self.fields["search_hotkey"].text().strip())
+                                             self.fields["search_hotkey"].text().strip(),
+                                             self.fields["selection_hotkey"].text().strip())
         except (ValueError, OSError) as error:
             QMessageBox.warning(self, "Shortcut", str(error))
             return
         settings = self.window.settings
+        settings.setValue("dictionary_order", [self.order.item(i).text() for i in range(self.order.count())])
         for key, field in self.fields.items():
             value = field.isChecked() if isinstance(field, QCheckBox) else field.value() if isinstance(field, QSpinBox) else field.text().strip()
             settings.setValue(key, value)
@@ -169,9 +215,11 @@ class SettingsDialog(QDialog):
         self.window.input.activation.set_bindings(bindings)
         self.window.hotkey = settings.value("clipboard_hotkey")
         self.window.search_hotkey = settings.value("search_hotkey")
+        self.window.selection_hotkey = settings.value("selection_hotkey")
         self.window.auto_action.setChecked(settings.value("auto_clipboard", False, bool))
         self.window.examples.setChecked(settings.value("examples", True, bool))
         self.window.prefetch_timer.setInterval(settings.value("auto_scan_ms", 500, int))
         self.window.apply_appearance()
+        self.window.audio_button.setVisible(settings.value("audio_enabled", False, bool))
         self.window.render()
         self.accept()

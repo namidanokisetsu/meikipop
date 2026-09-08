@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel, QMenu
                             QPushButton, QSystemTrayIcon, QTextBrowser, QVBoxLayout, QWidget,
                             QMessageBox, QFrame, QLineEdit)
 
-from .worker import TextWorker
+from .worker import TextWorker, OCRWorker
 from .rendering import render_result
 from .desktop_input import DesktopInput
 from meikipop.gui.selection import SelectionCapture
@@ -20,7 +20,6 @@ from meikipop.gui.themes import THEMES
 
 from meikipop.config.config import config
 from meikipop.gui.popup_style import frame_stylesheet, popup_position
-from meikipop.pipeline import REUSE_LAST_VALUE
 
 MAX_TEXT = 2000
 
@@ -40,6 +39,7 @@ class RequestState:
 class Signals(QObject):
     clipboard_requested = pyqtSignal()
     completed = pyqtSignal(int, object, str)
+    recognized = pyqtSignal(int, object, str)
     hold_changed = pyqtSignal(bool)
     dismissed = pyqtSignal()
     setup_completed = pyqtSignal(str)
@@ -53,7 +53,7 @@ class Signals(QObject):
 class ClipboardWindow(QWidget):
     def __init__(self, dictionary, analyzer="stanza", model_dir=None, hotkey=None, search_hotkey=None):
         super().__init__()
-        self.settings = QSettings("Meikipop", "Turkish")
+        self.settings = QSettings("meikipop-turkish", "Turkish")
         if not self.settings.value("text_input_opt_in", False, bool):
             # Previous versions enabled these by default, without user opt-in.
             for key in ("auto_clipboard", "selection_lookup"):
@@ -61,7 +61,7 @@ class ClipboardWindow(QWidget):
             for key in ("clipboard_hotkey", "search_hotkey"):
                 self.settings.setValue(key, "")
             self.settings.setValue("text_input_opt_in", True)
-        self.setWindowTitle("Meikipop · Turkish")
+        self.setWindowTitle("meikipop-turkish")
         self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -74,15 +74,16 @@ class ClipboardWindow(QWidget):
         self.last_scan = None
         self.capture_region = None
         self.capture_scale = (1, 1)
-        self.cached_scan_request = None
         self.prefetch_failed = False
         self.background_request = None
-        self.prefetched = None
         self.scan_busy = False
+        self.ocr_results = None
+        self.last_hit = None
         self.anchor = QCursor.pos()
         self.last_clipboard = QApplication.clipboard().text()
         self.hotkey = hotkey if hotkey is not None else self.settings.value("clipboard_hotkey", "")
         self.search_hotkey = search_hotkey if search_hotkey is not None else self.settings.value("search_hotkey", "")
+        self.selection_hotkey = self.settings.value("selection_hotkey", "")
         self.bindings = self.settings.value("activation_bindings", self.settings.value("hold_key", config.activation_bindings))
         self.enabled = True
         self.searching = False
@@ -100,9 +101,14 @@ class ClipboardWindow(QWidget):
         self.result = None
         self.history = []
         self.show_more = False
+        from .audio import TurkishSpeech
+        self.speech = TurkishSpeech(self)
         self.signals = Signals(self)
         self.signals.clipboard_requested.connect(self.read_clipboard)
         self.signals.completed.connect(self.deliver)
+        self.signals.recognized.connect(self.recognized)
+        self.ocr_worker = OCRWorker(self.signals)
+        self.ocr_worker.start()
         self.signals.hold_changed.connect(self.set_hold)
         self.signals.dismissed.connect(self.dismiss)
         self.signals.setup_completed.connect(self.setup_finished)
@@ -134,19 +140,22 @@ class ClipboardWindow(QWidget):
         self.back_button.setToolTip("Previous lookup")
         self.back_button.setEnabled(False)
         self.back_button.clicked.connect(self.go_back)
-        self.pin_button = QPushButton("Pin")
-        self.pin_button.setToolTip("Keep this result in place (or click the definition)")
+        self.pin_button = QPushButton("📌")
+        self.pin_button.setCheckable(True)
+        self.pin_button.setToolTip("Pin")
         self.pin_button.clicked.connect(self.pin)
-        self.menu_button = QPushButton("···")
-        self.menu_button.setToolTip("Clipboard, search and settings")
+        self.audio_button = QPushButton("♪")
+        self.audio_button.setToolTip("Pronounce")
+        self.audio_button.setVisible(self.settings.value("audio_enabled", False, bool))
+        self.audio_button.clicked.connect(self.pronounce)
         close = QPushButton("×")
         close.setToolTip("Dismiss (Escape)")
         close.clicked.connect(self.dismiss)
         controls.addWidget(self.back_button)
         controls.addStretch()
-        for widget in (self.pin_button, self.menu_button, close):
+        for widget in (self.audio_button, self.pin_button, close):
             controls.addWidget(widget)
-        for widget in (self.back_button, self.pin_button, self.menu_button, close):
+        for widget in (self.back_button, self.audio_button, self.pin_button, close):
             widget.setFlat(True)
             widget.setFixedHeight(20)
             widget.setFixedWidth(48 if widget is self.pin_button else 24)
@@ -163,7 +172,7 @@ class ClipboardWindow(QWidget):
         self.escape_shortcut.activated.connect(self.dismiss)
         from meikipop.utils.paths import paths
         self.tray = QSystemTrayIcon(QIcon(paths.get_resource_path("icon.ico")), self)
-        self.tray.setToolTip("Meikipop")
+        self.tray.setToolTip("meikipop-turkish")
         menu = QMenu(self)
         action = menu.addAction("Look up clipboard")
         action.triggered.connect(self.read_clipboard)
@@ -173,14 +182,13 @@ class ClipboardWindow(QWidget):
         self.auto_action.setChecked(self.settings.value("auto_clipboard", False, bool))
         self.auto_action.toggled.connect(self.toggle_clipboard)
         menu.addAction("Settings").triggered.connect(self.open_settings)
-        self.pause_action = menu.addAction("Pause meikipop")
+        self.pause_action = menu.addAction("Pause meikipop-turkish")
         self.pause_action.setCheckable(True)
         self.pause_action.triggered.connect(self.toggle_enabled)
         self.tray.activated.connect(self.tray_activated)
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(self.request_quit)
         self.tray.setContextMenu(menu)
-        self.menu_button.setMenu(menu)
         self.tray.show()
         QApplication.clipboard().dataChanged.connect(self.clipboard_changed)
         QApplication.instance().installEventFilter(self)
@@ -199,6 +207,9 @@ class ClipboardWindow(QWidget):
         self.input.dismissed.connect(self.dismiss)
         self.input.clicked.connect(self.outside_click)
         self.input.selected.connect(self.selection_requested)
+        self.input.dragged.connect(lambda: self.selection_requested(drag=True))
+        self.input.selection_requested.connect(self.read_selection)
+        self.input.set_shortcuts(self.hotkey, self.search_hotkey, self.selection_hotkey)
 
     def tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -222,10 +233,15 @@ class ClipboardWindow(QWidget):
         elif self.selection.pending:
             self.selection.cancel()
 
-    def selection_requested(self):
-        if self.enabled and self.settings.value("selection_lookup", False, bool):
+    def selection_requested(self, drag=False):
+        if self.enabled and self.settings.value("drag_lookup" if drag else "selection_lookup", False, bool):
             ticket = self.selection_ticket
-            QTimer.singleShot(60, lambda: self.selection.start() if self.enabled and ticket == self.selection_ticket else None)
+            QTimer.singleShot(60, lambda: self.selection.start(wait_for_modifiers=drag)
+                              if self.enabled and ticket == self.selection_ticket else None)
+
+    def read_selection(self):
+        if self.enabled and self.setup_thread is None:
+            self.selection.start(wait_for_modifiers=True)
 
     def selection_result(self, text):
         self.last_clipboard = QApplication.clipboard().text()
@@ -276,7 +292,7 @@ class ClipboardWindow(QWidget):
             return
         self.leave_timer.stop()
         if self.setup_thread is not None:
-            self.tray.showMessage("Meikipop", "Installation is running. Lookup resumes when it finishes.")
+            self.tray.showMessage("meikipop-turkish", "Installation is running. Lookup resumes when it finishes.")
             return
         if remember and not peek and self.result is not None:
             previous = (self.result.text, self.result.target)
@@ -287,7 +303,7 @@ class ClipboardWindow(QWidget):
         if scan is None:
             self.scan_busy = False
         self.pinned = not peek
-        self.pin_button.setText("Pinned" if self.pinned else "Pin")
+        self.pin_button.setChecked(self.pinned)
         self.reposition = self.reposition or not self.isVisible() or peek
         if scan is None and not text.strip():
             if not self.searching:
@@ -302,7 +318,7 @@ class ClipboardWindow(QWidget):
         self.result = None
         self.show_more = False
         self.wordnet_expanded = False
-        if scan is None or scan[0] is not REUSE_LAST_VALUE:
+        if scan is None:
             self.browser.setPlainText("Reading…" if scan is not None else "Looking up…")
         self.worker.queue.put((request_id, text, target, scan))
 
@@ -310,18 +326,6 @@ class ClipboardWindow(QWidget):
         if request_id == getattr(self, "scan_request", None):
             self.scan_busy = False
         if not self.requests.accepts(request_id):
-            return
-        if request_id == self.cached_scan_request and result is None:
-            self.hide()
-            self.last_scan = None
-            self.scan_pointer()
-            return
-        if request_id == self.background_request:
-            self.prefetch_failed = error.startswith(("Local OCR failed", "Lookup failed"))
-            self.prefetched = (result, QPoint(self.last_scan), monotonic()) if result is not None else None
-            if self.holding:
-                self.last_scan = None
-                self.scan_pointer()
             return
         self.result = result
         if result is None and error.startswith(("No text", "No selectable")):
@@ -343,7 +347,8 @@ class ClipboardWindow(QWidget):
         if self.result is not None:
             self.browser.setToolTip(self.result.status)
             self.browser.setHtml(render_result(self.result, self.show_more, self.examples.isChecked(),
-                                               self.wordnet_expanded, self.word_color, self.header_size))
+                                               self.wordnet_expanded, self.word_color, self.header_size,
+                                               self.settings.value("dictionary_order")))
 
     def navigate(self, url):
         if self.result is None:
@@ -377,6 +382,14 @@ class ClipboardWindow(QWidget):
             self.submit(text, target, remember=False)
             self.back_button.setEnabled(bool(self.history))
 
+    def pronounce(self):
+        if self.result is None:
+            return
+        self.pin()
+        text = self.result.entries[0]["headword"] if self.result.entries else self.result.text
+        if not self.speech.speak(text):
+            self.tray.showMessage("meikipop-turkish", "Install a Turkish speech voice in Windows Settings.")
+
     def toggle_clipboard(self, enabled):
         self.settings.setValue("auto_clipboard", enabled)
         self.last_clipboard = QApplication.clipboard().text()
@@ -399,7 +412,7 @@ class ClipboardWindow(QWidget):
         self.pinned = True
         self.holding = False
         self.suppress_hold = True
-        self.pin_button.setText("Pinned")
+        self.pin_button.setChecked(True)
 
     def eventFilter(self, watched, event):
         if (self.isVisible() and event.type() == QEvent.Type.MouseButtonPress and isinstance(watched, QWidget)
@@ -440,23 +453,12 @@ class ClipboardWindow(QWidget):
             return
         if not active:
             self.suppress_hold = False
-            self.prefetched = None
+            self.ocr_results = None
+            self.last_hit = None
         if self.suppress_hold or active == self.holding:
             return
         self.holding = active
         if active:
-            # Like the original auto-scan path, activation can use the latest frame.
-            if self.prefetched is not None and not self.pinned:
-                result, point, timestamp = self.prefetched
-                if (QCursor.pos() - point).manhattanLength() < 3 and monotonic() - timestamp < .75:
-                    self.result = result
-                    self.anchor = point
-                    self.reposition = True
-                    self.last_scan = point
-                    self.pin_button.setText("Pin")
-                    self.render()
-                    self.show()
-                    return
             self.last_scan = None
             self.scan_pointer()
         elif not self.pinned:
@@ -470,22 +472,21 @@ class ClipboardWindow(QWidget):
         if background and (self.isVisible() or self.holding or self.prefetch_failed
                            or not self.settings.value("auto_scan", config.auto_scan_mode, bool)):
             return
-        if not self.enabled or self.selection.pending or self.setup_thread is not None or self.pinned or (not self.holding and not background) or self.scan_busy or QApplication.activeModalWidget():
+        if not self.enabled or self.selection.pending or self.setup_thread is not None or self.pinned or (not self.holding and not background) or QApplication.activeModalWidget():
             return
         point = QCursor.pos()
         if self.isVisible() and self.geometry().contains(point):
+            return
+        if self.scan_busy and (background or self.ocr_results is None):
             return
         if not background and self.last_scan is not None and (point - self.last_scan).manhattanLength() < 3:
             return
         self.last_scan = QPoint(point)
         self.anchor = QPoint(point)
-        if self.isVisible() and self.capture_region is not None and self.capture_region.contains(point):
-            # Original HitScanner also reuses the last OCR while the popup covers the screen.
-            sx, sy = self.capture_scale
-            target = ((point.x() - self.capture_region.x()) * sx, (point.y() - self.capture_region.y()) * sy)
-            self.scan_busy = True
-            self.submit("", scan=(REUSE_LAST_VALUE, target), peek=True)
-            self.scan_request = self.cached_scan_request = self.requests.current
+        if not background and self.ocr_results is not None and self.capture_region is not None and self.capture_region.contains(point):
+            self.lookup_ocr(point)
+            return
+        if self.scan_busy:
             return
         was_visible = self.isVisible()
         self.hide()
@@ -518,13 +519,9 @@ class ClipboardWindow(QWidget):
             bits.setsize(image.sizeInBytes())
             pixels = np.frombuffer(bits, dtype=np.uint8).reshape(image.height(), image.bytesPerLine())
             pixels = pixels[:, :image.width() * 3].reshape(image.height(), image.width(), 3)[:, :, ::-1].copy()
-            target = ((point.x() - region.x()) * sx, (point.y() - region.y()) * sy)
-            if background:
-                self.background_request = generation
-                self.worker.queue.put((generation, "", None, (pixels, target)))
-            else:
-                self.submit("", scan=(pixels, target), peek=True)
-            self.scan_request = self.requests.current
+            self.background_request = generation if background else None
+            self.scan_request = generation
+            self.ocr_worker.queue.put((generation, pixels))
         except Exception:
             self.scan_busy = False
             if background:
@@ -532,6 +529,39 @@ class ClipboardWindow(QWidget):
                 return
             self.submit("")
             self.browser.setPlainText("Screen capture failed. You can still copy text to look it up.")
+
+    def recognized(self, request_id, results, error):
+        if request_id == getattr(self, "scan_request", None):
+            self.scan_busy = False
+        if not self.requests.accepts(request_id) or self.setup_thread is not None:
+            return
+        self.ocr_results = results
+        self.last_hit = None
+        self.prefetch_failed = bool(error)
+        if request_id == self.background_request and not self.holding:
+            return
+        if error:
+            self.deliver(request_id, None, error)
+        elif self.holding and not self.pinned:
+            self.lookup_ocr(QCursor.pos())
+
+    def lookup_ocr(self, point):
+        from meikipop.ocr.turkish_paddle import hit_word
+        sx, sy = self.capture_scale
+        target = ((point.x() - self.capture_region.x()) * sx,
+                  (point.y() - self.capture_region.y()) * sy)
+        hit = next((hit for result in self.ocr_results or ()
+                    if (hit := hit_word(result, target))), None)
+        if hit == self.last_hit and hit is not None:
+            return
+        self.last_hit = hit
+        if hit is None:
+            self.requests.next()
+            self.result = None
+            self.hide()
+            return
+        text, offset = hit
+        self.submit(text, scan=offset, peek=True)
 
     def apply_appearance(self):
         theme = self.settings.value("popup_theme", "Meikipop")
@@ -562,6 +592,7 @@ class ClipboardWindow(QWidget):
             QLineEdit {{background:transparent; color:{fg}; border:0; padding:3px;}}
             QPushButton {{background:transparent; color:{fg}; border:0; padding:0;}}
             QPushButton:hover {{color:{self.word_color}; background:{bg};}}
+            QPushButton:checked {{color:{self.word_color}; background:{bg};}}
             QPushButton:disabled {{color:#777;}}
             QPushButton::menu-indicator {{image:none; width:0;}}
         """)
@@ -597,18 +628,20 @@ class ClipboardWindow(QWidget):
 
     def start_setup(self, kind):
         if self.setup_thread is not None:
-            self.tray.showMessage("Meikipop setup", "Installation is already running.")
+            self.tray.showMessage("meikipop-turkish setup", "Installation is already running.")
             return
         self.requests.next()
         self.holding = False
-        self.prefetched = None
         self.scan_busy = False
         self.worker.queue.put(None)
+        self.ocr_worker.queue.put(None)
+        ocr_worker = self.ocr_worker
         worker = self.worker
 
         def install():
             # Release SQLite handles on their owning thread before replacing packs.
             worker.join()
+            ocr_worker.join()
             try:
                 run_setup(kind, worker.dictionary, worker.model_dir)
                 message = "Installation complete. Ready to look up text."
@@ -625,20 +658,25 @@ class ClipboardWindow(QWidget):
     def setup_finished(self, message):
         self.setup_thread = None
         self.prefetch_failed = False
+        self.ocr_results = None
+        self.last_hit = None
+        self.ocr_worker = OCRWorker(self.signals)
+        self.ocr_worker.start()
         old = self.worker
         self.worker = TextWorker(self.signals, old.dictionary, old.analyzer, old.model_dir)
         self.worker.start()
         self.setup_status = message
         self.signals.setup_busy.emit(False)
-        self.tray.showMessage("Meikipop setup", message)
+        self.tray.showMessage("meikipop-turkish setup", message)
 
     def request_quit(self):
         if self.setup_thread is not None:
-            self.tray.showMessage("Meikipop setup", "Please wait for installation to finish before quitting.")
+            self.tray.showMessage("meikipop-turkish setup", "Please wait for installation to finish before quitting.")
         else:
             QApplication.instance().quit()
 
     def dismiss(self):
+        self.speech.stop()
         self.selection_ticket += 1
         self.leave_timer.stop()
         self.selection.cancel()
@@ -650,7 +688,6 @@ class ClipboardWindow(QWidget):
         self.holding = False
         self.suppress_hold = True
         self.result = None
-        self.prefetched = None
         self.history.clear()
         self.back_button.setEnabled(False)
         self.browser.clear()
@@ -672,6 +709,8 @@ class ClipboardWindow(QWidget):
             self.input.shutdown()
         self.worker.queue.put(None)
         self.worker.join(timeout=3)
+        self.ocr_worker.queue.put(None)
+        self.ocr_worker.join(timeout=3)
         self.tray.hide()
 
 
@@ -680,9 +719,16 @@ def run_setup(kind, dictionary, model_dir=None):
     executable = Path(sys.executable)
     if executable.name.lower() == "pythonw.exe":
         executable = executable.with_name("python.exe")
-    commands = {"dictionary": "build-turkish-dict", "model": "setup-turkish-model",
+    rollback = kind.startswith("rollback:")
+    kind = kind.removeprefix("rollback:")
+    commands = {"wiktionary": "setup-turkish-wiktionary", "dictionary": "build-turkish-dict", "model": "setup-turkish-model",
                 "wordnet": "setup-turkish-wordnet", "ocr": "setup-turkish-ocr"}
-    args = [str(executable), "-m", "meikipop.scripts.turkish", commands[kind]]
+    if getattr(sys, "frozen", False):
+        args = [str(executable.with_name("meikipop-turkish-cli.exe")), "--setup", commands[kind]]
+    else:
+        args = [str(executable), "-m", "meikipop.scripts.turkish", commands[kind]]
+    if rollback:
+        args.append("--rollback")
     if kind == "dictionary":
         args.extend(["--output", str(Path(dictionary).parent)])
     if kind == "model" and model_dir:
@@ -693,7 +739,7 @@ def run_setup(kind, dictionary, model_dir=None):
     if completed.returncode:
         detail = (completed.stderr or completed.stdout).strip()
         if "PermissionError" in detail:
-            raise RuntimeError("The data files are in use or not writable. Close other Meikipop instances and retry.")
+            raise RuntimeError("The data files are in use or not writable. Close other meikipop-turkish instances and retry.")
         raise RuntimeError(detail.splitlines()[-1] if detail else f"Installer exited with code {completed.returncode}")
 
 
@@ -702,10 +748,13 @@ def run_clipboard(dictionary, analyzer="stanza", model_dir=None, hotkey=None, se
     from meikipop.utils.paths import paths
     lock = QLockFile(str(Path(paths.data_dir) / "turkish-desktop.lock"))
     if not lock.tryLock(0):
-        QMessageBox.information(None, "Meikipop", "Meikipop is already running. Use its tray icon to open Settings or quit.")
+        QMessageBox.information(None, "meikipop-turkish", "meikipop-turkish is already running. Use its tray icon to open Settings or quit.")
         return 0
+    app.setApplicationName("meikipop-turkish")
     app.setWindowIcon(QIcon(paths.get_resource_path("icon.ico")))
     app.setQuitOnLastWindowClosed(False)
     window = ClipboardWindow(dictionary, analyzer, model_dir, hotkey, search_hotkey)
     app.aboutToQuit.connect(window.shutdown)
+    if not Path(dictionary).exists():
+        QTimer.singleShot(0, window.open_settings)
     return app.exec()

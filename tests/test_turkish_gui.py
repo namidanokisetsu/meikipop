@@ -328,26 +328,42 @@ class ClipboardTests(unittest.TestCase):
         self.window.background_request = self.window.requests.next()
         self.window.scan_request = self.window.background_request
         self.window.scan_busy = True
-        self.window.deliver(self.window.background_request, None, "Local OCR failed")
+        self.window.recognized(self.window.background_request, None, "Local OCR failed")
         self.assertFalse(self.window.isVisible())
         self.assertFalse(self.window.scan_busy)
         self.assertTrue(self.window.prefetch_failed)
 
     def test_visible_peek_reuses_hit_scan_without_recapture(self):
-        from meikipop.pipeline import REUSE_LAST_VALUE
         self.window.submit("kitap", peek=True)
         self.wait_result()
         self.window.move(500, 500)
         self.window.capture_region = QRect(0, 0, 400, 200)
+        self.window.ocr_results = [{"rec_texts": ["kitap yaz"], "text_word": [["kitap", "yaz"]],
+                                    "text_word_boxes": [[[0, 0, 150, 150], [160, 0, 250, 150]]]}]
         self.window.holding = True
         text = self.window.browser.toPlainText()
         with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=QPoint(100, 100)), \
                 patch.object(self.window.worker.queue, "put") as put, \
                 patch.object(self.window, "capture_pointer") as capture:
             self.window.scan_pointer()
-            self.assertIs(put.call_args.args[0][3][0], REUSE_LAST_VALUE)
+            self.assertEqual(put.call_args.args[0][1:], ("kitap yaz", None, 0))
             self.assertEqual(self.window.browser.toPlainText(), text)
             capture.assert_not_called()
+
+    def test_selection_shortcut_does_not_require_automatic_selection(self):
+        with patch.object(self.window.selection, "start") as start:
+            self.window.input.selection_requested.emit()
+            start.assert_called_once_with(wait_for_modifiers=True)
+
+    def test_frozen_setup_uses_bundled_helper(self):
+        with patch("meikipop.gui.turkish.window.sys.frozen", True, create=True), \
+                patch("meikipop.gui.turkish.window.sys.executable", "C:/app/meikipop-turkish.exe"), \
+                patch("meikipop.gui.turkish.window.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run_setup("rollback:wiktionary", Path("custom/dictionary.sqlite3"))
+            args = run.call_args.args[0]
+            self.assertEqual(Path(args[0]).name, "meikipop-turkish-cli.exe")
+            self.assertEqual(args[1:], ["--setup", "setup-turkish-wiktionary", "--rollback"])
 
 
 if __name__ == "__main__":

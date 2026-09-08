@@ -14,6 +14,8 @@ class DesktopInput(QObject):
     hold_changed = pyqtSignal(bool)
     clicked = pyqtSignal()
     selected = pyqtSignal()
+    dragged = pyqtSignal()
+    selection_requested = pyqtSignal()
     dismissed = pyqtSignal()
     clipboard_requested = pyqtSignal()
     search_requested = pyqtSignal()
@@ -24,6 +26,7 @@ class DesktopInput(QObject):
         self.visible = threading.Event()
         self._escape_down = False
         self._last_click = None
+        self._press_point = None
         self.double_click_seconds = double_click_ms / 1000
         self.keys = keyboard.Listener(on_press=lambda key: self.key(key, True),
                                       on_release=lambda key: self.key(key, False),
@@ -34,11 +37,12 @@ class DesktopInput(QObject):
         self.keys.start()
         self.clicks.start()
 
-    def set_shortcuts(self, clipboard_hotkey, search_hotkey):
-        validate_shortcuts((clipboard_hotkey, search_hotkey))
+    def set_shortcuts(self, clipboard_hotkey, search_hotkey, selection_hotkey=""):
+        validate_shortcuts((clipboard_hotkey, search_hotkey, selection_hotkey))
         bindings = {key: callback for key, callback in
                     ((clipboard_hotkey, self.clipboard_requested.emit),
-                     (search_hotkey, self.search_requested.emit)) if key}
+                     (search_hotkey, self.search_requested.emit),
+                     (selection_hotkey, self.selection_requested.emit)) if key}
         replacement = TextHotKeys(bindings) if bindings else None
         if replacement:
             replacement.start()
@@ -68,7 +72,14 @@ class DesktopInput(QObject):
             self.hold_changed.emit(self.activation.active)
         if down:
             self.clicked.emit()
+            if button == mouse.Button.left:
+                self._press_point = (x, y)
         if button == mouse.Button.left and not down:
+            origin, self._press_point = self._press_point, None
+            if origin and abs(x - origin[0]) + abs(y - origin[1]) >= 8:
+                self._last_click = None
+                self.dragged.emit()
+                return
             now = monotonic()
             previous, self._last_click = self._last_click, (now, x, y)
             if previous and now - previous[0] <= self.double_click_seconds and abs(x - previous[1]) <= 4 and abs(y - previous[2]) <= 4:
