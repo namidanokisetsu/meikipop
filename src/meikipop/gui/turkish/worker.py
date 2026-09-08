@@ -1,5 +1,6 @@
 """Independent recognition and serialized offline dictionary workers."""
 from dataclasses import replace
+import logging
 from pathlib import Path
 import threading
 import sqlite3
@@ -7,6 +8,8 @@ import sqlite3
 from meikipop.dictionary.turkish_lookup import TurkishLookup
 from meikipop.dictionary.turkish_store import TurkishStore
 from meikipop.utils.lastest_queue import LatestValueQueue
+
+logger = logging.getLogger(__name__)
 
 
 class TextWorker(threading.Thread):
@@ -97,5 +100,8 @@ class OCRWorker(threading.Thread):
                     ocr = LocalOCR()
                 results = ocr.scan_cache.scan(pixels, ocr.recognize)
                 self.signals.recognized.emit(request_id, results, "")
-            except Exception:
-                self.signals.recognized.emit(request_id, None, "Local OCR failed. Install OCR in Settings, then retry.")
+            except Exception as error:
+                logger.exception("Turkish local OCR failed")
+                detail = " ".join(str(error).split()) or type(error).__name__
+                detail = detail[:240]
+                self.signals.recognized.emit(request_id, None, f"Local OCR unavailable: {detail}")

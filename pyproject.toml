@@ -36,7 +36,7 @@ meikipop-turkish = "meikipop.scripts.turkish:desktop"
 
 [project.optional-dependencies]
 turkish = ["stanza==1.14.0", "torch==2.8.0"]
-turkish-ocr = ["paddleocr==3.7.0", "paddlex==3.7.2", "paddlepaddle==3.3.1"]
+turkish-ocr = ["paddleocr==3.7.0", "paddlex[ocr-core]==3.7.2", "paddlepaddle==3.3.1"]
 
 [project.entry-points."meikipop.scripts"]
 build-dict = "meikipop.scripts.build_dictionary:main"

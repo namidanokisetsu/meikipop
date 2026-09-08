@@ -38,6 +38,8 @@ def setup_ocr(root=None):
             raise ValueError("OCR model download is empty")
         (stage / "manifest.json").write_text(json.dumps({"models": MODELS, "files": hashes}, indent=2), encoding="utf-8")
         validate_models(stage)
+        # Verify the bundled inference runtime before activating the new models.
+        LocalOCR(stage)
         if root.exists():
             previous = Path(temporary) / "previous"
             root.replace(previous)
@@ -69,8 +71,8 @@ def validate_models(root):
 
 
 class LocalOCR:
-    def __init__(self):
-        root = model_root()
+    def __init__(self, root=None):
+        root = Path(root or model_root())
         validate_models(root)
         prepare_environment()
         from paddleocr import PaddleOCR

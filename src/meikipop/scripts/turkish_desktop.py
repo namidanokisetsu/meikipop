@@ -16,6 +16,11 @@ def main():
         from pathlib import Path
         assert Path(paths.get_resource_path("turkish/wiktionary.json")).is_file()
         print("meikipop-turkish: bundled dependencies and resources OK")
+        model_path = Path(paths.data_dir) / "languages/tr/paddle/3.7.0/manifest.json"
+        if model_path.is_file():
+            from meikipop.ocr.turkish_paddle import LocalOCR
+            LocalOCR()
+            print("meikipop-turkish: local OCR runtime OK")
         return 0
     from meikipop.scripts.turkish import main as turkish_main
     if sys.argv[1:2] == ["--setup"]:
