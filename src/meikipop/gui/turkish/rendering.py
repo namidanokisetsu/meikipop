@@ -5,7 +5,7 @@ from urllib.parse import quote
 from meikipop.config.config import config
 
 
-def render_result(result, show_more=False, examples=True, wordnet_expanded=False, word_color=None, header_size=None):
+def render_result(result, show_more=False, examples=True, wordnet_expanded=False, word_color=None, header_size=None, source_order=None):
     word_color = word_color or config.color_highlight_word
     header_size = header_size or config.font_size_header
     html = [f'<style>a {{color: {word_color}; text-decoration:none;}} '
@@ -22,7 +22,7 @@ def render_result(result, show_more=False, examples=True, wordnet_expanded=False
             html.append(f'<a href="token:{i}">{label}</a>')
             offset = token.end
         html.append(escape(result.text[offset:]).replace("\n", "<br>") + "</p><hr>")
-    if not result.entries and not result.wordnet and not result.suggestions:
+    if not result.entries and not result.wordnet and not result.wiktionary and not result.suggestions:
         html.append("<p>No entry found.</p>")
     if result.suggestions:
         html.append("<p><b>Did you mean?</b></p><ul>")
@@ -30,11 +30,12 @@ def render_result(result, show_more=False, examples=True, wordnet_expanded=False
             html.append(f'<li><a href="suggestion:{i}">{escape(suggestion.headword)}</a>'
                         "</li>")
         html.append("</ul>")
+    prefix, html = html, []
     if result.entries:
         html.append("<p><small><b>TDK</b></small></p>")
     for entry in result.entries:
         html.append(f'<h2><a href="pin:">{escape(entry["headword"])}</a></h2>')
-        html.append("<ol style='margin-top:3px; margin-bottom:4px; margin-left:18px;'>")
+        html.append("<ol style='margin-top:3px; margin-bottom:4px; margin-left:12px;'>")
         for sense in entry["senses"] if show_more else entry["senses"][:3]:
             tags = ", ".join(sense["labels"])
             tag_html = f"<i>{escape(tags)}</i> " if config.show_pos or config.show_tags else ""
@@ -42,22 +43,22 @@ def render_result(result, show_more=False, examples=True, wordnet_expanded=False
             if examples:
                 for example in sense["examples"][:1]:
                     author = " · " + escape(example["author"]) if example["author"] else ""
-                    html.append(f"<p>{escape(example['text'])}{author}</p>")
+                    html.append(f"<p><i>{escape(example['text'])}{author}</i></p>")
             html.append("</li>")
         html.append("</ol>")
         if not show_more and (len(entry["senses"]) > 3 or entry["relations"]):
-            html.append('<p><a href="more:" title="Expand">▾</a></p>')
+            html.append('<table width="100%"><tr><td align="center"><a href="more:">Show more ▾</a></td></tr></table>')
         if entry["relations"]:
             if show_more:
                 html.append("<p><b>Related expressions</b></p>")
                 for i, rel in enumerate(entry["relations"]):
                     html.append(f'<p><a href="related:{entry["id"]}:{i}">{escape(rel["phrase"])}</a></p>')
-    if result.wordnet and result.entries and not wordnet_expanded:
+    tdk, html = "".join(html), []
+    if result.wordnet and (result.entries or result.wiktionary) and not wordnet_expanded:
         html.append('<p><a href="section:wordnet">KeNet ▸</a></p>')
-        return "".join(html)
-    if result.wordnet:
+    elif result.wordnet:
         html.append('<hr><a name="wordnet"></a><p><small><b>KeNet</b></small></p>')
-    if result.wordnet:
+    if result.wordnet and (wordnet_expanded or not (result.entries or result.wiktionary)):
         for group in result.wordnet if show_more else result.wordnet[:3]:
             html.append(f"<p><b>{escape(group['definition'])}</b> <small>{escape(group['pos'])}</small></p>")
             matched = {m["spelling"] for m in group.get("matched_members", ())}
@@ -74,6 +75,15 @@ def render_result(result, show_more=False, examples=True, wordnet_expanded=False
                 html.append(f'<p><small>{escape(labels.get(kind, kind.replace("_", " ").title()))}:</small> ')
                 html.append(" · ".join(f'<a href="word:{quote(w, safe="")}">{escape(w)}</a>' for w in (members if show_more else members[:5])) + "</p>")
         if not show_more:
-            html.append('<p><a href="more:">▾</a></p>')
-    return "".join(html)
+            html.append('<table width="100%"><tr><td align="center"><a href="more:">Show more ▾</a></td></tr></table>')
+    from .wiktionary_rendering import render_wiktionary
+    sections = {"TDK": tdk, "Wiktionary": render_wiktionary(result.wiktionary, show_more, examples), "KeNet": "".join(html)}
+    order = dictionary_order(source_order)
+    return "".join(prefix) + "<hr>".join(sections[name] for name in order if sections[name])
+
+
+def dictionary_order(value=None):
+    names = ("TDK", "Wiktionary", "KeNet")
+    value = value if isinstance(value, (list, tuple)) else []
+    return list(dict.fromkeys([name for name in value if name in names] + list(names)))
 

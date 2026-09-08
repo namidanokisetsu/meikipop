@@ -1,0 +1,9 @@
+{
+  "pack_id": "tr-wiktionary",
+  "url": "https://huggingface.co/datasets/daxida/wty-release/resolve/main/latest/dict/tr/en/wty-tr-en.zip",
+  "repository": "https://github.com/yomidevs/wiktionary-to-yomitan",
+  "source": "English Wiktionary via Kaikki and wiktionary-to-yomitan",
+  "license": "CC-BY-SA-4.0 and GFDL; individual media have separate licenses",
+  "attribution": "https://en.wiktionary.org/wiki/Wiktionary:Copyrights",
+  "update_policy": "Explicit update downloads the current extract and records its SHA-256 in the installed pack. No runtime downloads."
+}

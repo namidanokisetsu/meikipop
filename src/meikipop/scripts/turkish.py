@@ -24,7 +24,12 @@ def main(argv=None):
     wordnet = sub.add_parser("setup-turkish-wordnet", help="Build the locked offline KeNet pack")
     wordnet.add_argument("--source", type=Path)
     wordnet.add_argument("--output", type=Path)
-    sub.add_parser("setup-turkish-ocr", help="Explicitly download local PaddleOCR models")
+    ocr = sub.add_parser("setup-turkish-ocr", help="Explicitly download local PaddleOCR models")
+    english = sub.add_parser("setup-turkish-wiktionary", help="Update English Wiktionary from wiktionary-to-yomitan")
+    english.add_argument("--source", type=Path)
+    english.add_argument("--output", type=Path)
+    for command in (build, setup, wordnet, ocr, english):
+        command.add_argument("--rollback", action="store_true")
     for command in ("turkish-clipboard", "lookup-turkish"):
         cmd = sub.add_parser(command)
         cmd.add_argument("--dictionary", type=Path)
@@ -38,24 +43,13 @@ def main(argv=None):
             cmd.add_argument("--debug", action="store_true", help="Include raw analysis and attempted lookup routes")
             cmd.add_argument("--target", type=int, help="Zero-based token index (otherwise whole phrase, then first token)")
     args = parser.parse_args(argv)
-    if args.command == "setup-turkish-wordnet":
-        from meikipop.dictionary.turkish_wordnet import setup_wordnet
-        print_json(setup_wordnet(args.source, args.output))
+    kinds = {"build-turkish-dict": "dictionary", "setup-turkish-model": "model",
+             "setup-turkish-wordnet": "wordnet", "setup-turkish-ocr": "ocr", "setup-turkish-wiktionary": "wiktionary"}
+    if args.command in kinds:
+        from meikipop.dictionary.turkish_assets import setup_asset
+        print(setup_asset(kinds[args.command], getattr(args, "source", None), getattr(args, "output", None),
+                          getattr(args, "model_dir", None), args.rollback))
         return
-    if args.command == "setup-turkish-ocr":
-        from meikipop.ocr.turkish_paddle import setup_ocr
-        print(setup_ocr())
-        return
-    if args.command == "build-turkish-dict":
-        from meikipop.scripts.build_turkish_dictionary import main as build_main
-        forwarded = []
-        for name in ("source", "output"):
-            if getattr(args, name):
-                forwarded.extend((f"--{name}", str(getattr(args, name))))
-        return build_main(forwarded)
-    if args.command == "setup-turkish-model":
-        from meikipop.language.stanza_analyzer import setup_models
-        return setup_models(args.model_dir)
     from meikipop.dictionary.turkish_store import default_dictionary_path, TurkishStore
     dictionary = args.dictionary or default_dictionary_path()
     if args.command == "turkish-clipboard":
@@ -83,7 +77,8 @@ def main(argv=None):
 
 
 def desktop():
-    return main(["turkish-clipboard", *sys.argv[1:]])
+    from meikipop.scripts.turkish_desktop import main as launch
+    return launch()
 
 
 if __name__ == "__main__":

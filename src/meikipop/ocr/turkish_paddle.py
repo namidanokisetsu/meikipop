@@ -21,10 +21,10 @@ def prepare_environment():
     os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
 
-def setup_ocr():
+def setup_ocr(root=None):
     prepare_environment()
     from paddlex.inference.utils.official_models import official_models
-    root = model_root()
+    root = Path(root or model_root())
     root.parent.mkdir(parents=True, exist_ok=True)
     # Activate a new immutable directory only after both downloads are complete.
     with tempfile.TemporaryDirectory(dir=root.parent) as temporary:

@@ -42,6 +42,7 @@ class TextResult:
     attempts: tuple = ()
     wordnet: tuple = ()
     wordnet_status: str = ""
+    wiktionary: tuple = ()
 
 
 class TurkishLookup:
