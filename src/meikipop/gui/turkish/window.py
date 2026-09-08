@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel, QMenu
 
 from .worker import TextWorker, OCRWorker
 from .rendering import render_result
+from .browser import DictionaryBrowser
 from .desktop_input import DesktopInput
 from meikipop.gui.selection import SelectionCapture
 from meikipop.gui.themes import THEMES
@@ -127,7 +128,8 @@ class ClipboardWindow(QWidget):
         self.search.returnPressed.connect(lambda: self.submit(self.search.text()) if self.search.text().strip() else None)
         self.search.hide()
         content.addWidget(self.search)
-        self.browser = QTextBrowser()
+        self.browser = DictionaryBrowser()
+        self.browser.word_selected.connect(self.submit)
         self.browser.setFrameShape(QFrame.Shape.NoFrame)
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)

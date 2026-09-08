@@ -156,6 +156,23 @@ class ClipboardTests(unittest.TestCase):
         self.wait_result()
         self.assertEqual(self.window.result.text, "kitap kurdu")
 
+    def test_double_click_inside_definition_looks_up_and_retains_back(self):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        self.window.submit("kitap")
+        self.wait_result()
+        cursor = self.window.browser.document().find("eser")
+        point = self.window.browser.cursorRect(cursor).center()
+        with patch.object(QApplication, "clipboard") as clipboard:
+            QTest.mouseDClick(self.window.browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+            self.wait_result()
+            clipboard.assert_not_called()
+        self.assertEqual(self.window.result.text, "eser")
+        self.assertTrue(self.window.pinned)
+        self.window.go_back()
+        self.wait_result()
+        self.assertEqual(self.window.result.text, "kitap")
+
     def test_oversized_input_invalidates_pending_lookup(self):
         self.window.submit("kitap")
         old = self.window.requests.current
