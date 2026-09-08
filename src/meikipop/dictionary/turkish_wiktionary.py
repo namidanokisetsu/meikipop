@@ -85,11 +85,27 @@ class WiktionaryStore:
 
     def lookup(self, words):
         entries, seen = [], set()
-        for word in words:
+        pending = list(words)
+        queued = {normalize(word) for word in pending}
+        index = 0
+        while index < len(pending):
+            word = pending[index]
+            index += 1
             for (data,) in self.db.execute("SELECT data FROM entries WHERE key=? ORDER BY rowid", (normalize(word),)):
-                if data not in seen:
-                    entries.append(json.loads(data))
-                    seen.add(data)
+                if data in seen:
+                    continue
+                entry = json.loads(data)
+                entries.append(entry)
+                seen.add(data)
+                labels = (entry.get("pos", "") + " " + entry.get("tags", "")).split()
+                if any(label.lower() in ("non-lemma", "nonlemma") for label in labels):
+                    for definition in entry.get("definitions", ()):
+                        if (isinstance(definition, list) and definition
+                                and isinstance(definition[0], str)):
+                            lemma = definition[0]
+                            if normalize(lemma) not in queued:
+                                pending.append(lemma)
+                                queued.add(normalize(lemma))
         return tuple(entries)
 
     def close(self):

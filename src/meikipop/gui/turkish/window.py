@@ -385,7 +385,9 @@ class ClipboardWindow(QWidget):
             self.render()
             self.browser.scrollToAnchor(url.path())
         elif url.scheme() == "word":
+            wordnet_expanded = self.wordnet_expanded
             self.submit(unquote(url.path()))
+            self.wordnet_expanded = wordnet_expanded
         elif url.scheme() == "token":
             self.submit(self.result.text, int(url.path()))
         elif url.scheme() == "suggestion":
@@ -393,7 +395,7 @@ class ClipboardWindow(QWidget):
             if 0 <= index < len(self.result.suggestions):
                 self.submit(self.result.suggestions[index].headword)
         elif url.scheme() == "more":
-            self.show_more = True
+            self.show_more = not self.show_more
             self.render()
         elif url.scheme() == "related":
             eid, index = url.path().rsplit(":", 1)
