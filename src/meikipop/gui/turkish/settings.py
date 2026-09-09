@@ -75,6 +75,7 @@ class SettingsDialog(QDialog):
             self.fields[key] = field
         check(general, "auto_clipboard", "Look up copied text:", False)
         check(general, "audio_enabled", "Pronunciation button:", False)
+        check(general, "audio_autoplay", "Autoplay pronunciation:", False)
         selection = check(general, "selection_lookup", "Look up double-clicked text:", False)
         selection.setEnabled(sys.platform == "win32")
         check(general, "drag_lookup", "Look up dragged selections:", False).setEnabled(sys.platform == "win32")

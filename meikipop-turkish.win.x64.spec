@@ -6,7 +6,7 @@ root = Path(SPECPATH)
 datas = [(str(root / "src/meikipop/resources"), "meikipop/resources"),
          (str(root / "LICENSE"), "licenses/meikipop")]
 binaries, hiddenimports = [], ["PyQt6.QtTextToSpeech"]
-for package in ("stanza", "paddle", "paddleocr", "paddlex", "imagesize"):
+for package in ("stanza", "paddle", "paddleocr", "paddlex", "imagesize", "mss"):
     data, binary, hidden = collect_all(package)
     datas += data
     binaries += binary

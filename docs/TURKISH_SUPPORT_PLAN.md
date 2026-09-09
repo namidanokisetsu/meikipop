@@ -27,15 +27,17 @@ can be installed and used without confusion.
    selected-text shortcuts and scan-key lookup share the same history and lookup
    path, without clipboard capture. Empty OCR hits hide the popup.
    TDK, Wiktionary and KeNet can be
-   reordered in Settings without combining their senses. KeNet remains collapsed
-   alongside dictionary results, and opens directly when it is the only match.
+   reordered in Settings without combining their senses. KeNet is expanded by
+   default alongside dictionary results, and opens directly when it is the only
+   match.
 
-3. **OCR dispatch separated.** Recognition has its own latest-frame worker;
-   pointer hit-testing reads cached boxes on the Qt thread, and only the latest
-   text lookup waits for Stanza/TDK/KeNet/Wiktionary. Background captures retain
-   the configurable throttle and stale deliveries are rejected. CPU inference
-   and unchanged-image caching remain offline. The historical 237 ms changed
-   frame / 0.1 ms cached-hit measurements are not new-build benchmarks.
+3. **OCR dispatch separated.** Screen capture and recognition run through their
+   own latest-frame worker; pointer hit-testing reads cached boxes on the Qt
+   thread, and only the latest text lookup waits for Stanza/TDK/KeNet/Wiktionary.
+   Background captures retain the configurable throttle and stale deliveries
+   are rejected. CPU inference and unchanged-image caching remain offline. The
+   historical 237 ms changed frame / 0.1 ms cached-hit measurements are not
+   new-build benchmarks.
 
 4. **Updateable English dictionary implemented.** Import Turkish-to-English
    Yomitan releases from [wiktionary-to-yomitan](https://github.com/yomidevs/wiktionary-to-yomitan),
@@ -54,8 +56,10 @@ can be installed and used without confusion.
    First launch opens data settings when TDK is missing. Python, Qt, Stanza,
    Torch and Paddle dependencies are bundled; data/model downloads remain explicit.
    Complete staged asset installs record checksums and retain one previous
-   installation for rollback. Optional pronunciation uses an installed Turkish
-   system voice instead of the Japanese audio database. Build locally with
+   installation for rollback. Optional pronunciation and opt-in autoplay use an
+   installed Turkish system voice instead of the Japanese audio database. The
+   Windows speech backend is queried with the Turkish locale so installed voices
+   are discoverable. Build locally with
    `Build-Turkish.ps1` or the Turkish Windows workflow; installer artifacts have
    SHA-256 sidecars. No publishing or installation on this desktop is automatic.
 

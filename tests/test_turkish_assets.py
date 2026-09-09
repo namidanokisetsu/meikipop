@@ -58,6 +58,13 @@ class AssetTests(unittest.TestCase):
         self.assertIn("Show more", preview)
         self.assertNotIn("Show less", preview)
 
+        tdk_only = render_result(result, expanded_sources={"TDK"})
+        self.assertIn("TDK 6", tdk_only)
+        self.assertNotIn("gloss 6", tdk_only)
+        wiktionary_only = render_result(result, expanded_sources={"Wiktionary"})
+        self.assertNotIn("TDK 6", wiktionary_only)
+        self.assertIn("gloss 6", wiktionary_only)
+
         expanded = render_result(result, show_more=True)
         self.assertIn("gloss 6", expanded)
         self.assertIn("TDK 6", expanded)
@@ -78,6 +85,7 @@ class AssetTests(unittest.TestCase):
         self.assertIn("first", preview)
         self.assertIn("second", preview)
         self.assertIn('class="term"', preview)
+        self.assertNotIn("Synonyms:", preview)
         expanded = render_result(result, show_more=True)
         self.assertIn("Meaning 6", expanded)
 

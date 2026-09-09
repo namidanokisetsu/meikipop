@@ -152,5 +152,7 @@ def render_wiktionary(entries, expanded, examples):
             html.append(f'<p class="metadata">{escape(metadata)}</p>')
         html.extend(glosses)
     if needs_more:
-        html.append(f'<table class="expand"><tr><td align="center"><a class="control" href="more:">{"Show less ▴" if expanded else "Show more ▾"}</a></td></tr></table>')
+        html.append(f'<a name="more-Wiktionary"></a><table class="expand"><tr><td align="center">'
+                    f'<a class="control" href="more:Wiktionary">{"Show less ▴" if expanded else "Show more ▾"}</a>'
+                    '</td></tr></table>')
     return "".join(html)

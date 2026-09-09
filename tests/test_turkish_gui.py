@@ -12,6 +12,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QUrl, QPoint, QRect, QSettings
 from PyQt6.QtWidgets import QApplication
 
+from meikipop.dictionary.turkish_lookup import TextResult
 from meikipop.gui.turkish.window import ClipboardWindow, run_setup
 from meikipop.scripts.build_turkish_dictionary import build
 
@@ -295,7 +296,7 @@ class ClipboardTests(unittest.TestCase):
         self.window.submit("kitap")
         self.wait_result()
         self.assertEqual(len(self.window.result.wordnet), 1)
-        self.assertNotIn("Yazılı eser", self.window.browser.toPlainText())
+        self.assertIn("Yazılı eser", self.window.browser.toPlainText())
         self.window.navigate(QUrl("section:wordnet"))
         self.assertIn("Yazılı eser", self.window.browser.toPlainText())
         self.window.navigate(QUrl("word:betik"))
@@ -325,8 +326,36 @@ class ClipboardTests(unittest.TestCase):
             self.app.processEvents()
             capture.assert_not_called()
             self.assertEqual(self.window.pos(), position)
-        self.window.navigate(QUrl("more:"))
+        self.window.navigate(QUrl("more:TDK"))
         self.assertEqual(self.window.pos(), position)
+
+    def test_show_more_preserves_browser_scroll_position(self):
+        self.window.settings.setValue("max_height", 200)
+        senses = tuple({"text": f"Meaning {i} " + ("long definition " * 8), "labels": [], "examples": []}
+                       for i in range(1, 13))
+        self.window.result = TextResult(
+            "word", (), None, (dict(headword="word", senses=senses, relations=[]),), "")
+        self.window.render()
+        self.window.show()
+        self.app.processEvents()
+        scrollbar = self.window.browser.verticalScrollBar()
+        self.assertGreater(scrollbar.maximum(), 0)
+        position = min(24, scrollbar.maximum())
+        scrollbar.setValue(position)
+        self.window.navigate(QUrl("more:TDK"))
+        self.app.processEvents()
+        self.assertEqual(scrollbar.value(), position)
+
+    def test_pinned_peek_popup_stops_in_popup_ocr(self):
+        self.window.submit("kitap", peek=True)
+        self.window.holding = True
+        self.wait_result()
+        self.window.pin()
+        point = self.window.browser.viewport().mapToGlobal(QPoint(12, 12))
+        with patch("meikipop.gui.turkish.window.QCursor.pos", return_value=point), \
+                patch.object(self.window, "lookup_popup_text") as lookup:
+            self.window.scan_pointer()
+        lookup.assert_not_called()
 
     def test_popup_sizes_to_content_and_scrolls_at_limit(self):
         self.window.settings.setValue("max_height", 200)

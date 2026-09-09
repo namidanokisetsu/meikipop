@@ -55,11 +55,13 @@ use the selected-text shortcut, or hold the scan key over a word. These all use
 the same lookup and Back history without reading or replacing the clipboard. Back history is limited
 to 32 entries and cleared on dismissal. Clipboard input is limited to 2,000
 characters. Clipboard contents, lookup history and screenshots are not logged or
-uploaded. KeNet expands independently; **Show more** reveals longer definitions.
+uploaded. Each dictionary expands independently; **Show more** reveals longer
+definitions for the source you clicked without changing the current scroll position.
 
-The optional **Pronunciation button** uses a Turkish system speech voice. Install
-one through Windows Settings if none is available. It does not use the Japanese
-audio database or download pronunciation files.
+The optional **Pronunciation button** and **Autoplay pronunciation** setting use
+a Turkish system speech voice. Install one through Windows Settings if none is
+available. It does not use the Japanese audio database or download pronunciation
+files.
 
 ## Build a Windows installer
 

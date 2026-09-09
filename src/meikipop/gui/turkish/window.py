@@ -67,9 +67,10 @@ class ClipboardWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.resize(320, 80)
-        self.wordnet_expanded = False
+        self.wordnet_expanded = True
         self.reposition = True
         self.pinned = False
+        self.popup_scan_locked = False
         self.holding = False
         self.suppress_hold = False
         self.last_scan = None
@@ -102,7 +103,7 @@ class ClipboardWindow(QWidget):
         self.requests = RequestState()
         self.result = None
         self.history = []
-        self.show_more = False
+        self.expanded_sources = set()
         from .audio import TurkishSpeech
         self.speech = TurkishSpeech(self)
         self.signals = Signals(self)
@@ -259,7 +260,7 @@ class ClipboardWindow(QWidget):
         self.popup_lookup_pending = (self.requests.current, text)
 
     def lookup_popup_point(self, point):
-        if not self.isVisible() or not self.browser.isVisible():
+        if self.popup_scan_locked or not self.isVisible() or not self.browser.isVisible():
             return False
         local = self.browser.viewport().mapFromGlobal(point)
         if not self.browser.viewport().rect().contains(local):
@@ -329,6 +330,8 @@ class ClipboardWindow(QWidget):
         if scan is None:
             self.scan_busy = False
         self.pinned = not peek
+        if peek:
+            self.popup_scan_locked = False
         self.pin_button.setChecked(self.pinned)
         self.reposition = self.reposition or not self.isVisible() or peek
         if scan is None and not text.strip():
@@ -342,8 +345,8 @@ class ClipboardWindow(QWidget):
             self.show()
             return
         self.result = None
-        self.show_more = False
-        self.wordnet_expanded = False
+        self.expanded_sources.clear()
+        self.wordnet_expanded = True
         if scan is None:
             self.browser.setPlainText("Reading…" if scan is not None else "Looking up…")
         self.worker.queue.put((request_id, text, target, scan))
@@ -365,16 +368,22 @@ class ClipboardWindow(QWidget):
             self.browser.setPlainText(error)
         else:
             self.render()
+            if self.settings.value("audio_autoplay", False, bool):
+                self.speak_result()
         self.show()
         if not self.pinned and not self.holding:
             self.leave_timer.start()
 
     def render(self):
         if self.result is not None:
+            scroll_value = self.browser.verticalScrollBar().value()
             self.browser.setToolTip(self.result.status)
-            self.browser.setHtml(render_result(self.result, self.show_more, self.examples.isChecked(),
-                                               self.wordnet_expanded, self.word_color, self.header_size,
-                                               self.settings.value("dictionary_order")))
+            self.browser.setHtml(render_result(
+                self.result, examples=self.examples.isChecked(), wordnet_expanded=self.wordnet_expanded,
+                word_color=self.word_color, header_size=self.header_size,
+                source_order=self.settings.value("dictionary_order"),
+                expanded_sources=self.expanded_sources))
+            self.browser.verticalScrollBar().setValue(scroll_value)
 
     def navigate(self, url):
         if self.result is None:
@@ -395,7 +404,13 @@ class ClipboardWindow(QWidget):
             if 0 <= index < len(self.result.suggestions):
                 self.submit(self.result.suggestions[index].headword)
         elif url.scheme() == "more":
-            self.show_more = not self.show_more
+            source = url.path().lstrip("/")
+            if source not in ("TDK", "Wiktionary", "KeNet"):
+                return
+            if source in self.expanded_sources:
+                self.expanded_sources.remove(source)
+            else:
+                self.expanded_sources.add(source)
             self.render()
         elif url.scheme() == "related":
             eid, index = url.path().rsplit(":", 1)
@@ -414,9 +429,15 @@ class ClipboardWindow(QWidget):
         if self.result is None:
             return
         self.pin()
+        self.speak_result()
+
+    def speak_result(self):
+        if self.result is None:
+            return
         text = self.result.entries[0]["headword"] if self.result.entries else self.result.text
         if not self.speech.speak(text):
-            self.tray.showMessage("meikipop-turkish", "Install a Turkish speech voice in Windows Settings.")
+            message = self.speech.last_error or "Install a Turkish speech voice in Windows Settings."
+            self.tray.showMessage("meikipop-turkish", message)
 
     def toggle_clipboard(self, enabled):
         self.settings.setValue("auto_clipboard", enabled)
@@ -438,6 +459,7 @@ class ClipboardWindow(QWidget):
     def pin(self):
         self.leave_timer.stop()
         self.pinned = True
+        self.popup_scan_locked = True
         self.holding = False
         self.suppress_hold = True
         self.pin_button.setChecked(True)
@@ -720,6 +742,7 @@ class ClipboardWindow(QWidget):
         self.scan_busy = False
         self.requests.next()
         self.pinned = False
+        self.popup_scan_locked = False
         self.holding = False
         self.suppress_hold = True
         self.result = None
