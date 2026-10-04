@@ -1,5 +1,6 @@
 """Immutable, indexed Yomitan packs shared by desktop search and OCR lookup."""
 from dataclasses import dataclass, replace
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -78,7 +79,10 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             raise ValueError("Unsupported Yomitan dictionary version.")
         destination = directory / f"{source_language}-{sha}.sqlite3"
         if destination.exists():
-            return destination
+            with closing(sqlite3.connect(destination)) as existing:
+                version = existing.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
+            if version and version[0] == "2":
+                return destination
         banks = sorted((n for n in zf.namelist() if re.fullmatch(r"term_bank_\d+\.json", n)),
                        key=lambda n: int(n[10:-5]))
         metadata_banks = [n for n in zf.namelist() if re.fullmatch(r"(?:term_meta|kanji)_bank_\d+\.json", n)]
@@ -96,7 +100,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE terms(id INTEGER PRIMARY KEY, term TEXT, reading TEXT,
                     key TEXT, reading_key TEXT, folded TEXT, score REAL, rules TEXT, definitions TEXT);
-                CREATE TABLE forms(key TEXT, folded TEXT, target TEXT);
+                CREATE TABLE forms(key TEXT, folded TEXT, target TEXT, labels TEXT);
                 CREATE TABLE frequencies(key TEXT, reading_key TEXT, rank REAL, label TEXT);
                 CREATE TABLE kanji(character TEXT PRIMARY KEY, data TEXT);
                 CREATE VIRTUAL TABLE gloss_search USING fts5(gloss, content='');
@@ -122,7 +126,9 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                     for definition in definitions:
                         if isinstance(definition, list):
                             if definition and isinstance(definition[0], str):
-                                forms.append((canonical, folded(term), key(definition[0], source_language)))
+                                labels = definition[1] if len(definition) > 1 and isinstance(definition[1], list) else []
+                                forms.append((canonical, folded(term), key(definition[0], source_language),
+                                              json.dumps([s for s in labels if isinstance(s, str)], ensure_ascii=False)))
                                 redirects += 1
                         else:
                             regular.append(definition)
@@ -134,7 +140,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                                   json.dumps(regular, ensure_ascii=False, separators=(",", ":"))))
                     glosses.append((count, " ".join(extract_glosses(regular))))
                 db.executemany("INSERT INTO terms VALUES(?,?,?,?,?,?,?,?,?)", terms)
-                db.executemany("INSERT INTO forms VALUES(?,?,?)", forms)
+                db.executemany("INSERT INTO forms VALUES(?,?,?,?)", forms)
                 db.executemany("INSERT INTO gloss_search(rowid,gloss) VALUES(?,?)", glosses)
                 if progress:
                     progress(f"{title}: {number}/{len(banks)}")
@@ -162,7 +168,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 CREATE INDEX form_folded ON forms(folded);
                 CREATE INDEX frequency_key ON frequencies(key,reading_key);
             """)
-            metadata = dict(schema_version="1", title=title, language=source_language,
+            metadata = dict(schema_version="2", title=title, language=source_language,
                             target_language=str(index.get("targetLanguage", "")),
                             frequency_mode=str(index.get("frequencyMode", "rank-based")),
                             revision=str(index.get("revision", "")), sha256=sha,
@@ -175,7 +181,17 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             if cancelled and cancelled():
                 raise InterruptedError("Dictionary import cancelled.")
             db.close()
-            os.replace(temporary, destination)
+            if destination.exists():
+                # Upgrade in a transaction: Windows readers can keep the existing pack open.
+                with closing(sqlite3.connect(destination)) as existing, existing:
+                    existing.execute("ATTACH DATABASE ? AS upgraded", (temporary,))
+                    existing.execute("BEGIN IMMEDIATE")
+                    existing.execute("ALTER TABLE forms ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'")
+                    existing.execute("""UPDATE forms SET labels=COALESCE((SELECT labels FROM upgraded.forms f
+                        WHERE f.rowid=forms.rowid AND f.key=forms.key AND f.target=forms.target),'[]')""")
+                    existing.execute("UPDATE metadata SET value='2' WHERE key='schema_version'")
+            else:
+                os.replace(temporary, destination)
         finally:
             db.close()
             if os.path.exists(temporary):
@@ -217,7 +233,7 @@ class Library:
                 db.row_factory = sqlite3.Row
                 db.execute("PRAGMA cache_size=-2048")
                 metadata = dict(db.execute("SELECT key,value FROM metadata"))
-                if metadata.get("schema_version") != "1":
+                if metadata.get("schema_version") not in ("1", "2"):
                     raise ValueError("Unsupported dictionary pack")
                 identity = (metadata["language"], metadata["title"])
                 if identity in selected:
@@ -267,26 +283,50 @@ class Library:
             katakana = "".join(chr(ord(c) + 0x60) if "ぁ" <= c <= "ゖ" else c for c in term)
             keys.update({hiragana: "exact", katakana: "exact"})
         # Forms may live in a separate pack. Resolve a bounded graph to avoid cycles.
+        form_paths = {}
+
+        def form_rows(meta, db, candidate, fold=False):
+            column = "folded" if fold else "key"
+            labels = "labels" if meta.get("schema_version") == "2" else "'[]'"
+            return db.execute(f"SELECT target,{labels} FROM forms WHERE {column}=? LIMIT 64",
+                              (folded(candidate) if fold else candidate,))
+
+        def remember_form(candidate, target, raw):
+            if target == term:
+                return
+            labels = tuple(json.loads(raw)) or ("inflected form",)
+            paths = form_paths.setdefault(target, [])
+            for parent in tuple(form_paths.get(candidate, [()])):
+                path = parent + labels
+                if path not in paths and len(paths) < 8:
+                    paths.append(path)
+
+        def inflections():
+            return {target: paths[0] if len(paths) == 1 else (" OR ".join(" · ".join(p) for p in paths),)
+                    for target, paths in form_paths.items() if paths}
+
         frontier = set(keys)
         for _ in range(3):
             following = set()
-            for _, _, db in packs:
+            for _, meta, db in packs:
                 for candidate in frontier:
-                    for row in db.execute("SELECT target FROM forms WHERE key=? LIMIT 64", (candidate,)):
+                    for row in form_rows(meta, db, candidate):
+                        remember_form(candidate, row[0], row[1])
                         if row[0] not in keys and len(keys) < 128:
                             keys[row[0]] = "form"
                             following.add(row[0])
             if not following:
                 break
             frontier = following
-        result = self._lookup_keys(packs, keys, limit)
+        result = self._lookup_keys(packs, keys, limit, inflections=inflections())
         if language == "tr" and tolerant:
             # A single indexed query fixes any number of missing Turkish accents.
             folded_keys = {term: "spelling"}
-            for _, _, db in packs:
-                for row in db.execute("SELECT target FROM forms WHERE folded=? LIMIT 64", (folded(term),)):
+            for _, meta, db in packs:
+                for row in form_rows(meta, db, term, fold=True):
+                    remember_form(term, row[0], row[1])
                     folded_keys[row[0]] = "form spelling"
-            result += self._lookup_keys(packs, folded_keys, limit, fold=True)
+            result += self._lookup_keys(packs, folded_keys, limit, fold=True, inflections=inflections())
         unique = {}
         for entry in result:
             unique.setdefault(entry.id, entry)
@@ -330,7 +370,7 @@ class Library:
                         stats=tuple(data.get("stats", {}).items())))
         return tuple(result)
 
-    def _lookup_keys(self, packs, keys, limit, fold=False):
+    def _lookup_keys(self, packs, keys, limit, fold=False, inflections=None):
         result = []
         # Direct spellings precede form-derived entries across all dictionaries.
         for candidate, route in keys.items():
@@ -341,7 +381,9 @@ class Library:
                 else:
                     rows = db.execute("SELECT * FROM terms WHERE key=? OR reading_key=? ORDER BY score DESC,id LIMIT ?",
                                       (candidate, candidate, limit))
-                result.extend(self._entry(path, meta, row, route) for row in rows)
+                result.extend(replace(self._entry(path, meta, row, route),
+                                      inflection=(inflections or {}).get(candidate, ()) if route.startswith("form") else ())
+                              for row in rows)
         return result
 
     def reverse(self, text, language="ja", limit=30):

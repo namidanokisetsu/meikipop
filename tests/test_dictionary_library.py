@@ -49,6 +49,36 @@ class LibraryTests(unittest.TestCase):
         self.library = Library(self.directory)
         self.assertEqual([e.term for e in self.library.lookup("yaz", "tr")], ["yaz", "yazmak"])
 
+    def test_turkish_form_labels_survive_import_and_accent_recovery(self):
+        self.pack("Words", [self.row("oğul", ["son"]), self.row("gelmek", ["come"])])
+        self.pack("Forms", [self.row("oğlum", [["oğul", ["my (possessive)"]]]),
+                            self.row("geldim", [["gelmek", ["past", "I"]]])])
+        self.library = Library(self.directory)
+        for spelling in ("oğlum", "oglum", "OGLUM"):
+            self.assertEqual(self.library.lookup(spelling, "tr")[0].inflection, ("my (possessive)",))
+        self.assertEqual(self.library.lookup("geldim", "tr")[0].inflection, ("past", "I"))
+        self.assertEqual(self.library.lookup("gelmek", "tr")[0].inflection, ())
+
+    def test_form_paths_remain_alternatives_and_old_packs_can_be_reimported(self):
+        import sqlite3
+        self.pack("Words", [self.row("ev", ["house"])])
+        path = self.pack("Forms", [self.row("evleri", [["ev", ["plural", "accusative"]],
+                                                     ["ev", ["his/her", "plural"]]])])
+        self.library = Library(self.directory)
+        self.assertEqual(self.library.lookup("evleri", "tr")[0].inflection,
+                         ("plural · accusative OR his/her · plural",))
+        self.library.close()
+        with sqlite3.connect(path) as db:
+            db.execute("ALTER TABLE forms DROP COLUMN labels")
+            db.execute("UPDATE metadata SET value='1' WHERE key='schema_version'")
+        db.close()
+        self.library.refresh()
+        self.assertEqual(self.library.lookup("evleri", "tr")[0].inflection, ("inflected form",))
+        import_yomitan(self.root / "Forms1.zip", self.directory)
+        self.library.refresh()
+        self.assertEqual(self.library.lookup("evleri", "tr")[0].inflection,
+                         ("plural · accusative OR his/her · plural",))
+
     def test_reverse_search_quotes_fts_and_supports_multiple_dictionaries(self):
         self.pack("A", [self.row("猫", ["cat; a domestic animal"], "ねこ")], "ja")
         self.pack("B", [self.row("猫", ["a cat"], "ねこ")], "ja")
