@@ -16,7 +16,8 @@ from meikipop.scripts import translation_server as server
 class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        # macOS aliases /var to /private/var; the installer returns real paths.
+        self.root = Path(self.temp.name).resolve()
 
     def tearDown(self):
         self.temp.cleanup()
