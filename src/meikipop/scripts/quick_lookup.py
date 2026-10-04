@@ -36,7 +36,13 @@ def main(argv=None):
     if sys.platform == "win32":
         app.setFont(QFont("Segoe UI", 10))
     app.setQuitOnLastWindowClosed(False)
+    from meikipop.gui.single_instance import SingleInstance
+    instance = SingleInstance(paths.data_dir, app)
+    if not instance.start(args.text, args.background):
+        return 0
+    app.aboutToQuit.connect(instance.shutdown)
     window = QuickLookupWindow(args.library)
+    instance.requested.connect(window.open_search)
     from meikipop.gui.text_triggers import TextTriggers
     text_triggers = TextTriggers(window)
     app.aboutToQuit.connect(text_triggers.shutdown)
