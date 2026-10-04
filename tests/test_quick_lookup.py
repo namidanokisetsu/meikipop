@@ -36,10 +36,10 @@ class FakeEngine:
         self.calls = []
         self.closed = False
 
-    def search(self, text, source="auto", foreign="ja", translate=False):
+    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None):
         self.calls.append((text, source, foreign, translate, threading.get_ident()))
         return SearchResult(text, "ja" if source == "auto" else source, "en",
-                            (entry(text),), translation="translated" if translate else "")
+                            () if translate else (entry(text),), translation="translated" if translate else "")
 
     def refresh(self):
         pass
@@ -254,7 +254,65 @@ class QuickLookupTests(unittest.TestCase):
     def test_switching_to_english_keeps_previous_foreign_mode(self):
         self.window.set_mode("tr")
         self.window.set_mode("en")
-        self.assertEqual(self.window.foreign.currentData(), "tr")
+        self.assertEqual(self.window.preferred_foreign, "tr")
+        self.assertEqual(self.window.foreign.currentData(), "en")
+
+    def test_explicit_sentence_skips_dictionary_and_translates_into_english(self):
+        self.window.lookup_selected("昨日は朝ご飯を食べなかった。")
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertTrue(self.engine.calls[0][3])
+        self.assertEqual(self.window._result.entries, ())
+        self.assertNotIn("No entry", self.window.browser.toPlainText())
+
+    def test_word_without_dictionary_hit_falls_back_to_translation_once(self):
+        original = self.engine.search
+        def missing(text, **options):
+            result = original(text, **options)
+            return result if options.get("translate") else replace(result, entries=(), message="No entry found.")
+        self.engine.search = missing
+        self.window.open_search("unknown")
+        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+        self.assertEqual([call[3] for call in self.engine.calls], [False, True])
+        self.assertNotIn("No entry", self.window.browser.toPlainText())
+
+    def test_short_japanese_sentence_does_not_stop_at_first_dictionary_word(self):
+        original = self.engine.search
+        self.engine.search = lambda text, **options: replace(original(text, **options), matched_length=1)
+        self.window.open_search("猫がいる")
+        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+        self.assertEqual([call[3] for call in self.engine.calls], [False, True])
+
+    def test_hover_sentence_context_does_not_start_translation(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("公園で猫が寝ている。")
+        self.app.processEvents()
+        self.assertIsNone(self.window.translation_worker)
+        self.assertEqual(self.engine.calls, [])
+
+    def test_profile_appearance_is_independent_and_audio_action_is_connected(self):
+        self.settings.setValue("profiles/ja/font_size_definitions", 19)
+        self.settings.setValue("profiles/tr/font_size_definitions", 14)
+        self.window.set_mode("tr")
+        self.assertEqual(self.window.browser.font().pixelSize(), 14)
+        self.window.set_mode("ja")
+        self.assertEqual(self.window.browser.font().pixelSize(), 19)
+        self.assertEqual(self.window.foreign.currentData(), "en")
+        self.window.audio = Mock()
+        self.window.show_entries((entry(),), "猫")
+        self.window.audio_button.click()
+        self.window.audio.play.assert_called_once()
+
+    def test_reverse_results_never_create_a_combined_frequency_tooltip(self):
+        entries = tuple(replace(entry(str(i)), frequencies=(Frequency("Jiten", i, str(i)),)) for i in range(80))
+        self.window.show_entries(entries, "spouse", source="en")
+        self.assertNotIn("Jiten:", self.window.browser.toolTip())
+        self.assertLess(len(self.window.browser.toolTip()), 200)
+
+    def test_search_opens_near_tray_and_selected_text_near_cursor(self):
+        self.window.open_search()
+        self.assertFalse(self.window._manual_at_cursor)
+        self.window.lookup_selected("猫")
+        self.assertTrue(self.window._manual_at_cursor)
 
     def test_escape_hides_and_invalidates_pending_results(self):
         self.window.open_search()
@@ -341,14 +399,14 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_context("猫がいる。")
         self.assertTrue(self.window.search.isHidden())
         self.assertTrue(self.window.mode_row.isHidden())
-        self.assertIn("Preferred", self.window.browser.toolTip())
+        self.assertEqual(self.window.browser.toolTip(), "")
         self.assertIn("cat", self.window.browser.toPlainText())
         self.assertNotIn("Secondary", self.window.browser.toPlainText())
         self.assertNotIn("Kanji", self.window.browser.toPlainText())
         QTest.mouseClick(self.window.browser.viewport(), Qt.MouseButton.LeftButton)
         self.assertTrue(self.window.is_pinned)
         self.assertIn("Secondary", self.window.browser.toPlainText())
-        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
         self.assertEqual(self.window._context, "猫がいる。")
 
     def test_copy_click_pins_before_copy_and_dismiss_does_not_pin(self):
@@ -400,8 +458,8 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Jiten #", rendered)
         self.assertNotIn("2026-10-03", rendered)
         self.assertNotIn("Hy-MT2", rendered)
-        self.assertIn("Jiten", self.window.browser.toolTip())
-        self.assertIn("Hy-MT2-7B Q8_0", self.window.browser.toolTip())
+        self.assertNotIn("Jiten", self.window.browser.toolTip())
+        self.assertIn("Hy-MT2-7B Q8_0", self.window.translate.toolTip())
 
     def test_turkdict_source_is_shown_once_only_after_pinning(self):
         definition = {"type": "structured-content", "content": [
@@ -448,12 +506,15 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry(definitions=("one", "two", "three", "Fourth sense")),),
                                  "猫", kanji=kanji)
         self.assertNotIn("Strokes", self.window.browser.toPlainText())
+        self.assertNotIn("Kanji", self.window.browser.toPlainText())
+        self.assertNotIn("Details", self.window.browser.toPlainText())
+        self.assertNotIn("Show less", self.window.browser.toPlainText())
         self.window._link(QUrl("kanji:toggle"))
-        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
         self.assertNotIn("Fourth sense", self.window.browser.toPlainText())
         self.window._link(QUrl("expand:0"))
         self.assertIn("Fourth sense", self.window.browser.toPlainText())
-        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
         self.window._link(QUrl("kanji:toggle"))
         self.assertNotIn("Strokes", self.window.browser.toPlainText())
         self.assertIn("Fourth sense", self.window.browser.toPlainText())
@@ -560,10 +621,11 @@ class DictionaryManagerTests(unittest.TestCase):
         self.dialog.begin_operation([self.archive("A", "tr"), self.archive("B", "tr")])
         self.wait_for_operation()
         self.dialog.packs.setCurrentRow(1)
+        self.dialog.profile.setCurrentIndex(self.dialog.profile.findData("tr"))
         name = self.dialog.packs.item(1).data(Qt.ItemDataRole.UserRole)
         self.dialog.move_pack(-1)
+        self.assertEqual(json.loads((self.directory / "preferences.json").read_text())["order"][0], name)
         self.dialog.packs.item(0).setCheckState(Qt.CheckState.Unchecked)
-        self.dialog.save_dictionaries()
         saved = json.loads((self.directory / "preferences.json").read_text())
         self.assertEqual(saved["order"][0], name)
         self.assertEqual(saved["disabled"], [name])

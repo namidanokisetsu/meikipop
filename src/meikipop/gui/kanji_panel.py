@@ -28,7 +28,7 @@ def _stats_rows(stats):
             yield _STAT_LABELS.get(key, key), value
 
 
-def render_kanji(entries, expanded=False):
+def render_kanji(entries, expanded=False, *, compact_only=False):
     """Return HTML; callers handle the single ``kanji:toggle`` action."""
     if not entries:
         return ""
@@ -37,6 +37,9 @@ def render_kanji(entries, expanded=False):
     reading_color = _text(config.color_highlight_reading)
     parts = ['<hr><p><small><b>Kanji</b> &nbsp; <a href="kanji:toggle">',
              'Show less' if expanded else 'Details', '</a></small></p>']
+    if compact_only:
+        expanded = False
+        parts = ['<hr>']
     for entry in entries:
         parts.append('<table width="100%" cellspacing="0" cellpadding="3"><tr>'
                      f'<td width="48" valign="top" style="font-size:34px;color:{accent}">{_text(entry.character)}</td><td valign="top">')

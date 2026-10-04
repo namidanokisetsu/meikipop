@@ -11,7 +11,7 @@ and falls back to `.venv`; the macOS launcher uses `.venv`.
 After an editable installation, `meikipop`,
 `meikipop search`, and `meikipop-search` open the same shared popup.
 `python -m meikipop.scripts.quick_lookup --no-ocr` runs dictionary search alone.
-The tray menu opens Search and Setup, toggles Screen lookup, or quits.
+The tray menu opens Search and Settings, switches the language profile, or quits.
 
 The original Japanese app remains available as `meikipop legacy-japanese`.
 Its original OCR settings and dictionary tools are described in the
@@ -21,39 +21,40 @@ separate Turkish client and its existing settings.
 
 ## Dictionaries and controls
 
-Open **Setup → Dictionaries → Import ZIPs** and select local Yomitan archives.
+Open **Settings → Dictionaries → Import ZIPs** and select local Yomitan archives.
 Definition, forms, frequency and kanji packs are indexed on disk without
-replacing `dictionary.pkl`. Enable packs and move them up or down, then Apply.
+replacing `dictionary.pkl`. Enable packs and move them up or down; changes save immediately.
 Cancellation keeps completed imports and discards the unfinished pack.
 Archive language metadata takes precedence; for a legacy archive without it,
-choose its language or type a language code before importing.
+the selected profile supplies its language.
 
-Choose **Auto**, Japanese, Turkish, English, or another installed language.
-The arrow selector chooses the dictionary searched by English input. Auto
-detection uses scripts and dictionary evidence; choose a language explicitly
-for ambiguous words. Japanese deconjugation and Turkish accent recovery have
+Choose a language profile from the tray's right-click menu or the top of Settings.
+Each profile owns its dictionary list, OCR provider, translation pair/model,
+appearance and audio preferences. Lookup detects the input side of that pair
+and uses only that profile's dictionaries. Japanese deconjugation and Turkish accent recovery have
 dedicated handling. Other languages use exact entries, readings and imported
 forms; importing a dictionary does not provide a universal morphology model.
 
-Typing searches after a short debounce; Enter searches immediately. **Translate**
-explicitly runs the local translation model. Dictionary sections have independent
+Typed search opens beside the tray with keyboard focus. Enter searches immediately.
+Explicit sentences go straight to translation; words try dictionaries first and
+translate automatically when no entry matches. Hover OCR stays dictionary-only.
+Dictionary sections have independent
 previews and expansion controls. Scroll long results, **Pin** to keep and resize
 them, and use Back or Escape. Imported frequency, inflection and kanji information
-uses compact labels, with full source names in tooltips. Kanji details, including components and examples when
-present, depend on the actual pack; missing information is not invented.
+uses compact labels. Frequency tooltips describe only the hovered rank.
+Kanji always use compact cards with meanings and readings, without a separate label or details toggle.
 
 **Copy sentence**, or **Ctrl+Shift+C** on Windows / **Cmd+Shift+C** on macOS,
 copies the OCR sentence while the popup is active. The copy icon's tooltip
 shows what will be copied. It is the scanned context, not the
-dictionary lemma. A manual lookup or mode change clears it; Back restores the
+dictionary lemma. Manual lookup copies the entered text; Back restores the
 saved context. A scan cannot recover text outside the captured screen region.
 Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 **Translate sentence** action translates that same scanned context locally.
 
-**Setup → Shortcut** records an independently enabled search shortcut. Presets
-are Ctrl+Alt+D and Cmd+Option+D. General installs leave it disabled; the current
-workspace enables the user's requested search shortcut. The legacy clients keep
-their separate opt-in clipboard, selection and search controls. Search does not
+**Settings → Shortcuts** configures search, selected-text and clipboard lookup
+independently. This user's Windows install uses Ctrl+Alt+D, Ctrl+Alt+S and Ctrl+Alt+C
+respectively. Selected-text lookup preserves the clipboard. Search does not
 monitor the clipboard or upload text automatically. Copy sentence changes the
 clipboard only when invoked.
 
@@ -63,14 +64,15 @@ outside Git. Additional local Yomitan packs can be added through the same UI.
 
 ## Screen lookup
 
-Enable **Screen lookup** in the tray menu, then hold the configured scan key over text; the default
+Set a screen lookup key or mouse shortcut in **Settings → Shortcuts**, then hold it over text; the default
 activation is Shift or middle mouse. The preview follows the pointer. While
 holding the scan key, left-click anywhere to pin the current result and expand
-its dictionaries and kanji details. Pinning stops following and scanning; release
+its dictionaries. Pinning stops following; a click outside or a fresh scan elsewhere dismisses it. Release
 hides an unpinned preview after a short grace period. Close or Escape dismisses
 the current scan until the trigger is released.
 
-**Setup → Screen lookup** selects left click, middle click, or popup-only pinning.
+Clear both screen lookup shortcuts to disable OCR; there is no additional toggle.
+**Settings → Screen lookup** selects left click, middle click, or popup-only pinning.
 Windows consumes the configured outside pin click while a scan preview is ready;
 on macOS and Linux it also reaches the underlying app. Other clicks are unchanged.
 **Compact preview** is on by default; turn it off for full definitions immediately.
@@ -79,7 +81,7 @@ for a short pause over text and preserves pinned results. After dismissing an
 automatic preview, move the pointer to resume. OCR runs separately from dictionary
 search and retains visible sentence context.
 
-The Japanese and Turkish OCR selectors are independent. Windows defaults remain
+Each profile shows one OCR selector. Windows defaults remain
 **MeikiOCR (CPU)** for Japanese and **PaddleOCR** for Turkish; macOS defaults to
 **Apple Vision**. **Chrome Screen AI (local)** is an optional alternative for
 either language. Changing the selection invalidates pending scans and uses a

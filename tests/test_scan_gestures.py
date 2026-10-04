@@ -97,6 +97,8 @@ class ScanSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             window = Window()
             window.set_compact_preview = Mock()
+            window.set_mode = Mock()
+            window._render = Mock()
             changed = Mock()
             window.scan_settings_changed.connect(changed)
             settings = QSettings(str(Path(temp) / "settings.ini"), QSettings.Format.IniFormat)
@@ -111,10 +113,10 @@ class ScanSettingsTests(unittest.TestCase):
                 dialog.compact_preview.click()
                 dialog.pin_gesture.setCurrentIndex(dialog.pin_gesture.findData("popup"))
                 dialog.save_scan_settings()
-                self.assertTrue(settings.value("auto_scan", False, bool))
-                self.assertFalse(settings.value("compact_preview", True, bool))
-                self.assertEqual(settings.value("pin_gesture"), "popup")
-                window.set_compact_preview.assert_called_once_with(False)
+                self.assertTrue(settings.value("profiles/ja/auto_scan", False, bool))
+                self.assertFalse(settings.value("profiles/ja/compact_preview", True, bool))
+                self.assertEqual(settings.value("profiles/ja/pin_gesture"), "popup")
+                window._render.assert_called_once_with()
                 changed.assert_called_once_with()
                 component = Path(temp) / "component"
                 component.mkdir()

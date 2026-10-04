@@ -245,6 +245,44 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.assertNotEqual(first, shifted)
         self.assertTrue(shifted.contains(edge))
 
+    def test_supported_capture_excludes_popup_without_hiding_it(self):
+        self.window.show()
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch("meikipop.utils.capture.exclude_from_capture", return_value=True) as exclude, \
+                patch.object(self.window, "hide") as hide, \
+                patch("meikipop.gui.unified_ocr.QTimer.singleShot") as dispatch:
+            self.controller.scan()
+            hide.assert_not_called()
+            self.assertTrue(self.window.isVisible())
+            self.assertEqual(dispatch.call_args.args[0], 0)
+            self.controller.restore_capture_visibility()
+            self.assertEqual([c.args[1] for c in exclude.call_args_list], [True, False])
+
+    def test_new_scan_replaces_pinned_result(self):
+        self.window.show()
+        self.window.pin.setChecked(True)
+        self.controller.holding = False
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
+                patch.object(self.controller, "scan") as scan:
+            self.controller.hold_changed(True)
+            self.assertFalse(self.window.is_pinned)
+            scan.assert_called_once()
+
+    def test_outside_click_dismisses_pinned_popup(self):
+        self.window.show()
+        self.window.pin.setChecked(True)
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)):
+            self.controller.outside_click()
+        self.assertFalse(self.window.isVisible())
+
+    def test_empty_scan_bindings_disable_ocr_without_affecting_search(self):
+        values = {"profiles/tr/scan_bindings": ""}
+        self.window.settings = SimpleNamespace(value=lambda name, default, kind=None: values.get(name, default))
+        self.controller.reload_settings()
+        self.assertFalse(self.controller.enabled)
+        self.assertTrue(self.window.search.isEnabled())
+
     def test_capture_bounds_reset_for_mode_screen_and_scale_changes(self):
         geometry = QRect(0, 0, 1920, 1080)
         point = QPoint(800, 500)

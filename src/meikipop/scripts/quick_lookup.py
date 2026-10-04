@@ -26,13 +26,15 @@ def main(argv=None):
         return 0
 
     from PyQt6.QtCore import QTimer
-    from PyQt6.QtGui import QIcon
+    from PyQt6.QtGui import QActionGroup, QFont, QIcon
     from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QStyle
     from meikipop.gui.quick_lookup import QuickLookupWindow
     from meikipop.utils.paths import paths
 
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("Meikipop")
+    if sys.platform == "win32":
+        app.setFont(QFont("Segoe UI", 10))
     app.setQuitOnLastWindowClosed(False)
     window = QuickLookupWindow(args.library)
     icon = QIcon(paths.get_resource_path("icon.ico"))
@@ -42,13 +44,23 @@ def main(argv=None):
     window.setWindowIcon(icon)
     tray = QSystemTrayIcon(icon, app)
     tray.setToolTip("Meikipop")
+    window.tray_geometry = tray.geometry
     menu = QMenu()
     menu.addAction("Search", window.open_search)
-    scan_action = menu.addAction("Screen lookup")
-    scan_action.setCheckable(True)
-    scan_action.toggled.connect(window.scan_toggle.setChecked)
-    window.scan_toggle.toggled.connect(scan_action.setChecked)
-    menu.addAction("Setup", window.open_settings)
+    menu.addAction("Look up clipboard", lambda: window.lookup_selected(app.clipboard().text()))
+    profiles = menu.addMenu("Language profile")
+    profile_group = QActionGroup(profiles)
+    def populate_profiles():
+        profiles.clear()
+        for index in range(window.source.count()):
+            code = window.source.itemData(index)
+            action = profiles.addAction(window.source.itemText(index))
+            action.setCheckable(True)
+            action.setChecked(code == window.preferred_foreign)
+            profile_group.addAction(action)
+            action.triggered.connect(lambda _, code=code: window.set_mode(code))
+    profiles.aboutToShow.connect(populate_profiles)
+    menu.addAction("Settings", window.open_settings)
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
     tray.setContextMenu(menu)
@@ -64,14 +76,11 @@ def main(argv=None):
         try:
             from meikipop.gui.unified_ocr import UnifiedOCR
             ocr = UnifiedOCR(window)
-            window.scan_toggle.toggled.connect(lambda enabled: window.settings.setValue("ocr_enabled", enabled))
-            window.scan_toggle.setChecked(window.settings.value("ocr_enabled", False, type=bool))
         except (ImportError, RuntimeError) as error:
             window.scan_toggle.setEnabled(False)
             window.scan_toggle.setToolTip(str(error))
     else:
         window.scan_toggle.setEnabled(False)
-    scan_action.setEnabled(window.scan_toggle.isEnabled())
     binding = args.hotkey
     if binding == "default":
         binding = "<cmd>+<alt>+d" if sys.platform == "darwin" else "<ctrl>+<alt>+d"

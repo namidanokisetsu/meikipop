@@ -78,9 +78,14 @@ class ScanWorker(threading.Thread):
 
     @staticmethod
     def provider(language, selected=None, component_directory=""):
-        if selected == "screenai" and language in ("ja", "tr"):
+        if selected == "screenai":
             from meikipop.ocr.providers.screenai.provider import ScreenAiOcr
             return ScreenAiOcr(component_directory or None, language=language).scan
+        if selected == "paddle" or language != "ja" and selected is None and sys.platform != "darwin":
+            from meikipop.ocr.turkish_paddle import LocalOCR
+            import numpy as np
+            provider = LocalOCR()
+            return lambda image: paddle_paragraphs(provider.recognize(np.asarray(image)[:, :, ::-1].copy()), *image.size)
         if language == "ja":
             selected = selected or ("vision" if sys.platform == "darwin" else "meikiocr")
             if selected == "vision":
@@ -89,11 +94,11 @@ class ScanWorker(threading.Thread):
                 from meikipop.ocr.macos_vision import recognize
                 return lambda image: recognize(image, language)
             if selected != "meikiocr":
-                raise RuntimeError("Choose a Japanese OCR provider in Setup → Screen lookup.")
+                raise RuntimeError("Choose a Japanese OCR provider in Settings → Screen lookup.")
             try:
                 from meikipop.ocr.providers.meikiocr.provider import MeikiOcrProvider
             except ImportError as error:
-                raise RuntimeError("Install Japanese OCR dependencies in Setup before scanning.") from error
+                raise RuntimeError("Install Japanese OCR dependencies in Settings before scanning.") from error
             provider = MeikiOcrProvider(execution_provider="CPUExecutionProvider")
             if provider.ocr_client is None:
                 raise RuntimeError("Japanese OCR could not start. Check its local model installation.")
@@ -127,6 +132,7 @@ class UnifiedOCR(QObject):
         self._hover_since = 0
         self._last_scan_at = 0
         self._capture_hidden = False
+        self._capture_excluded = False
         self._follow_point = None
         self.busy = False
         self.generation = 0
@@ -183,8 +189,14 @@ class UnifiedOCR(QObject):
         self.screenai_directory = settings.value("screenai_directory", "") if settings else ""
         if previous != (self.ja_ocr_provider, self.tr_ocr_provider, self.screenai_directory):
             self.invalidate()
-        self.auto_scan = settings.value("auto_scan", False, bool) if settings else False
-        self.pin_gesture = settings.value("pin_gesture", "left") if settings else "left"
+        profile = self.window.preferred_foreign
+        previous_profile_provider = getattr(self, "profile_ocr_provider", None)
+        default = self.ja_ocr_provider if profile == "ja" else self.tr_ocr_provider if profile == "tr" else "vision" if sys.platform == "darwin" else "paddle"
+        self.profile_ocr_provider = settings.value(f"profiles/{profile}/ocr_provider", default) if settings else default
+        if previous_profile_provider != self.profile_ocr_provider:
+            self.invalidate()
+        self.auto_scan = settings.value(f"profiles/{profile}/auto_scan", settings.value("auto_scan", False, bool), bool) if settings else False
+        self.pin_gesture = settings.value(f"profiles/{profile}/pin_gesture", settings.value("pin_gesture", "left")) if settings else "left"
         if self.pin_gesture not in ("left", "middle", "popup"):
             self.pin_gesture = "left"
         if self.input:
@@ -196,6 +208,17 @@ class UnifiedOCR(QObject):
             self.timer.stop()
             self.follow_timer.stop()
         self._sync_pin_ready()
+
+        if settings is not None:
+            from meikipop.config.config import config
+            bindings = settings.value(f"profiles/{profile}/scan_bindings", config.activation_bindings)
+            previous_bindings = getattr(self, "activation_bindings", None)
+            self.activation_bindings = bindings
+            if self.input and bindings and bindings != previous_bindings:
+                self.input.activation.set_bindings(bindings)
+                self.holding = False
+            if bool(bindings) != self.enabled:
+                self.set_enabled(bool(bindings))
 
     def _sync_pin_ready(self):
         if self.input and hasattr(self.input, "pin_ready"):
@@ -271,9 +294,10 @@ class UnifiedOCR(QObject):
             if self.input is None:
                 from meikipop.gui.turkish.desktop_input import DesktopInput
                 from meikipop.config.config import config
-                self.input = DesktopInput(config.activation_bindings, "", "", QApplication.doubleClickInterval(), self)
+                self.input = DesktopInput(getattr(self, "activation_bindings", config.activation_bindings), "", "", QApplication.doubleClickInterval(), self)
                 self.input.hold_changed.connect(self.hold_changed)
                 self.input.dismissed.connect(self.dismiss)
+                self.input.clicked.connect(self.outside_click)
                 self.input.pin_requested.connect(self.pin_requested)
                 if self.window.isVisible():
                     self.input.visible.set()
@@ -297,6 +321,9 @@ class UnifiedOCR(QObject):
             return
         self.holding = active
         if active:
+            if self.window.is_pinned and not self.window.geometry().contains(QCursor.pos()):
+                self.window.pin.setChecked(False)
+                self.window.hide()
             self.leave_timer.stop()
             self.last_point = None
             self._dismissed_point = None
@@ -324,6 +351,11 @@ class UnifiedOCR(QObject):
         if self.input:
             self.input.visible.clear()
         self._sync_pin_ready()
+
+    def outside_click(self):
+        if (self.window.isVisible() and not self.window.geometry().contains(QCursor.pos())
+                and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None):
+            self.dismiss()
 
     def finish_peek(self):
         if (getattr(self.window, "_peek", False) and not self.holding and not self.window.is_pinned and
@@ -363,14 +395,17 @@ class UnifiedOCR(QObject):
         self.generation += 1
         generation = self.generation
         visible = self.window.isVisible()
-        if visible:
+        from meikipop.utils.capture import exclude_from_capture
+        self._capture_excluded = visible and exclude_from_capture(self.window, True)
+        if visible and not self._capture_excluded:
             self._capture_hidden = True
             self.window.hide()
-        QTimer.singleShot(60 if visible else 0, lambda: self.capture(generation, point))
+        QTimer.singleShot(60 if self._capture_hidden else 0, lambda: self.capture(generation, point))
 
     def capture(self, generation, point):
         if (generation != self.generation or not self.enabled or not (self.holding or self.auto_scan)
                 or self.window.is_pinned):
+            self.restore_capture_visibility()
             self.busy = False
             self._capture_hidden = False
             if self.input and not self.window.isVisible():
@@ -401,13 +436,13 @@ class UnifiedOCR(QObject):
                 language = self.window.preferred_foreign
             job = (generation, bytes(buffer.data()),
                    ((point.x() - region.x()) / region.width(), (point.y() - region.y()) / region.height()), language)
-            if language in ("ja", "tr"):
-                job += ((self.ja_ocr_provider if language == "ja" else self.tr_ocr_provider, self.screenai_directory),)
+            job += ((self.profile_ocr_provider, self.screenai_directory),)
             self.worker.queue.put(job)
         except Exception as error:
             self.busy = False
             self.window.show_message(str(error))
         finally:
+            self.restore_capture_visibility()
             if self._capture_hidden:
                 self._capture_hidden = False
                 # Keep the prior peek usable while native recognition runs.
@@ -415,6 +450,12 @@ class UnifiedOCR(QObject):
                 if generation == self.generation and (self.holding or self.auto_scan):
                     self.window.show()
                     self.follow_cursor()
+
+    def restore_capture_visibility(self):
+        if self._capture_excluded:
+            from meikipop.utils.capture import exclude_from_capture
+            exclude_from_capture(self.window, False)
+            self._capture_excluded = False
 
     def deliver(self, generation, result, hit, error):
         self.busy = False
@@ -437,6 +478,7 @@ class UnifiedOCR(QObject):
             self._sync_pin_ready()
 
     def shutdown(self):
+        self.restore_capture_visibility()
         self.set_enabled(False)
         self.leave_timer.stop()
         if self.worker:

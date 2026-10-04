@@ -278,9 +278,9 @@ def _installed_paths(profile, directory):
         executable = _archive_target(root, registry["executable"].replace("\\", "/"))
         model_path = _archive_target(root, model["path"].replace("\\", "/"))
     except (KeyError, TypeError, ValueError) as error:
-        raise RuntimeError("Install the selected translation model in Setup first.") from error
+        raise RuntimeError("Install the selected translation model in Settings first.") from error
     if not executable.is_file() or not model_path.is_file() or model_path.stat().st_size != model.get("size"):
-        raise RuntimeError("Install the selected translation model in Setup first.")
+        raise RuntimeError("Install the selected translation model in Settings first.")
     return executable, model_path
 
 
@@ -332,7 +332,7 @@ def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, dir
             if _process is None:
                 props = _local_json("/props")
                 if Path(props.get("model_path", "")).resolve() != model:
-                    raise RuntimeError("Port 8766 is used by another model. Stop that server or choose Custom in Setup.")
+                    raise RuntimeError("Port 8766 is used by another model. Stop that server or choose Custom in Settings.")
             return
         if _process is None:
             options = dict(cwd=str(executable.parent), stdin=subprocess.DEVNULL,
@@ -351,7 +351,7 @@ def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, dir
                     raise RuntimeError("Local translation could not start. Check GPU drivers and available memory, or select Lightweight.")
                 if _ready():
                     return
-            raise RuntimeError("Local translation took too long to start. Try Lightweight in Setup.")
+            raise RuntimeError("Local translation took too long to start. Try Lightweight in Settings.")
         except BaseException:
             _terminate_owned()
             raise

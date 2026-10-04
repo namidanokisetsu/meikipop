@@ -1,4 +1,4 @@
-"""Windows selection copy with a bounded wait and clipboard restoration."""
+"""Explicit selection copy with a bounded wait and clipboard restoration."""
 import sys
 from time import monotonic
 
@@ -23,9 +23,17 @@ class SelectionCapture(QObject):
             self.user32 = ctypes.WinDLL("user32", use_last_error=True)
             self.user32.GetForegroundWindow.restype = wintypes.HWND
             self.user32.GetClipboardSequenceNumber.restype = wintypes.DWORD
+        elif sys.platform == "darwin":
+            self.user32 = _MacSelectionInput()
 
     def start(self, wait_for_modifiers=False):
-        if sys.platform != "win32" or self.pending or QApplication.activeWindow() is not None:
+        if self.pending or QApplication.activeWindow() is not None:
+            return
+        if sys.platform not in ("win32", "darwin"):
+            clipboard = QApplication.clipboard()
+            text = clipboard.text(clipboard.Mode.Selection) if clipboard.supportsSelection() else ""
+            if text.strip():
+                self.completed.emit(text[:2000])
             return
         self.foreground = self.user32.GetForegroundWindow()
         self.waiting = wait_for_modifiers
@@ -50,15 +58,17 @@ class SelectionCapture(QObject):
                 self.original.setData(name, mime.data(name))
         self.pending = True
         self.deadline = monotonic() + .45
-        from pynput.keyboard import Controller, Key
+        from pynput.keyboard import Controller, Key, KeyCode
         keys = Controller()
+        modifier = Key.cmd if sys.platform == "darwin" else Key.ctrl
+        copy_key = KeyCode.from_vk(0x43) if sys.platform == "win32" else "c"
         try:
-            keys.press(Key.ctrl)
+            keys.press(modifier)
             try:
-                keys.press("c")
-                keys.release("c")
+                keys.press(copy_key)
+                keys.release(copy_key)
             finally:
-                keys.release(Key.ctrl)
+                keys.release(modifier)
         except Exception:
             self.cancel()
             return
@@ -93,3 +103,19 @@ class SelectionCapture(QObject):
         if self.original is not None:
             self.original.deleteLater()
             self.original = None
+
+
+class _MacSelectionInput:
+    def GetForegroundWindow(self):
+        from AppKit import NSWorkspace
+        return NSWorkspace.sharedWorkspace().frontmostApplication().processIdentifier()
+
+    def GetClipboardSequenceNumber(self):
+        from AppKit import NSPasteboard
+        return NSPasteboard.generalPasteboard().changeCount()
+
+    def GetAsyncKeyState(self, key):
+        from Quartz import CGEventSourceKeyState, kCGEventSourceStateCombinedSessionState
+        codes = {0x10: (56, 60), 0x11: (59, 62), 0x12: (58, 61), 0x5B: (55,), 0x5C: (54,)}
+        return 0x8000 if any(CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, code)
+                            for code in codes.get(key, ())) else 0

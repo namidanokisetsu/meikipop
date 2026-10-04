@@ -60,7 +60,7 @@ class TranslationTests(unittest.TestCase):
         for value in ('[]', '{"provider":"cloud"}', '{"profile":[]}', '{"auto_start":"false"}', 'bad json'):
             with self.subTest(value=value):
                 (self.directory / "settings.json").write_text(value)
-                with self.assertRaisesRegex(ValueError, "settings|Setup|setting"):
+                with self.assertRaisesRegex(ValueError, "(?i)settings?"):
                     load_settings(self.directory)
 
     def test_only_numeric_loopback_and_localhost_are_allowed(self):
@@ -232,12 +232,9 @@ class TranslationSetupTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.directory = Path(self.temp.name)
         self.translation_directory = self.directory / "translation"
-        self.load = patch("meikipop.gui.dictionary_manager.load_settings",
+        self.load = patch("meikipop.dictionary.translation.load_settings",
                           side_effect=lambda: load_settings(self.translation_directory))
-        self.save = patch("meikipop.gui.dictionary_manager.save_settings",
-                          side_effect=lambda value: save_settings(value, self.translation_directory))
         self.load.start()
-        self.save.start()
         settings = QSettings(str(self.directory / "qt.ini"), QSettings.Format.IniFormat)
         self.dialog = SetupDialog(self.directory / "library", settings, Mock())
 
@@ -248,7 +245,6 @@ class TranslationSetupTests(unittest.TestCase):
         self.dialog.hide()
         self.dialog.deleteLater()
         self.app.processEvents()
-        self.save.stop()
         self.load.stop()
         self.temp.cleanup()
 
@@ -257,7 +253,9 @@ class TranslationSetupTests(unittest.TestCase):
         self.dialog.dictionaries_changed.connect(changed)
         self.dialog.translation_mode.setCurrentIndex(1)
         self.assertTrue(self.dialog.save_translation())
-        self.assertEqual(load_settings(self.translation_directory).profile, "lightweight")
+        from meikipop.dictionary.translation import load_profile_settings
+        self.assertEqual(load_profile_settings(self.dialog.settings, "ja").profile, "lightweight")
+        self.assertEqual(load_profile_settings(self.dialog.settings, "tr").profile, "quality")
         changed.assert_called_once()
         self.assertFalse(self.dialog.translation_endpoint.isEnabled())
 
@@ -271,7 +269,8 @@ class TranslationSetupTests(unittest.TestCase):
         self.dialog.translation_endpoint.setText("http://localhost:8000/v1")
         self.dialog.translation_model.setText("my-local-model")
         self.assertTrue(self.dialog.save_translation())
-        self.assertEqual(load_settings(self.translation_directory).provider, "custom")
+        from meikipop.dictionary.translation import load_profile_settings
+        self.assertEqual(load_profile_settings(self.dialog.settings, "ja").provider, "custom")
 
     def test_explicit_download_runs_off_ui_thread_and_cancels_cooperatively(self):
         started = threading.Event()
@@ -305,4 +304,3 @@ class TranslationSetupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
