@@ -979,7 +979,7 @@ class QuickLookupWindow(QDialog):
         if self.selection.pending:
             return
         self._selection_for_search = True
-        self.selection.start(wait_for_modifiers=True)
+        self.selection.start(wait_for_modifiers=True, copy_timeout=.12)
 
     def _selected_text_ready(self, text):
         if self._selection_for_search:

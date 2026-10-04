@@ -27,7 +27,7 @@ class SelectionCapture(QObject):
         elif sys.platform == "darwin":
             self.user32 = _MacSelectionInput()
 
-    def start(self, wait_for_modifiers=False):
+    def start(self, wait_for_modifiers=False, *, copy_timeout=.45):
         if self.pending or QApplication.activeWindow() is not None:
             return
         if sys.platform not in ("win32", "darwin"):
@@ -39,11 +39,13 @@ class SelectionCapture(QObject):
                 self.unavailable.emit(True)
             return
         self.foreground = self.user32.GetForegroundWindow()
+        self.copy_timeout = copy_timeout
         self.waiting = wait_for_modifiers
         if wait_for_modifiers:
             self.pending = True
             self.deadline = monotonic() + 1.5
             self.timer.start()
+            self.poll()
             return
         self.copy()
 
@@ -61,7 +63,7 @@ class SelectionCapture(QObject):
             for name in mime.formats():
                 self.original.setData(name, mime.data(name))
         self.pending = True
-        self.deadline = monotonic() + .45
+        self.deadline = monotonic() + self.copy_timeout
         from pynput.keyboard import Controller, Key, KeyCode
         keys = Controller()
         modifier = Key.cmd if sys.platform == "darwin" else Key.ctrl
