@@ -137,12 +137,15 @@ class _GlossConverter(StructuredContentConverter):
         self.generic_source = generic_source
         self.term = term
         self.first_source = ""
+        self._preview_source_complete = False
         self.remaining = limit
         self.clipped = False
 
     def _node_to_html(self, node):
+        if self._preview_source_complete:
+            return ""
         if isinstance(node, str):
-            if not self.expanded:
+            if not self.expanded and self.remaining is not None:
                 text = node[:self.remaining]
                 self.remaining -= len(text)
                 if len(text) < len(node):
@@ -153,7 +156,7 @@ class _GlossConverter(StructuredContentConverter):
         if isinstance(node, list):
             parts = []
             for child in node:
-                if not self.expanded and self.remaining <= 0:
+                if not self.expanded and self.remaining is not None and self.remaining <= 0:
                     self.clipped = True
                     break
                 parts.append(self._node_to_html(child))
@@ -179,6 +182,8 @@ class _GlossConverter(StructuredContentConverter):
                     self.first_source = heading_text.strip()
                     return ""
                 if self.preview:
+                    self._preview_source_complete = True
+                    self.clipped = True
                     return ""
             # Turkdict's exporter retains this presentation signature for
             # examples, translations and sense context, but no CSS class name.
@@ -191,10 +196,17 @@ class _GlossConverter(StructuredContentConverter):
                 if tag == "details" or "example" in kind.lower() or turkdict_example:
                     self.clipped = True
                     return ""
-                if (tag in ("ol", "ul") or kind == "glosses") and isinstance(content, list):
+                # Turkdict exports numbered senses as divs rather than list items.
+                numbered_senses = (self.preview and isinstance(content, list) and bool(content) and all(
+                    isinstance(child, dict) and child.get("tag") == "div"
+                    and isinstance(child.get("content"), list) and child["content"]
+                    and isinstance(child["content"][0], str)
+                    and re.match(r"\d+\.\s", child["content"][0]) for child in content))
+                if (tag in ("ol", "ul") or kind == "glosses" or numbered_senses) and isinstance(content, list):
                     senses = [child for child in content if not isinstance(child, str) or child.strip()]
-                    if len(senses) > 2:
-                        node["content"] = senses[:2]
+                    maximum = 3 if self.preview else 2
+                    if len(senses) > maximum:
+                        node["content"] = senses[:maximum]
                         self.clipped = True
             if kind == "glossary":
                 children = node.get("content")
@@ -308,7 +320,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
             index, entries = sources.index(source), dictionaries[source]
             full, more = source in expanded and not preview, len(entries) > 2
             generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
-            converter = _GlossConverter(expanded=full, limit=180 if preview else 360, preview=preview,
+            converter = _GlossConverter(expanded=full, limit=None if preview else 360, preview=preview,
                                         generic_source=generic_source, term=term)
             definitions = []
             for entry in entries if full else entries[:2]:

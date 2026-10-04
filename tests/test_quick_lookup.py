@@ -173,6 +173,30 @@ class QuickLookupTests(unittest.TestCase):
         self.window.open_search()
         self.assertEqual(self.window.height(), 420)
 
+    def test_compact_preview_keeps_complete_senses_with_a_bounded_height(self):
+        long_sense = "A complete definition with several clauses. " * 12
+        for list_tag in ("ol", "div"):
+            with self.subTest(list_tag=list_tag):
+                child_tag = "li" if list_tag == "ol" else "div"
+                definition = {"type": "structured-content", "content": {
+                    "tag": list_tag, "content": [
+                        {"tag": child_tag, "content": [f"{i}. {meaning}"]}
+                        for i, meaning in enumerate((long_sense, "Second meaning", "Third meaning", "Fourth meaning"), 1)]}}
+                self.settings.setValue("preview_max_height", 300)
+                self.window.show_entries((entry("meslek", source="Turkish Monolingual",
+                                               definitions=(definition,), language="tr"),),
+                                         "meslek", source="tr", peek=True)
+                self.app.processEvents()
+                text = self.window.browser.toPlainText()
+                for meaning in (long_sense.strip(), "Second meaning", "Third meaning"):
+                    self.assertIn(meaning, text)
+                self.assertNotIn("Fourth meaning", text)
+                self.assertNotIn("…", text)
+                self.assertLessEqual(self.window.height(), 300)
+                self.window.pin.setChecked(True)
+                self.assertIn("Fourth meaning", self.window.browser.toPlainText())
+                self.window.pin.setChecked(False)
+
     def test_pinned_translate_uses_original_sentence_and_retains_copy_and_history(self):
         self.window.set_mode("tr")
         self.window.show_entries((entry(),), "猫", source="ja", peek=True)
@@ -621,14 +645,19 @@ class QuickLookupTests(unittest.TestCase):
     def test_turkdict_source_is_shown_once_only_after_pinning(self):
         definition = {"type": "structured-content", "content": [
             {"tag": "div", "content": ["Tureng"], "style": {"fontWeight": "bold", "fontSize": "0.75em"}},
-            {"tag": "div", "content": ["vehicle; tool"]}]}
+            {"tag": "div", "content": ["vehicle; tool"]},
+            {"tag": "div", "content": ["Wiktionary"], "style": {"fontWeight": "bold", "fontSize": "0.75em"}},
+            {"tag": "div", "content": ["Another source's definition"]}]}
         self.window.show_entries((entry("araç", source="Turkish Bilingual",
                                 definitions=(definition,), language="tr"),), "araç", source="tr", peek=True)
         self.assertNotIn("Tureng", self.window.browser.toPlainText())
         self.assertIn("vehicle; tool", self.window.browser.toPlainText())
+        self.assertNotIn("Another source's definition", self.window.browser.toPlainText())
         self.window.pin.setChecked(True)
         self.assertEqual(self.window.browser.toPlainText().count("Tureng"), 1)
         self.assertNotIn("Turkish Bilingual", self.window.browser.toPlainText())
+        self.assertIn("Wiktionary", self.window.browser.toPlainText())
+        self.assertIn("Another source's definition", self.window.browser.toPlainText())
 
     def test_turkdict_homonyms_share_heading_without_losing_senses_or_variants(self):
         def lexical_group(term, meaning):
