@@ -77,12 +77,12 @@ class SelectionTests(unittest.TestCase):
                 patch("pynput.keyboard.Controller"), \
                 patch("meikipop.gui.selection.monotonic", return_value=10) as clock:
             clipboard.return_value.mimeData.return_value = None
-            self.capture.start(wait_for_modifiers=True, copy_timeout=.12)
+            self.capture.start(wait_for_modifiers=True, copy_timeout=.05)
             self.assertFalse(self.capture.waiting)
-            clock.return_value = 10.1
+            clock.return_value = 10.04
             self.capture.poll()
             self.assertTrue(self.capture.pending)
-            clock.return_value = 10.13
+            clock.return_value = 10.06
             self.capture.poll()
             self.assertFalse(self.capture.pending)
             unavailable.assert_called_once_with(True)

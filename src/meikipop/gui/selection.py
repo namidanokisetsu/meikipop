@@ -40,6 +40,7 @@ class SelectionCapture(QObject):
             return
         self.foreground = self.user32.GetForegroundWindow()
         self.copy_timeout = copy_timeout
+        self.timer.setInterval(5 if copy_timeout <= .05 else 15)
         self.waiting = wait_for_modifiers
         if wait_for_modifiers:
             self.pending = True

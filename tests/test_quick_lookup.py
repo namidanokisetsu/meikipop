@@ -758,7 +758,7 @@ class QuickLookupTests(unittest.TestCase):
                 patch.object(self.window.selection, "start") as capture:
             clipboard.return_value.text.return_value = "clipboard"
             self.window.request_lookup()
-            capture.assert_called_once_with(wait_for_modifiers=True, copy_timeout=.12)
+            capture.assert_called_once_with(wait_for_modifiers=True, copy_timeout=.05)
             self.assertFalse(self.window.isVisible())
             self.window.selection.completed.emit("selected")
             self.assertEqual(self.window.search.text(), "selected")
