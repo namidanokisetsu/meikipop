@@ -40,7 +40,8 @@ Reimport an older forms pack to restore labels discarded by earlier versions; ex
 Typed search opens beside the tray with keyboard focus. Enter searches immediately.
 Explicit sentences go straight to translation; words try dictionaries first and
 translate automatically when no entry matches. Hover OCR stays dictionary-only.
-Translations show the original sentence, a divider, then the translation. Translate and audio
+OCR translations show the original sentence, a divider, then the translation. Typed translations
+show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
 Dictionary sections have independent previews and expansion controls. Pin with the scan gesture
@@ -52,7 +53,7 @@ The top controls are Translate, Read sentence, then Read word. In pinned OCR res
 sit alongside the heading; language switching stays in the tray and Settings.
 Sentence reading uses system TTS even when a Japanese word-audio database is configured.
 **Settings → Audio → Autoplay** saves immediately per profile: Off, On lookup, or When pinned.
-When pinned keeps OCR hover previews silent and plays when expanded; explicit text lookups are already expanded.
+When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
 **Settings → Appearance** offers Charcoal, Slate, Dusk and Light, plus Custom. Presets are opaque
 with contrasting text and accents. Changes apply immediately; Custom remembers its own colors
 when switching presets. Appearance remains independent per language profile.

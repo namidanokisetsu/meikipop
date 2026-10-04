@@ -315,8 +315,49 @@ class QuickLookupTests(unittest.TestCase):
         self.window.audio.play_text.assert_called_with(result.translation, "en", self.window.revision,
                                                        self.settings, profile="tr")
         plain = self.window.browser.toPlainText()
-        self.assertLess(plain.index(result.text), plain.index(result.translation))
+        self.assertNotIn(result.text, plain)
+        self.assertIn(result.translation, plain)
         self.assertIn("</p><hr>", render_result(result))
+
+    def test_translation_partner_without_dictionary_survives_save_switch_and_reload(self):
+        self.window.set_mode("tr")
+        dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+        try:
+            dialog.translation_partner.setCurrentIndex(dialog.translation_partner.findData("ru"))
+            self.assertTrue(dialog.save_translation())
+            self.assertEqual(self.settings.value("profiles/tr/target"), "ru")
+            self.assertEqual(self.window.foreign.currentData(), "ru")
+            self.window.set_mode("ja")
+            self.window.set_mode("tr")
+            self.window.update_languages(("ja", "tr"))
+            self.assertEqual(self.window.foreign.currentData(), "ru")
+            self.window.translation_worker = Mock()
+            self.window.search.setText("Bugün hava çok güzel.")
+            self.window.submit(translate=True)
+            options = self.window.translation_worker.request.call_args.kwargs
+            self.assertEqual(options["target"], "ru")
+            self.assertEqual(options["pair"], ("tr", "ru"))
+            self.window.show_entries((entry("ev", language="tr"),), "ev", "tr", peek=True)
+            self.assertEqual(self.window._result.target, "ru")
+        finally:
+            self.window.translation_worker = None
+            dialog.deleteLater()
+
+    def test_typed_results_are_silent_for_all_autoplay_modes(self):
+        self.window.audio = Mock()
+        for mode in ("lookup", "pin", "off"):
+            self.settings.setValue("profiles/ja/audio_autoplay_mode", mode)
+            self.window.open_search()
+            self.window._display(SearchResult("猫", "ja", "en", (entry(),)))
+            self.window._display(SearchResult("猫がいる。", "ja", "en", translation="There is a cat."))
+        self.window.audio.play.assert_not_called()
+        self.window.audio.play_text.assert_not_called()
+
+    def test_ocr_translation_keeps_source_when_input_is_hidden(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.pin.setChecked(True)
+        self.window._display(SearchResult("猫がいる。", "ja", "en", translation="There is a cat."))
+        self.assertIn("猫がいる。", self.window.browser.toPlainText())
 
     def test_pinned_audio_control_reads_full_ocr_context(self):
         self.window.audio = Mock()

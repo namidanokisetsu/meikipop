@@ -261,7 +261,7 @@ def _source_name(source):
     return re.sub(r"\s*\[\d{4}[^\]]*\]", "", source).replace("Jitendex.org", "Jitendex").strip()
 
 
-def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False):
+def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
@@ -276,7 +276,8 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
              'li {margin:1px 0;} hr {margin:6px 0;} '
              f'.metadata {{margin:1px 0 3px;color:{muted};}} .source {{margin:5px 0 2px;color:{muted};}}</style>']
     if result.translation:
-        parts.append(f'<p style="margin-right:{96 if overlay_actions else 0}px">{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
+        if show_source:
+            parts.append(f'<p style="margin-right:{96 if overlay_actions else 0}px">{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
         parts.append(f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p>')
         if result.entries:
             parts.append("<hr>")
@@ -616,6 +617,7 @@ class QuickLookupWindow(QDialog):
             for code in codes:
                 if code != "en":
                     self.source.addItem(language_name(code), code)
+            for code in dict.fromkeys([*LANGUAGE_NAMES, *codes]):
                 self.foreign.addItem(language_name(code), code)
             self.source.setCurrentIndex(max(0, self.source.findData(current_source)))
             self.foreign.setCurrentIndex(max(0, self.foreign.findData(current_target)))
@@ -751,8 +753,7 @@ class QuickLookupWindow(QDialog):
         self.audio_button.setEnabled(bool(result.entries))
         self.sentence_audio_button.setEnabled(bool(result.text))
         autoplay = audio_autoplay_mode(self.settings, self.preferred_foreign)
-        if (result.entries or result.translation) and (autoplay == "lookup" or
-                autoplay == "pin" and (not self._peek or self.is_pinned)):
+        if self._peek and (result.entries or result.translation) and autoplay == "lookup":
             self.play_audio()
 
     def _render(self):
@@ -764,7 +765,8 @@ class QuickLookupWindow(QDialog):
             self.browser.setHtml(render_result(self._result, expanded,
                                                self._kanji_expanded or self._peek and not compact,
                                                preview=self._peek and not self.is_pinned and compact,
-                                               overlay_actions=self._peek and self.is_pinned))
+                                               overlay_actions=self._peek and self.is_pinned,
+                                               show_source=self._peek))
             self.browser.setToolTip("")
             self._place_actions()
             QTimer.singleShot(0, self._fit_preview)
@@ -1010,7 +1012,8 @@ class QuickLookupWindow(QDialog):
         self._history.clear()
         self._new_chain = True
         entries = tuple(entries or ())
-        target = self.foreign.currentData() if source == "en" else "en"
+        partner = self.foreign.currentData()
+        target = self.preferred_foreign if source == partner else partner
         result = SearchResult(text, source, target, entries, kanji=tuple(kanji))
         with QSignalBlocker(self.search):
             self.search.setText(text)
