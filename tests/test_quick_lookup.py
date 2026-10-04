@@ -1,0 +1,537 @@
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import json
+from dataclasses import replace
+from pathlib import Path
+import tempfile
+import threading
+import time
+from types import SimpleNamespace
+import unittest
+from unittest.mock import Mock, patch
+import zipfile
+
+from PyQt6.QtCore import QSettings, Qt, QUrl
+from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtTest import QTest
+from PyQt6.QtWidgets import QApplication
+
+from meikipop.dictionary.library import Entry, Library
+from meikipop.dictionary.kanji import KanjiEntry
+from meikipop.dictionary.metadata import Frequency
+from meikipop.dictionary.search import SearchResult
+from meikipop.gui.dictionary_manager import SetupDialog, SetupOperation
+from meikipop.gui.quick_lookup import LookupWorker, QuickLookupWindow, render_result
+
+
+def entry(term="猫", source="Dictionary", definitions=("cat",), language="ja"):
+    return Entry(f"{source}:{term}", term, "ねこ" if language == "ja" else "", source,
+                 language, tuple(definitions))
+
+
+class FakeEngine:
+    def __init__(self):
+        self.library = SimpleNamespace(packs=[(None, {"language": "de"}, None)])
+        self.calls = []
+        self.closed = False
+
+    def search(self, text, source="auto", foreign="ja", translate=False):
+        self.calls.append((text, source, foreign, translate, threading.get_ident()))
+        return SearchResult(text, "ja" if source == "auto" else source, "en",
+                            (entry(text),), translation="translated" if translate else "")
+
+    def refresh(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+class QuickLookupTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
+        self.engine = FakeEngine()
+        self.window = QuickLookupWindow(self.temp.name, lambda: self.engine, self.settings)
+
+    def tearDown(self):
+        self.window.shutdown()
+        self.window.worker._thread.join(timeout=2)
+        if self.window.translation_worker is not None:
+            self.window.translation_worker._thread.join(timeout=2)
+        self.window.hide()
+        self.window.deleteLater()
+        self.app.processEvents()
+        self.temp.cleanup()
+
+    def wait_until(self, predicate):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.005)
+        self.fail("Timed out waiting for background operation")
+
+    def test_edit_invalidates_old_result_before_debounce_dispatches(self):
+        self.window.search.setText("old")
+        revision = self.window.revision
+        self.window.search.setText("new")
+        self.assertGreater(self.window.revision, revision)
+        self.assertTrue(self.window.debounce.isActive())
+        self.window.deliver(revision, SearchResult("old", "ja", "en", (entry("OLD"),)))
+        self.assertNotIn("OLD", self.window.browser.toPlainText())
+
+    def test_translate_runs_off_main_thread_and_enter_search_is_local(self):
+        self.window.search.setText("猫")
+        self.window.submit(translate=True)
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertTrue(self.engine.calls[0][3])
+        self.assertNotEqual(threading.get_ident(), self.engine.calls[0][4])
+        self.assertIn("translated", self.window.browser.toPlainText())
+        self.window.search.returnPressed.emit()
+        self.wait_until(lambda: len(self.engine.calls) == 2)
+        self.assertFalse(self.engine.calls[1][3])
+
+    def test_slow_translation_does_not_block_new_lookup_or_overwrite_it(self):
+        entered, release = threading.Event(), threading.Event()
+        original = self.engine.search
+
+        def slow(text, **kwargs):
+            if kwargs.get("translate"):
+                entered.set()
+                release.wait(3)
+            return original(text, **kwargs)
+
+        self.engine.search = slow
+        self.assertIsNone(self.window.translation_worker)
+        try:
+            self.window.search.setText("old")
+            self.window.submit(translate=True)
+            self.wait_until(entered.is_set)
+            self.window.search.setText("new")
+            self.window.submit()
+            self.wait_until(lambda: self.window._result is not None and self.window._result.text == "new")
+            self.assertFalse(release.is_set())
+            release.set()
+            self.wait_until(lambda: any(call[3] for call in self.engine.calls))
+            self.app.processEvents()
+            self.assertEqual(self.window._result.text, "new")
+            self.assertNotIn("translated", self.window.browser.toPlainText())
+        finally:
+            release.set()
+
+    def test_pending_and_active_translation_are_cancelled_on_edit(self):
+        translator = SimpleNamespace(cancel=Mock())
+        engine = FakeEngine()
+        engine.translator = translator
+        self.window.translation_worker = LookupWorker(engine_factory=lambda: engine)
+        self.window.translation_worker.start()
+        self.wait_until(lambda: self.window.translation_worker._engine is engine)
+        self.window.search.setText("new query")
+        translator.cancel.assert_called_once()
+
+    def test_installed_languages_are_available_as_source_and_english_target(self):
+        self.wait_until(lambda: self.window.source.findData("de") >= 0)
+        self.assertGreaterEqual(self.window.foreign.findData("de"), 0)
+        self.window.set_mode("de")
+        self.assertEqual(self.window.preferred_foreign, "de")
+
+    def test_pin_preserves_ocr_result_and_enables_resizing(self):
+        self.window.show_entries((entry("猫"),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        self.window.pin.setChecked(True)
+        self.assertTrue(self.window.isSizeGripEnabled())
+        self.assertFalse(self.window.show_entries((entry("犬"),), "犬", peek=True))
+        self.assertEqual(self.window._result.text, "猫")
+        self.assertEqual(self.window._context, "猫がいる。")
+
+    def test_short_preview_fits_content_and_pin_restores_reading_size(self):
+        self.window.resize(500, 420)
+        self.settings.setValue("preview_max_height", 300)
+        self.window.show_entries((entry(definitions=("cat",)),), "猫", peek=True)
+        self.app.processEvents()
+        self.assertLess(self.window.height(), 300)
+        self.assertEqual(self.window.width(), 500)
+        self.assertEqual(self.window.browser.verticalScrollBar().maximum(), 0)
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        self.assertEqual(self.window.height(), 420)
+        self.assertTrue(self.window.browser.hasFocus())
+        self.window.pin.setChecked(False)
+        self.app.processEvents()
+        self.window.open_search()
+        self.assertEqual(self.window.height(), 420)
+
+    def test_pinned_translate_uses_original_sentence_and_retains_copy_and_history(self):
+        self.window.set_mode("tr")
+        self.window.show_entries((entry(),), "猫", source="ja", peek=True)
+        sentence = "公園で猫が寝ている。"
+        self.window.set_context(sentence)
+        self.assertFalse(self.window.translate_sentence.isVisible())
+        self.window.pin.setChecked(True)
+        self.assertTrue(self.window.translate_sentence.isVisible())
+        self.window.translate_sentence.click()
+        self.wait_until(lambda: self.window._result.translation)
+        self.assertEqual(self.engine.calls[-1][:4], (sentence, "ja", "tr", True))
+        self.assertEqual(self.window._context, sentence)
+        self.assertEqual(self.window.copy_button.toolTip(), sentence)
+        self.window.go_back()
+        self.assertEqual(self.window._result.text, "猫")
+        self.assertEqual(self.window._context, sentence)
+        self.window.search.setText("manual")
+        self.assertFalse(self.window.translate_sentence.isVisible())
+
+    def test_jitendex_preview_reduces_nesting_and_separates_tags(self):
+        definitions = ({"type": "structured-content", "content": [
+            {"tag": "ul", "data": {"content": "sense-groups"}, "content": {
+                "tag": "li", "data": {"content": "sense-group"}, "content": [
+                    {"tag": "span", "data": {"class": "tag"}, "content": "noun"},
+                    {"tag": "span", "data": {"class": "tag"}, "content": "archaic"},
+                    {"tag": "ol", "content": [{"tag": "li", "content": {
+                        "tag": "ul", "data": {"content": "glossary"}, "content": [
+                            {"tag": "li", "content": "first gloss"},
+                            {"tag": "li", "content": "second gloss"}]}}]}]}},
+            {"tag": "div", "data": {"content": "forms"}, "content": "alternate form"},
+            {"tag": "div", "data": {"content": "attribution"}, "content": "JMdict footer"},
+        ]},)
+        self.window.show_entries((entry(definitions=definitions),), "猫", peek=True)
+        self.app.processEvents()
+        text = self.window.browser.toPlainText()
+        self.assertIn("noun archaic", text)
+        self.assertIn("first gloss; second gloss", text)
+        self.assertNotIn("alternate form", text)
+        cursor = self.window.browser.document().find("first gloss")
+        cursor.setPosition(cursor.selectionStart())
+        self.assertLess(self.window.browser.cursorRect(cursor).x(), 80)
+        self.window.pin.setChecked(True)
+        self.assertIn("alternate form", self.window.browser.toPlainText())
+        self.assertIn("JMdict footer", self.window.browser.toPlainText())
+
+    def test_copy_is_explicit_and_manual_search_clears_live_context(self):
+        with patch.object(QApplication, "clipboard") as clipboard:
+            self.window.show_entries((entry(),), "猫", peek=True)
+            self.window.set_context("猫がいる。", 0, 1)
+            clipboard.assert_not_called()
+            self.window.copy_sentence()
+            clipboard.return_value.setText.assert_called_once_with("猫がいる。")
+            self.window.search.setText("犬")
+            self.assertFalse(self.window.copy_button.isEnabled())
+            self.window.copy_sentence()
+            clipboard.return_value.setText.assert_called_once()
+
+    def test_back_restores_sentence_after_manual_search(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        self.window.search.setText("犬")
+        self.window.debounce.stop()
+        self.window.deliver(self.window.revision, SearchResult("犬", "ja", "en", (entry("犬"),)))
+        self.window.go_back()
+        self.assertEqual(self.window.search.text(), "猫")
+        self.assertEqual(self.window._context, "猫がいる。")
+        self.assertTrue(self.window.copy_button.isEnabled())
+
+    def test_translation_keeps_sentence_for_later_history(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        self.window.deliver(self.window.revision, SearchResult("猫", "ja", "en", (entry(),), translation="cat"))
+        self.window.search.setText("犬")
+        self.window.debounce.stop()
+        self.window.deliver(self.window.revision, SearchResult("犬", "ja", "en", (entry("犬"),)))
+        self.window.go_back()
+        self.assertEqual(self.window._context, "猫がいる。")
+
+    def test_switching_to_english_keeps_previous_foreign_mode(self):
+        self.window.set_mode("tr")
+        self.window.set_mode("en")
+        self.assertEqual(self.window.foreign.currentData(), "tr")
+
+    def test_escape_hides_and_invalidates_pending_results(self):
+        self.window.open_search()
+        self.window.search.setText("猫")
+        revision = self.window.revision
+        event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+        self.window.keyPressEvent(event)
+        self.assertFalse(self.window.isVisible())
+        self.assertGreater(self.window.revision, revision)
+        self.window.deliver(revision, SearchResult("stale", "ja", "en", (entry("STALE"),)))
+        self.assertNotIn("STALE", self.window.browser.toPlainText())
+
+    def test_rendering_previews_every_dictionary_and_expands_structured_glosses(self):
+        definitions = ({"type": "structured-content", "content": {
+            "tag": "div", "content": [{"tag": "span", "content": "Turkdict example " + "long " * 150},
+                                       {"tag": "p", "content": "Final example"}]}},)
+        result = SearchResult("arac", "tr", "en", (
+            entry("araç", "Turkdict", definitions, "tr"),
+            entry("araç", "Other", ("vehicle",), "tr")))
+        self.window.show_entries(result.entries, "arac", "tr")
+        self.assertIn("Turkdict", self.window.browser.toPlainText())
+        self.assertIn("Other", self.window.browser.toPlainText())
+        self.assertNotIn("Final example", self.window.browser.toPlainText())
+        self.window._link(QUrl("expand:0"))
+        self.assertIn("Final example", self.window.browser.toPlainText())
+        self.assertIn("Show less", self.window.browser.toPlainText())
+        self.window._link(QUrl("expand:0"))
+        self.assertNotIn("Final example", self.window.browser.toPlainText())
+
+    def test_dictionary_markup_and_external_resources_are_not_executed(self):
+        result = SearchResult("word", "ja", "en", (entry("<script>", "<source>", ("<img src='file:///secret'>",)),))
+        html = render_result(result)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn("&lt;source&gt;", html)
+        self.assertNotIn("<img", html)
+        self.assertIsNone(self.window.browser.loadResource(2, QUrl("file:///secret")))
+        self.assertFalse(self.window.browser.openExternalLinks())
+
+    def test_shared_headword_metadata_and_dictionary_order(self):
+        first = replace(entry(source="Preferred"), frequencies=(Frequency("Corpus", 123, "123"),),
+                        inflection=("negative", "past", "(unstressed infinitive)"))
+        second = replace(first, source="Secondary", definitions=("feline",))
+        html = render_result(SearchResult("猫", "ja", "en", (first, second)))
+        self.assertEqual(html.count("<h2>"), 1)
+        self.assertLess(html.index("Preferred"), html.index("Secondary"))
+        self.assertEqual(html.count("Corpus"), 1)
+        self.assertIn("#123", html)
+        self.assertIn("negative · past", html)
+        self.assertNotIn("unstressed infinitive", html)
+
+    def test_structured_preview_keeps_lists_and_hides_examples_and_extra_senses(self):
+        # Mirrors Turkdict's export_prototype.Structured output (classes become styles).
+        definition = {"type": "structured-content", "content": {"tag": "ol", "content": [
+            {"tag": "li", "content": ["vehicle", {"tag": "div", "style": {
+                "fontSize": "0.9em", "marginTop": "0.1em"}, "content": "Hidden example"}]},
+            {"tag": "li", "content": "means"},
+            {"tag": "li", "content": "Third sense"}]}}
+        result = SearchResult("araç", "tr", "en", (
+            entry("araç", "Turkdict", (definition,), "tr"),
+            entry("araç", "Other", ("vehicle", "device", "tool", "Fourth sense"), "tr")))
+        preview = render_result(result)
+        self.assertIn("<ol><li>vehicle", preview)
+        self.assertNotIn("Hidden example", preview)
+        self.assertNotIn("Third sense", preview)
+        expanded = render_result(result, {"Turkdict"})
+        self.assertIn("Hidden example", expanded)
+        self.assertIn("Third sense", expanded)
+        self.assertNotIn("Fourth sense", expanded)
+        self.assertIn('href="expand:1"', expanded)
+
+    def test_dictionary_styles_cannot_inject_markup_when_expanded(self):
+        definition = {"type": "structured-content", "content": {"tag": "span", "style": {
+            "fontSize": '12px\"><img src="file:///secret"', "fontWeight": "bold"}, "content": "safe"}}
+        html = render_result(SearchResult("word", "tr", "en", (
+            entry("word", "Dictionary", (definition,), "tr"),)), {"Dictionary"})
+        self.assertNotIn("<img", html)
+        self.assertNotIn("file:///secret", html)
+        self.assertIn("font-weight:bold", html)
+
+    def test_hover_shows_preferred_source_and_click_pins_all_details(self):
+        records = (entry(source="Preferred"), entry(source="Secondary", definitions=("feline",)))
+        kanji = (KanjiEntry("猫", source="Kanji pack", meanings=("cat",), stats=(("strokes", 11),)),)
+        self.window.show_entries(records, "猫", peek=True, kanji=kanji)
+        self.window.set_context("猫がいる。")
+        self.assertTrue(self.window.search.isHidden())
+        self.assertTrue(self.window.mode_row.isHidden())
+        self.assertIn("Preferred", self.window.browser.toPlainText())
+        self.assertNotIn("Secondary", self.window.browser.toPlainText())
+        self.assertNotIn("Kanji", self.window.browser.toPlainText())
+        QTest.mouseClick(self.window.browser.viewport(), Qt.MouseButton.LeftButton)
+        self.assertTrue(self.window.is_pinned)
+        self.assertIn("Secondary", self.window.browser.toPlainText())
+        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.assertEqual(self.window._context, "猫がいる。")
+
+    def test_copy_click_pins_before_copy_and_dismiss_does_not_pin(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        with patch.object(QApplication, "clipboard") as clipboard:
+            clipboard.return_value.setText.side_effect = lambda _: self.assertTrue(self.window.is_pinned)
+            QTest.mouseClick(self.window.copy_button, Qt.MouseButton.LeftButton)
+            clipboard.return_value.setText.assert_called_once_with("猫がいる。")
+        self.window.pin.setChecked(False)
+        QTest.mouseClick(self.window.dismiss_button, Qt.MouseButton.LeftButton)
+        self.assertFalse(self.window.is_pinned)
+        self.assertFalse(self.window.isVisible())
+
+    def test_manual_search_restores_controls_and_all_dictionaries(self):
+        self.window.show_entries((entry(source="First"), entry(source="Second")), "猫", peek=True)
+        self.window.open_search()
+        self.assertFalse(self.window.search.isHidden())
+        self.assertFalse(self.window.mode_row.isHidden())
+        self.assertFalse(self.window._peek)
+        self.window._display(SearchResult("猫", "ja", "en", (entry(source="First"), entry(source="Second"))))
+        self.assertIn("Second", self.window.browser.toPlainText())
+
+    def test_closing_pinned_result_releases_scan_lock(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.pin.setChecked(True)
+        QTest.mouseClick(self.window.dismiss_button, Qt.MouseButton.LeftButton)
+        self.assertFalse(self.window.is_pinned)
+        self.assertTrue(self.window.show_entries((entry("犬"),), "犬", peek=True))
+        self.assertEqual(self.window._result.text, "犬")
+
+    def test_always_expanded_hover_setting_retains_unpinned_state(self):
+        self.window.set_compact_preview(False)
+        self.window.show_entries((entry(source="First"),
+                                  entry(source="Second", definitions=("one", "two", "three", "Fourth sense"))),
+                                 "猫", peek=True)
+        self.assertFalse(self.window.is_pinned)
+        self.assertIn("Second", self.window.browser.toPlainText())
+        self.assertIn("Fourth sense", self.window.browser.toPlainText())
+        self.window.set_compact_preview(True)
+        self.assertNotIn("Second", self.window.browser.toPlainText())
+        self.assertEqual(len(self.window._result.entries), 2)
+
+    def test_kanji_and_dictionary_expansion_are_independent(self):
+        kanji = (KanjiEntry("猫", source="Kanji pack", meanings=("cat",), stats=(("strokes", 11),)),)
+        self.window.show_entries((entry(definitions=("one", "two", "three", "Fourth sense")),),
+                                 "猫", kanji=kanji)
+        self.assertNotIn("Strokes", self.window.browser.toPlainText())
+        self.window._link(QUrl("kanji:toggle"))
+        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.assertNotIn("Fourth sense", self.window.browser.toPlainText())
+        self.window._link(QUrl("expand:0"))
+        self.assertIn("Fourth sense", self.window.browser.toPlainText())
+        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.window._link(QUrl("kanji:toggle"))
+        self.assertNotIn("Strokes", self.window.browser.toPlainText())
+        self.assertIn("Fourth sense", self.window.browser.toPlainText())
+
+    def test_global_shortcut_is_disabled_until_requested(self):
+        self.assertIsNone(self.window._keys)
+        self.window.restore_shortcut()
+        self.assertIsNone(self.window._keys)
+        with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:
+            self.window.apply_shortcut("<ctrl>+<alt>+d")
+            hotkeys.return_value.start.assert_called_once()
+            self.window.apply_shortcut("")
+            hotkeys.return_value.stop.assert_called_once()
+            self.assertIsNone(self.window._keys)
+
+    def test_latest_worker_coalesces_pending_requests(self):
+        started, release = threading.Event(), threading.Event()
+        engine = FakeEngine()
+        original = engine.search
+
+        def slow(text, **kwargs):
+            if text == "first":
+                started.set()
+                release.wait(2)
+            return original(text, **kwargs)
+
+        engine.search = slow
+        worker = LookupWorker(engine_factory=lambda: engine)
+        worker.start()
+        try:
+            worker.request(1, "first", "ja", "tr")
+            self.assertTrue(started.wait(2))
+            worker.request(2, "obsolete", "ja", "tr")
+            worker.request(3, "latest", "ja", "tr")
+            release.set()
+            self.wait_until(lambda: len(engine.calls) == 2)
+            self.assertEqual([call[0] for call in engine.calls], ["first", "latest"])
+        finally:
+            release.set()
+            worker.shutdown()
+            worker._thread.join(timeout=2)
+        self.assertTrue(engine.closed)
+
+
+class DictionaryManagerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.directory = Path(self.temp.name) / "library"
+        self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
+        self.dialog = SetupDialog(self.directory, self.settings, Mock())
+
+    def tearDown(self):
+        if self.dialog.operation is not None:
+            self.dialog.cancel_operation()
+            self.dialog.operation.thread.join(timeout=3)
+        self.dialog.hide()
+        self.dialog.deleteLater()
+        self.app.processEvents()
+        self.temp.cleanup()
+
+    def archive(self, title, language=None):
+        path = Path(self.temp.name) / f"{title}.zip"
+        metadata = {"title": title, "format": 3}
+        if language:
+            metadata["sourceLanguage"] = language
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("index.json", json.dumps(metadata))
+            archive.writestr("term_bank_1.json", json.dumps([["araç", "", "", "", 1, ["vehicle"]]]))
+        return path
+
+    def wait_for_operation(self):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if self.dialog.operation is None:
+                return
+            time.sleep(0.005)
+        self.fail("Setup did not finish")
+
+    def test_multiple_imports_keep_declared_language_and_use_explicit_legacy_language(self):
+        legacy = self.archive("Legacy")
+        turkish = self.archive("Turkdict", "tr")
+        self.dialog.begin_operation([legacy, turkish], language="ja")
+        self.wait_for_operation()
+        library = Library(self.directory)
+        try:
+            languages = {metadata["title"]: metadata["language"] for _, metadata, _ in library.packs}
+            self.assertEqual(languages, {"Legacy": "ja", "Turkdict": "tr"})
+        finally:
+            library.close()
+        self.assertEqual(self.dialog.packs.count(), 2)
+
+    def test_legacy_import_requires_a_language_in_automatic_mode(self):
+        self.dialog.begin_operation([self.archive("Legacy")])
+        self.wait_for_operation()
+        self.assertIn("Choose its language", self.dialog.status.text())
+        self.assertEqual(self.dialog.packs.count(), 0)
+
+    def test_disable_and_order_are_saved(self):
+        self.dialog.begin_operation([self.archive("A", "tr"), self.archive("B", "tr")])
+        self.wait_for_operation()
+        self.dialog.packs.setCurrentRow(1)
+        name = self.dialog.packs.item(1).data(Qt.ItemDataRole.UserRole)
+        self.dialog.move_pack(-1)
+        self.dialog.packs.item(0).setCheckState(Qt.CheckState.Unchecked)
+        self.dialog.save_dictionaries()
+        saved = json.loads((self.directory / "preferences.json").read_text())
+        self.assertEqual(saved["order"][0], name)
+        self.assertEqual(saved["disabled"], [name])
+
+    def test_cancelled_operation_keeps_completed_imports(self):
+        first, second = self.archive("A", "tr"), self.archive("B", "tr")
+        operation = SetupOperation([first, second], self.directory)
+        from meikipop.dictionary.library import import_yomitan
+
+        def import_then_cancel(*args, **kwargs):
+            result = import_yomitan(*args, **kwargs)
+            operation.cancelled.set()
+            return result
+
+        with patch("meikipop.gui.dictionary_manager.import_yomitan", side_effect=import_then_cancel):
+            operation.start()
+            operation.thread.join(timeout=3)
+        self.assertFalse(operation.thread.is_alive())
+        library = Library(self.directory)
+        try:
+            self.assertEqual([metadata["title"] for _, metadata, _ in library.packs], ["A"])
+        finally:
+            library.close()
+        self.assertFalse(list(self.directory.glob("*.tmp")))
+
+
+if __name__ == "__main__":
+    unittest.main()

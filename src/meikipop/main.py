@@ -142,14 +142,26 @@ def run_gui():
 
 def main():
     # Dispatch text-only commands before importing any GUI/OCR dependencies.
+    if len(sys.argv) == 1 or sys.argv[1] == "search":
+        from meikipop.scripts.quick_lookup import main as search_main
+        return search_main([] if len(sys.argv) == 1 else sys.argv[2:])
+    if sys.argv[1] == "legacy-japanese":
+        return run_gui()
     if len(sys.argv) > 1 and sys.argv[1] in ("build-turkish-dict", "setup-turkish-model", "setup-turkish-wordnet", "setup-turkish-ocr", "turkish-clipboard", "lookup-turkish"):
         from meikipop.scripts.turkish import main as turkish_main
         return turkish_main(sys.argv[1:])
     parser = argparse.ArgumentParser(
         prog="meikipop",
-        description="Universal Japanese OCR popup dictionary"
+        description="Multilingual OCR popup dictionary"
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers.add_parser("search", help="Open the shared dictionary popup")
+    subparsers.add_parser("legacy-japanese", help="Open the original Japanese OCR app")
+
+    library_parser = subparsers.add_parser("import-dictionaries", help="Add Yomitan dictionaries without replacing existing packs")
+    library_parser.add_argument("dictionary_files", nargs="+")
+    library_parser.add_argument("--language", help="Source language for dictionaries without language metadata")
+    library_parser.add_argument("--directory", help="Dictionary library directory")
 
     subparsers.add_parser("build-dict", help="Build the dictionary from source files")
     for command in ("build-turkish-dict", "setup-turkish-model", "setup-turkish-wordnet", "setup-turkish-ocr", "turkish-clipboard", "lookup-turkish"):
@@ -163,7 +175,11 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "build-dict":
+    if args.command == "import-dictionaries":
+        from meikipop.dictionary.library import import_yomitan
+        for filename in args.dictionary_files:
+            print(import_yomitan(filename, args.directory, args.language, progress=print))
+    elif args.command == "build-dict":
         from meikipop.scripts.build_dictionary import main as build_main
         build_main()
     elif args.command == "import-yomitan-dict-html":

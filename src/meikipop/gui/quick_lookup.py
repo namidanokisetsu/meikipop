@@ -1,0 +1,869 @@
+"""Compact, shared dictionary surface with a latest-request background worker."""
+from collections import OrderedDict
+from html import escape
+import re
+import math
+import sys
+import threading
+
+from PyQt6.QtCore import QObject, QEvent, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QCursor, QFont, QKeySequence, QShortcut
+from PyQt6.QtWidgets import (
+    QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget,
+)
+
+from meikipop.config.config import config
+from meikipop.dictionary.search import SearchEngine, SearchResult
+from meikipop.gui.popup_style import frame_stylesheet, popup_position
+from meikipop.gui.turkish.browser import DictionaryBrowser
+from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
+
+
+LANGUAGE_NAMES = {
+    "ja": "日本語", "tr": "Türkçe", "en": "English", "de": "Deutsch",
+    "fr": "Français", "es": "Español", "ru": "Русский", "zh": "中文",
+    "ko": "한국어", "ar": "العربية", "it": "Italiano", "pt": "Português",
+    "uk": "Українська", "nl": "Nederlands", "pl": "Polski",
+}
+
+
+def language_name(code):
+    return LANGUAGE_NAMES.get(code, code)
+
+
+class LookupWorker(QObject):
+    completed = pyqtSignal(int, object)
+    failed = pyqtSignal(int, str)
+    languages = pyqtSignal(object)
+
+    def __init__(self, directory=None, engine_factory=None):
+        super().__init__()
+        self._factory = engine_factory or (lambda: SearchEngine(directory))
+        self._condition = threading.Condition()
+        self._pending = None
+        self._refresh = True
+        self._stopped = False
+        self._engine = None
+        self._thread = threading.Thread(target=self._run, name="dictionary-search", daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def request(self, revision, text, source, foreign, translate=False):
+        self.cancel()
+        with self._condition:
+            self._pending = (revision, text, source, foreign, translate)
+            self._condition.notify()
+
+    def cancel(self):
+        with self._condition:
+            self._pending = None
+            translator = getattr(self._engine, "translator", None)
+        cancel = getattr(translator, "cancel", None)
+        if callable(cancel):
+            cancel()
+
+    def refresh(self):
+        with self._condition:
+            self._refresh = True
+            self._condition.notify()
+
+    def shutdown(self):
+        self.cancel()
+        with self._condition:
+            self._stopped = True
+            self._pending = None
+            self._condition.notify()
+
+    def _emit(self, signal, *args):
+        with self._condition:
+            if self._stopped:
+                return
+        try:
+            signal.emit(*args)
+        except RuntimeError:
+            pass  # The application may have closed while a local model was running.
+
+    def _run(self):
+        engine = None
+        try:
+            while True:
+                with self._condition:
+                    self._condition.wait_for(lambda: self._stopped or self._pending is not None or self._refresh)
+                    if self._stopped:
+                        return
+                    pending, self._pending = self._pending, None
+                    refresh, self._refresh = self._refresh, False
+                try:
+                    if engine is None:
+                        engine = self._factory()
+                        with self._condition:
+                            self._engine = engine
+                            if self._stopped:
+                                return
+                    elif refresh:
+                        engine.refresh()
+                    if refresh:
+                        codes = sorted({meta["language"] for _, meta, _ in engine.library.packs})
+                        self._emit(self.languages, codes)
+                    if pending is not None:
+                        revision, text, source, foreign, translate = pending
+                        result = engine.search(text, source=source, foreign=foreign, translate=translate)
+                        self._emit(self.completed, revision, result)
+                except Exception as error:
+                    self._emit(self.failed, pending[0] if pending else -1, str(error))
+        finally:
+            if engine is not None:
+                engine.close()
+
+
+class _GlossConverter(StructuredContentConverter):
+    """Prune structured previews before conversion, retaining lists and emphasis."""
+    def __init__(self, expanded=False, limit=360, preview=False):
+        super().__init__()
+        self.expanded = expanded
+        self.preview = preview
+        self.remaining = limit
+        self.clipped = False
+
+    def _node_to_html(self, node):
+        if isinstance(node, str):
+            if not self.expanded:
+                text = node[:self.remaining]
+                self.remaining -= len(text)
+                if len(text) < len(node):
+                    self.clipped = True
+                    text += "…" if text else ""
+                node = text
+            return super()._node_to_html(node)
+        if isinstance(node, list):
+            parts = []
+            for child in node:
+                if not self.expanded and self.remaining <= 0:
+                    self.clipped = True
+                    break
+                parts.append(self._node_to_html(child))
+            return "".join(parts)
+        if isinstance(node, dict):
+            node = dict(node)
+            tag, content = node.get("tag", ""), node.get("content")
+            data = node.get("data", {})
+            kind = str(data.get("content", "")) if isinstance(data, dict) else ""
+            style = node.get("style", {})
+            style = style if isinstance(style, dict) else {}
+            # Turkdict's exporter retains this presentation signature for
+            # examples, translations and sense context, but no CSS class name.
+            turkdict_example = (tag == "div" and style.get("fontSize") == "0.9em"
+                                and style.get("marginTop") == "0.1em")
+            if not self.expanded:
+                if self.preview and kind in ("forms", "attribution", "extra-info"):
+                    self.clipped = True
+                    return ""
+                if tag == "details" or "example" in kind.lower() or turkdict_example:
+                    self.clipped = True
+                    return ""
+                if (tag in ("ol", "ul") or kind == "glosses") and isinstance(content, list):
+                    senses = [child for child in content if not isinstance(child, str) or child.strip()]
+                    if len(senses) > 2:
+                        node["content"] = senses[:2]
+                        self.clipped = True
+            if kind == "glossary":
+                children = node.get("content")
+                children = children if isinstance(children, list) else [children]
+                return "; ".join(filter(None, (self._node_to_html(
+                    child.get("content") if isinstance(child, dict) and child.get("tag") == "li" else child)
+                    for child in children)))
+            if isinstance(data, dict) and data.get("class") == "tag":
+                return "<small>" + self._node_to_html(content) + "</small> "
+            if kind in ("sense-groups", "sense-group"):
+                tag = node["tag"] = "div"
+            # Keep a small, safe subset of typography. Dictionary CSS must not
+            # inject attributes, override the theme or stretch the popup.
+            safe_style = {}
+            for name, values in (("fontStyle", ("italic", "normal")),
+                                 ("fontWeight", ("bold", "normal", "400", "700"))):
+                if style.get(name) in values:
+                    safe_style[name] = style[name]
+            size = style.get("fontSize", "")
+            if isinstance(size, str) and re.fullmatch(r"0?\.[7-9]em", size):
+                safe_style["fontSize"] = size
+            if tag in ("div", "p", "details", "summary"):
+                node["tag"] = "div"
+                safe_style.update(marginTop="1px", marginBottom="1px")
+            node["style"] = safe_style
+            # No source-controlled attributes reach the converter.
+            node["data"] = {}
+            return super()._node_to_html(node)
+        return super()._node_to_html(node)
+
+    def glosses(self, definitions):
+        parts = []
+        for definition in definitions:
+            if isinstance(definition, str):
+                content = definition.strip()
+            elif isinstance(definition, dict) and definition.get("type") in ("text", "structured-content"):
+                content = definition.get("text" if definition["type"] == "text" else "content")
+            else:
+                continue
+            rendered = self._node_to_html(content)
+            if rendered:
+                parts.append(rendered)
+        return parts
+
+
+def _metadata(entries):
+    frequencies, inflections = OrderedDict(), OrderedDict()
+    for entry in entries:
+        for frequency in entry.frequencies:
+            label = frequency.label or (f"{frequency.rank:g}" if frequency.rank is not None else "")
+            if (frequency.rank is not None and frequency.mode == "rank-based"
+                    and re.fullmatch(r"[\d,.]+", label)):
+                label = f"#{label}"
+            frequencies.setdefault((frequency.source, label), None)
+        for step in entry.inflection:
+            label = re.sub(r"\([^)]*\)", "", str(step)).strip()
+            if label and not label.startswith("stem-"):
+                inflections.setdefault(label, None)
+    parts = []
+    if frequencies:
+        parts.append('<p class="metadata"><small>' + " &nbsp; · &nbsp; ".join(
+            f'{escape(source)} <b>{escape(label)}</b>' for source, label in frequencies) + '</small></p>')
+    if inflections:
+        parts.append('<p class="metadata"><small>' + escape(" · ".join(inflections)) + '</small></p>')
+    return "".join(parts)
+
+
+def render_result(result, expanded=(), kanji_expanded=False, preview=False):
+    """Share lexical headings while preserving the configured dictionary order."""
+    groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
+    for entry in result.entries:
+        if preview and (entry.source != sources[0] or groups and (entry.term, entry.reading) not in groups):
+            continue
+        groups.setdefault((entry.term, entry.reading), OrderedDict()).setdefault(entry.source, []).append(entry)
+    parts = [f'<style>body {{color:{config.color_foreground};}} '
+             f'a,h2 {{color:{config.color_highlight_word};text-decoration:none;}} '
+             f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px 0;}} '
+             'p {margin:2px 0;} ol,ul {margin:2px 0 4px 8px;padding:0;} '
+             'li {margin:1px 0;} hr {margin:6px 0;} '
+             '.metadata {margin:1px 0 3px;} .source {margin:6px 0 2px;}</style>']
+    if result.translation:
+        attribution = f' · {escape(result.translation_model)}' if result.translation_model else ''
+        parts.append(f'<p><small>{escape(language_name(result.source))} → '
+                     f'{escape(language_name(result.target))}{attribution}</small></p>'
+                     f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p><hr>')
+    anchored = set()
+    for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
+        if group_index:
+            parts.append("<hr>")
+        reading_html = (f' <span style="color:{config.color_highlight_reading};font-size:'
+                        f'{max(12, config.font_size_header - 3)}px">{escape(reading)}</span>'
+                        if reading and reading != term else "")
+        parts.append(f'<h2>{escape(term)}{reading_html}</h2>')
+        parts.append(_metadata(entry for entries in dictionaries.values() for entry in entries))
+        for source in sources:
+            if source not in dictionaries:
+                continue
+            index, entries = sources.index(source), dictionaries[source]
+            full, more = source in expanded and not preview, len(entries) > 2
+            converter = _GlossConverter(expanded=full, limit=180 if preview else 360, preview=preview)
+            definitions = []
+            for entry in entries if full else entries[:2]:
+                more = more or len(entry.definitions) > 3
+                definitions.extend(converter.glosses(entry.definitions if full else entry.definitions[:3]))
+            more = more or converter.clipped
+            toggle = (f' &nbsp; <a href="expand:{index}">{"Show less" if full else "Show more"}</a>'
+                      if more or full else "")
+            if source not in anchored:
+                parts.append(f'<a name="dictionary-{index}"></a>')
+                anchored.add(source)
+            parts.append(f'<p class="source"><small><b>{escape(source)}</b>{toggle}</small></p>')
+            if len(definitions) > 1:
+                parts.append("<ol>" + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
+            else:
+                parts.append("".join(f"<div>{gloss}</div>" for gloss in definitions))
+    if result.suggestions:
+        parts.append('<p>Did you mean: ' + " · ".join(
+            f'<a href="suggest:{index}">{escape(str(word))}</a>'
+            for index, word in enumerate(result.suggestions)) + "</p>")
+    if result.message:
+        parts.append(f"<p>{escape(result.message)}</p>")
+    if result.kanji and not preview:
+        from meikipop.gui.kanji_panel import render_kanji
+        parts.append('<a name="kanji"></a>' + render_kanji(result.kanji, kanji_expanded))
+    if not result.entries and not result.translation and not result.message and result.text:
+        parts.append("<p>No entry found.</p>")
+    return "".join(parts)
+
+
+class LocalDictionaryBrowser(DictionaryBrowser):
+    def loadResource(self, resource_type, name):
+        # Dictionary content is text; embedded local/network resources are unnecessary.
+        return None
+
+
+class QuickLookupWindow(QDialog):
+    mode_changed = pyqtSignal(str)
+    ocr_enabled_changed = pyqtSignal(bool)
+    scan_settings_changed = pyqtSignal()
+    hotkey_requested = pyqtSignal()
+
+    def __init__(self, directory=None, engine_factory=None, settings=None):
+        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowStaysOnTopHint)
+        if QApplication.platformName() == "xcb":
+            self.setWindowFlag(Qt.WindowType.X11BypassWindowManagerHint)
+        self.directory = directory
+        self.settings = settings or QSettings("Meikipop", "QuickLookup")
+        self.revision = 0
+        self._result = None
+        self._context = ""
+        self._peek = False
+        self._history = []
+        self._expanded = set()
+        self._kanji_expanded = False
+        self._pin_anchor_click = False
+        self._keys = None
+        self._shutting_down = False
+        self._drag_position = None
+        self._setup = None
+        self._engine_factory = engine_factory
+        self.translation_worker = None
+        self._pending_context_translation = None
+        self.setWindowTitle("Meikipop")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setMinimumSize(340, 190)
+        self.resize(480, 340)
+        self._normal_size = QSize(480, 340)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.frame = QFrame()
+        outer.addWidget(self.frame)
+        layout = QVBoxLayout(self.frame)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(6)
+        toolbar = QHBoxLayout()
+        self.back = QToolButton()
+        self.back.setText("‹")
+        self.back.setToolTip("Back")
+        self.back.setEnabled(False)
+        self.back.clicked.connect(self.go_back)
+        toolbar.addWidget(self.back)
+        self.title = QLabel("Meikipop")
+        self.title.installEventFilter(self)
+        toolbar.addWidget(self.title, 1)
+        self.scan_toggle = QCheckBox("Scan")
+        self.scan_toggle.setToolTip("Screen lookup with your configured scan key")
+        self.scan_toggle.toggled.connect(self.ocr_enabled_changed)
+        toolbar.addWidget(self.scan_toggle)
+        self.pin = QToolButton()
+        self.pin.setText("Pin")
+        self.pin.setCheckable(True)
+        self.pin.setToolTip("Keep this result open and resize it")
+        self.pin.toggled.connect(self._pin_changed)
+        toolbar.addWidget(self.pin)
+        self.copy_button = QToolButton()
+        self.copy_button.setText("Copy sentence")
+        self.copy_button.setEnabled(False)
+        self.copy_button.clicked.connect(self.copy_sentence)
+        settings_button = QToolButton()
+        settings_button.setText("Setup")
+        settings_button.clicked.connect(self.open_settings)
+        toolbar.addWidget(settings_button)
+        close = QToolButton()
+        close.setText("×")
+        close.setToolTip("Dismiss")
+        close.clicked.connect(self.hide)
+        self.dismiss_button = close
+        toolbar.addWidget(close)
+        layout.addLayout(toolbar)
+        self.mode_row = QWidget()
+        controls = QHBoxLayout(self.mode_row)
+        controls.setContentsMargins(0, 0, 0, 0)
+        self.source = QComboBox()
+        self.source.setAccessibleName("Search language")
+        self.source.setToolTip("Search language")
+        self.foreign = QComboBox()
+        self.foreign.setAccessibleName("English lookup target")
+        self.foreign.setToolTip("Target dictionary for English words")
+        self.target_label = QLabel("→")
+        self.update_languages(())
+        self.source.setCurrentIndex(max(0, self.source.findData(self.settings.value("source", "auto"))))
+        self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value("foreign", "ja"))))
+        controls.addWidget(self.source)
+        controls.addWidget(self.target_label)
+        controls.addWidget(self.foreign)
+        controls.addStretch()
+        self.translate = QPushButton("Translate")
+        self.translate.setToolTip("Translate with an installed local language pack")
+        self.translate.setEnabled(False)
+        self.translate.clicked.connect(lambda: self.submit(translate=True))
+        controls.addWidget(self.translate)
+        layout.addWidget(self.mode_row)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search")
+        self.search.setAccessibleName("Search text")
+        self.search.setClearButtonEnabled(True)
+        self.search.setMaxLength(2000)
+        self.search.textChanged.connect(self._edited)
+        self.search.returnPressed.connect(self.submit)
+        layout.addWidget(self.search)
+        self.context_label = QLabel()
+        self.context_label.setWordWrap(True)
+        self.context_label.setVisible(False)
+        self.context_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.context_label)
+        self.browser = LocalDictionaryBrowser()
+        self.browser.setOpenLinks(False)
+        self.browser.setOpenExternalLinks(False)
+        self.browser.setAccessibleName("Dictionary results")
+        self.browser.document().setIndentWidth(10)
+        self.browser.anchorClicked.connect(self._link)
+        self.browser.word_selected.connect(self.lookup_word)
+        layout.addWidget(self.browser, 1)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        footer = QHBoxLayout()
+        footer.addWidget(self.status, 1)
+        self.translate_sentence = QToolButton()
+        self.translate_sentence.setText("Translate sentence")
+        self.translate_sentence.setToolTip("Translate the scanned sentence with the selected local model")
+        self.translate_sentence.setVisible(False)
+        self.translate_sentence.clicked.connect(lambda: self.submit(translate=True, context=True))
+        footer.addWidget(self.translate_sentence)
+        footer.addWidget(self.copy_button)
+        layout.addLayout(footer)
+        self.debounce = QTimer(self)
+        self.debounce.setSingleShot(True)
+        self.debounce.setInterval(180)
+        self.debounce.timeout.connect(self.submit)
+        self.source.currentIndexChanged.connect(self._mode_changed)
+        self.foreign.currentIndexChanged.connect(self._mode_changed)
+        self.worker = LookupWorker(directory, engine_factory)
+        self.worker.completed.connect(self.deliver)
+        self.worker.failed.connect(self._failed)
+        self.worker.languages.connect(self.update_languages)
+        self.worker.start()
+        self.hotkey_requested.connect(self.open_search)
+        self.copy_shortcut = QShortcut(QKeySequence(
+            "Meta+Shift+C" if sys.platform == "darwin" else "Ctrl+Shift+C"), self)
+        self.copy_shortcut.activated.connect(self.copy_sentence)
+        self.apply_style()
+        self._update_target_visibility()
+        self.browser.setHtml("<p>Search a word or add dictionaries in Setup.</p>")
+        for widget in self.findChildren(QWidget):
+            widget.installEventFilter(self)
+
+    @property
+    def is_pinned(self):
+        return self.pin.isChecked()
+
+    @property
+    def preferred_foreign(self):
+        mode = self.source.currentData()
+        return mode if mode not in ("auto", "en", None) else self.foreign.currentData() or "ja"
+
+    def apply_style(self):
+        self.frame.setStyleSheet(frame_stylesheet(config.color_background, config.color_foreground,
+                                                  config.background_opacity, config.font_family) + f'''
+            QLineEdit,QComboBox,QTextBrowser {{background:transparent;color:{config.color_foreground};
+                border:0;padding:3px;selection-background-color:#47627b;}}
+            QLineEdit {{border-bottom:1px solid #555;}}
+            QComboBox QAbstractItemView {{background:{config.color_background};color:{config.color_foreground};}}
+            QPushButton,QToolButton {{background:transparent;color:{config.color_foreground};
+                border:0;border-radius:4px;padding:3px 5px;}}
+            QPushButton:hover,QToolButton:hover,QToolButton:checked {{background:#47627b;}}
+            QPushButton:disabled,QToolButton:disabled {{color:#888;}}
+            QCheckBox {{color:{config.color_foreground};spacing:4px;}}
+        ''')
+        font = QFont(config.font_family)
+        font.setPixelSize(config.font_size_definitions)
+        self.browser.setFont(font)
+        self.search.setFont(font)
+
+    def update_languages(self, languages):
+        current_source = self.source.currentData() or self.settings.value("source", "auto")
+        current_target = self.foreign.currentData() or self.settings.value("foreign", "ja")
+        codes = list(dict.fromkeys(["ja", "tr", "en", *languages,
+                                   *([current_source] if current_source != "auto" else []), current_target]))
+        with QSignalBlocker(self.source), QSignalBlocker(self.foreign):
+            self.source.clear()
+            self.source.addItem("Auto", "auto")
+            self.foreign.clear()
+            for code in codes:
+                self.source.addItem(language_name(code), code)
+                self.foreign.addItem(language_name(code), code)
+            self.source.setCurrentIndex(max(0, self.source.findData(current_source)))
+            self.foreign.setCurrentIndex(max(0, self.foreign.findData(current_target)))
+
+    def set_mode(self, source):
+        index = self.source.findData(source)
+        if index < 0:
+            self.source.addItem(language_name(source), source)
+            index = self.source.count() - 1
+        self.source.setCurrentIndex(index)
+
+    def _update_target_visibility(self):
+        visible = self.source.currentData() in ("auto", "en")
+        self.foreign.setVisible(visible)
+        self.target_label.setVisible(visible)
+
+    def _mode_changed(self):
+        mode = self.source.currentData()
+        if self.sender() is self.source and mode not in ("auto", "en"):
+            with QSignalBlocker(self.foreign):
+                if self.foreign.findData(mode) < 0:
+                    self.foreign.addItem(language_name(mode), mode)
+                self.foreign.setCurrentIndex(self.foreign.findData(mode))
+        self._update_target_visibility()
+        self.settings.setValue("source", self.source.currentData())
+        self.settings.setValue("foreign", self.foreign.currentData())
+        self.mode_changed.emit(self.source.currentData())
+        self._edited()
+
+    def _invalidate(self):
+        self.revision += 1
+        self.debounce.stop()
+        self.worker.cancel()
+        if self.translation_worker is not None:
+            self.translation_worker.cancel()
+
+    def _edited(self):
+        self._invalidate()
+        self._clear_context()
+        text = self.search.text().strip()
+        self.translate.setEnabled(bool(text))
+        self.status.setText("Searching…" if text else "")
+        if text:
+            self.debounce.start()
+        else:
+            self.browser.clear()
+
+    def submit(self, translate=False, *, context=False):
+        text = self._context if context else self.search.text().strip()
+        self.debounce.stop()
+        if not text:
+            return
+        self.revision += 1
+        self._pending_context_translation = (self.revision, text) if context else None
+        self.status.setText("Translating…" if translate else "Searching…")
+        worker = self.worker
+        if translate:
+            if self.translation_worker is None:
+                # SQLite connections stay on each worker's own thread. A cold
+                # model must not hold up ordinary dictionary lookup requests.
+                self.translation_worker = LookupWorker(self.directory, self._engine_factory)
+                self.translation_worker.completed.connect(self.deliver)
+                self.translation_worker.failed.connect(self._failed)
+                self.translation_worker.start()
+            worker = self.translation_worker
+        source = self._result.source if context and self._result else self.source.currentData()
+        worker.request(self.revision, text, source,
+                       self.foreign.currentData(), translate=bool(translate))
+
+    def deliver(self, revision, result):
+        if revision != self.revision or self._shutting_down:
+            return
+        self._display(result)
+        if self._pending_context_translation and self._pending_context_translation[0] == revision:
+            self.set_context(self._pending_context_translation[1])
+            self._pending_context_translation = None
+        self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
+
+    def _display(self, result, remember=True):
+        same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
+            result.text, result.source, result.target)
+        previous_context = getattr(self, "_result_context", "")
+        if remember and self._result is not None and not same:
+            self._history.append((self._result, getattr(self, "_result_context", "")))
+            self._history = self._history[-30:]
+        self._result = result
+        self._result_context = previous_context if same else ""
+        self._expanded.clear()
+        self._kanji_expanded = False
+        self._render()
+        self.back.setEnabled(bool(self._history))
+
+    def _render(self):
+        if self._result is not None:
+            compact = self.settings.value("compact_preview", True, type=bool)
+            expanded = self._expanded
+            if self._peek and not compact:
+                expanded = {entry.source for entry in self._result.entries}
+            self.browser.setHtml(render_result(self._result, expanded,
+                                               self._kanji_expanded or self._peek and not compact,
+                                               preview=self._peek and not self.is_pinned and compact))
+            QTimer.singleShot(0, self._fit_preview)
+
+    def _fit_preview(self):
+        if self._shutting_down or not self._peek or self.is_pinned or not self.settings.value("compact_preview", True, type=bool):
+            return
+        self.setMinimumHeight(120)
+        self.layout().activate()
+        document = self.browser.document()
+        document.setTextWidth(self.browser.viewport().width())
+        chrome = self.height() - self.browser.viewport().height()
+        desired = math.ceil(document.size().height()) + chrome + 2
+        maximum = max(190, self.settings.value("preview_max_height", 340, type=int))
+        self.resize(self.width(), min(maximum, max(self.minimumSizeHint().height(), desired)))
+        if self.isVisible():
+            self._place()
+
+    def set_compact_preview(self, enabled):
+        self.settings.setValue("compact_preview", bool(enabled))
+        self._render()
+
+    def _failed(self, revision, message):
+        if revision in (-1, self.revision):
+            self.show_message(message)
+
+    def show_message(self, text):
+        self.status.setText(str(text))
+
+    def _link(self, url):
+        if self._result is None:
+            return
+        if self._pin_anchor_click:
+            self._pin_anchor_click = False
+            return  # The first click already expanded the complete peek.
+        if url.scheme() == "kanji" and url.path() == "toggle":
+            self._kanji_expanded = not self._kanji_expanded
+            self._render()
+            self.browser.scrollToAnchor("kanji")
+            return
+        try:
+            index = int(url.path())
+        except ValueError:
+            return
+        if url.scheme() == "expand":
+            sources = list(dict.fromkeys(entry.source for entry in self._result.entries))
+            if not 0 <= index < len(sources):
+                return
+            source = sources[index]
+            if source in self._expanded:
+                self._expanded.remove(source)
+            else:
+                self._expanded.add(source)
+            self._render()
+            self.browser.scrollToAnchor(f"dictionary-{index}")
+        elif url.scheme() == "suggest" and 0 <= index < len(self._result.suggestions):
+            self.lookup_word(str(self._result.suggestions[index]))
+
+    def lookup_word(self, text):
+        self._set_peek(False)
+        self.search.setText(text)
+        self.submit()
+
+    def go_back(self):
+        if not self._history:
+            return
+        self._invalidate()
+        result, context = self._history.pop()
+        with QSignalBlocker(self.search), QSignalBlocker(self.source), QSignalBlocker(self.foreign):
+            self.search.setText(result.text)
+            if self.source.findData(result.source) < 0:
+                self.source.addItem(language_name(result.source), result.source)
+            self.source.setCurrentIndex(self.source.findData(result.source))
+            if result.source == "en":
+                if self.foreign.findData(result.target) < 0:
+                    self.foreign.addItem(language_name(result.target), result.target)
+                self.foreign.setCurrentIndex(self.foreign.findData(result.target))
+        self._update_target_visibility()
+        self.mode_changed.emit(self.source.currentData())
+        self._display(result, remember=False)
+        self.set_context(context)
+        self.translate.setEnabled(bool(result.text))
+        self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
+
+    def _place(self):
+        point = QCursor.pos()
+        screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            self.resize(min(self.width(), area.width()), min(self.height(), area.height()))
+            self.move(*popup_position(point.x(), point.y(), self.size(), area, config.popup_position_mode))
+
+    def _set_peek(self, peek):
+        if peek and not self._peek:
+            self._normal_size = self.size()
+        elif not peek and self._peek and not self.is_pinned:
+            self.setMinimumHeight(190)
+            self.resize(self._normal_size)
+        self._peek = bool(peek)
+        self.mode_row.setVisible(not self._peek)
+        self.search.setVisible(not self._peek)
+
+    def open_search(self, text=""):
+        self._set_peek(False)
+        self._render()
+        self._clear_context()
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+        if not self.is_pinned or not self.isVisible():
+            self._place()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.search.setText(text)
+        self.search.setFocus()
+        self.search.selectAll()
+        if text:
+            self.submit()
+
+    def show_entries(self, entries, text="", source="ja", peek=False, kanji=()):
+        if peek and self.is_pinned:
+            return False
+        self._invalidate()
+        entries = tuple(entries or ())
+        target = self.foreign.currentData() if source == "en" else "en"
+        result = SearchResult(text, source, target, entries, kanji=tuple(kanji))
+        with QSignalBlocker(self.search):
+            self.search.setText(text)
+        self.translate.setEnabled(bool(text))
+        self._set_peek(peek)
+        self._display(result)
+        self.set_context("")
+        self.status.setText("")
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, bool(peek))
+        if not self.is_pinned:
+            self._place()
+        self.show()
+        if not peek:
+            self.raise_()
+        return True
+
+    def set_context(self, text, start=0, end=None):
+        self._context = str(text or "").strip()
+        self._result_context = self._context
+        self.copy_button.setEnabled(bool(self._context))
+        self.copy_button.setToolTip(self._context or "Copy the scanned sentence")
+        self.context_label.setToolTip(self._context)
+        preview = self._context[:180] + ("…" if len(self._context) > 180 else "")
+        self.context_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.context_label.setText(preview)
+        self.context_label.setVisible(bool(self._context) and (not self._peek or self.is_pinned))
+        self.translate_sentence.setVisible(bool(self._context) and self.is_pinned)
+
+    def _clear_context(self):
+        previous = getattr(self, "_result_context", "")
+        self.set_context("")
+        self._result_context = previous
+
+    def copy_sentence(self):
+        if self._context:
+            QApplication.clipboard().setText(self._context)
+            self.status.setText("Sentence copied")
+
+    def _pin_changed(self, checked):
+        self.pin.setText("Pinned" if checked else "Pin")
+        self.setSizeGripEnabled(checked)
+        if self._peek:
+            if checked:
+                self.setMinimumHeight(190)
+                self.resize(self._normal_size)
+            else:
+                self._normal_size = self.size()
+        if checked:
+            self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+            self.activateWindow()
+            self.browser.setFocus(Qt.FocusReason.MouseFocusReason)
+            if self._peek and self._result is not None:
+                self._expanded.update(entry.source for entry in self._result.entries)
+                self._kanji_expanded = True
+        self.context_label.setVisible(bool(self._context) and (not self._peek or checked))
+        self.translate_sentence.setVisible(bool(self._context) and checked)
+        self._render()
+
+    def eventFilter(self, watched, event):
+        if (event.type() == QEvent.Type.MouseButtonPress and self._peek and not self.is_pinned
+                and watched not in (self.dismiss_button, self.pin)):
+            self._pin_anchor_click = watched is self.browser.viewport()
+            self.pin.setChecked(True)
+        elif event.type() == QEvent.Type.MouseButtonRelease and self._pin_anchor_click:
+            QTimer.singleShot(0, lambda: setattr(self, "_pin_anchor_click", False))
+        if watched is self.title:
+            if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                self._drag_position = event.globalPosition().toPoint() - self.pos()
+            elif event.type() == QEvent.Type.MouseMove and self._drag_position is not None:
+                self.move(event.globalPosition().toPoint() - self._drag_position)
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                self._drag_position = None
+        return super().eventFilter(watched, event)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and not self.isActiveWindow():
+            QTimer.singleShot(0, self._dismiss_if_inactive)
+
+    def _dismiss_if_inactive(self):
+        setup_open = self._setup is not None and self._setup.isVisible()
+        if not self._peek and not self.is_pinned and not self.isActiveWindow() and not setup_open \
+                and QApplication.activeModalWidget() is None:
+            self.hide()
+
+    def hideEvent(self, event):
+        if hasattr(self, "worker"):
+            self._invalidate()
+        self.pin.setChecked(False)
+        super().hideEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.hide()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        self.hide()
+        event.ignore()
+
+    def open_settings(self):
+        from meikipop.gui.dictionary_manager import SetupDialog
+        if self._setup is None:
+            self._setup = SetupDialog(self.directory, self.settings, self.apply_shortcut, self)
+            self._setup.dictionaries_changed.connect(self.refresh_library)
+        self._setup.show()
+        self._setup.raise_()
+        self._setup.activateWindow()
+
+    def refresh_library(self):
+        self.worker.refresh()
+        if self.translation_worker is not None:
+            self.translation_worker.refresh()
+        self._edited()
+
+    def apply_shortcut(self, value, preset=None):
+        from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
+        validate_shortcuts([value])
+        replacement = TextHotKeys({value: self.hotkey_requested.emit}) if value else None
+        if replacement:
+            replacement.start()
+        previous, self._keys = self._keys, replacement
+        if previous:
+            previous.stop()
+        self.settings.setValue("hotkey", value)
+        if preset is not None:
+            self.settings.setValue("hotkey_preset", preset)
+
+    def restore_shortcut(self, explicit=None):
+        binding = explicit if explicit is not None else self.settings.value("hotkey", "")
+        if binding:
+            self.apply_shortcut(binding)
+
+    def shutdown(self):
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        self.debounce.stop()
+        self.worker.shutdown()
+        if self.translation_worker is not None:
+            self.translation_worker.shutdown()
+        if self._setup is not None:
+            self._setup.cancel_operation()
+        if self._keys:
+            self._keys.stop()
+            self._keys = None
+
+
+def shortcut_preset():
+    return "Meta+Alt+D" if sys.platform == "darwin" else "Ctrl+Alt+D"
