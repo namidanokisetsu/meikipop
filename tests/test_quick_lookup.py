@@ -90,7 +90,10 @@ class QuickLookupTests(unittest.TestCase):
     def test_translate_runs_off_main_thread_and_enter_search_is_local(self):
         self.window.search.setText("猫")
         self.window.submit(translate=True)
+        self.assertFalse(self.window.translate.isEnabled())
+        self.assertEqual(self.window.translate.toolTip(), "Translating…")
         self.wait_until(lambda: self.window._result is not None)
+        self.assertTrue(self.window.translate.isEnabled())
         self.assertTrue(self.engine.calls[0][3])
         self.assertNotEqual(threading.get_ident(), self.engine.calls[0][4])
         self.assertIn("translated", self.window.browser.toPlainText())
@@ -114,7 +117,9 @@ class QuickLookupTests(unittest.TestCase):
             self.window.search.setText("old")
             self.window.submit(translate=True)
             self.wait_until(entered.is_set)
+            self.assertFalse(self.window.translate.isEnabled())
             self.window.search.setText("new")
+            self.assertTrue(self.window.translate.isEnabled())
             self.window.submit()
             self.wait_until(lambda: self.window._result is not None and self.window._result.text == "new")
             self.assertFalse(release.is_set())
@@ -180,7 +185,7 @@ class QuickLookupTests(unittest.TestCase):
         self.wait_until(lambda: self.window._result.translation)
         self.assertEqual(self.engine.calls[-1][:4], (sentence, "ja", "tr", True))
         self.assertEqual(self.window._context, sentence)
-        self.assertEqual(self.window.copy_button.toolTip(), sentence)
+        self.assertIn(sentence, self.window.copy_button.toolTip())
         self.window.go_back()
         self.assertEqual(self.window._result.text, "猫")
         self.assertEqual(self.window._context, sentence)
@@ -275,7 +280,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Final example", self.window.browser.toPlainText())
         self.window._link(QUrl("expand:0"))
         self.assertIn("Final example", self.window.browser.toPlainText())
-        self.assertIn("Show less", self.window.browser.toPlainText())
+        self.assertIn("Turkdict", self.window._expanded)
         self.window._link(QUrl("expand:0"))
         self.assertNotIn("Final example", self.window.browser.toPlainText())
 
@@ -336,7 +341,8 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_context("猫がいる。")
         self.assertTrue(self.window.search.isHidden())
         self.assertTrue(self.window.mode_row.isHidden())
-        self.assertIn("Preferred", self.window.browser.toPlainText())
+        self.assertIn("Preferred", self.window.browser.toolTip())
+        self.assertIn("cat", self.window.browser.toPlainText())
         self.assertNotIn("Secondary", self.window.browser.toPlainText())
         self.assertNotIn("Kanji", self.window.browser.toPlainText())
         QTest.mouseClick(self.window.browser.viewport(), Qt.MouseButton.LeftButton)
@@ -365,6 +371,57 @@ class QuickLookupTests(unittest.TestCase):
         self.assertFalse(self.window._peek)
         self.window._display(SearchResult("猫", "ja", "en", (entry(source="First"), entry(source="Second"))))
         self.assertIn("Second", self.window.browser.toPlainText())
+
+    def test_hover_has_no_chrome_and_pinned_actions_use_accessible_icons(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        self.app.processEvents()
+        self.assertFalse(self.window.actions_row.isVisible())
+        self.assertFalse(self.window.mode_row.isVisible())
+        self.assertFalse(self.window.scan_toggle.isVisible())
+        self.assertFalse(self.window.status.isVisible())
+        self.assertFalse(self.window.context_label.isVisible())
+        self.window.pin.setChecked(True)
+        self.assertTrue(self.window.actions_row.isVisible())
+        for button in (self.window.pin, self.window.copy_button, self.window.translate_sentence,
+                       self.window.dismiss_button, self.window.back, self.window.settings_button):
+            self.assertTrue(button.accessibleName())
+            self.assertFalse(button.icon().isNull())
+            self.assertEqual(button.text(), "")
+
+    def test_frequency_source_and_translation_model_are_tooltips_not_labels(self):
+        record = replace(entry(source="Jitendex.org [2026-10-03]"),
+                         frequencies=(Frequency("Jiten", 186, "186"),))
+        self.window.deliver(self.window.revision, SearchResult("猫", "ja", "en", (record,),
+                            translation="A cat.", translation_model="Hy-MT2-7B Q8_0"))
+        rendered = self.window.browser.toPlainText()
+        self.assertIn("#186", rendered)
+        self.assertIn("Jitendex", rendered)
+        self.assertNotIn("Jiten #", rendered)
+        self.assertNotIn("2026-10-03", rendered)
+        self.assertNotIn("Hy-MT2", rendered)
+        self.assertIn("Jiten", self.window.browser.toolTip())
+        self.assertIn("Hy-MT2-7B Q8_0", self.window.browser.toolTip())
+
+    def test_turkdict_source_is_shown_once_only_after_pinning(self):
+        definition = {"type": "structured-content", "content": [
+            {"tag": "div", "content": ["Tureng"], "style": {"fontWeight": "bold", "fontSize": "0.75em"}},
+            {"tag": "div", "content": ["vehicle; tool"]}]}
+        self.window.show_entries((entry("araç", source="Turkish Bilingual",
+                                definitions=(definition,), language="tr"),), "araç", source="tr", peek=True)
+        self.assertNotIn("Tureng", self.window.browser.toPlainText())
+        self.assertIn("vehicle; tool", self.window.browser.toPlainText())
+        self.window.pin.setChecked(True)
+        self.assertEqual(self.window.browser.toPlainText().count("Tureng"), 1)
+        self.assertNotIn("Turkish Bilingual", self.window.browser.toPlainText())
+
+    def test_settings_menu_keeps_search_open(self):
+        self.window.open_search()
+        self.window.settings_menu.popup(self.window.settings_button.mapToGlobal(self.window.settings_button.rect().bottomLeft()))
+        self.app.processEvents()
+        self.window._dismiss_if_inactive()
+        self.assertTrue(self.window.isVisible())
+        self.window.settings_menu.hide()
 
     def test_closing_pinned_result_releases_scan_lock(self):
         self.window.show_entries((entry(),), "猫", peek=True)

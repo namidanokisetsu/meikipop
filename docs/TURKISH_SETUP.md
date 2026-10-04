@@ -11,7 +11,7 @@ and falls back to `.venv`; the macOS launcher uses `.venv`.
 After an editable installation, `meikipop`,
 `meikipop search`, and `meikipop-search` open the same shared popup.
 `python -m meikipop.scripts.quick_lookup --no-ocr` runs dictionary search alone.
-The tray menu opens Search, Setup, or Quit.
+The tray menu opens Search and Setup, toggles Screen lookup, or quits.
 
 The original Japanese app remains available as `meikipop legacy-japanese`.
 Its original OCR settings and dictionary tools are described in the
@@ -39,12 +39,12 @@ Typing searches after a short debounce; Enter searches immediately. **Translate*
 explicitly runs the local translation model. Dictionary sections have independent
 previews and expansion controls. Scroll long results, **Pin** to keep and resize
 them, and use Back or Escape. Imported frequency, inflection and kanji information
-is shown with its source. Kanji details, including components and examples when
+uses compact labels, with full source names in tooltips. Kanji details, including components and examples when
 present, depend on the actual pack; missing information is not invented.
 
 **Copy sentence**, or **Ctrl+Shift+C** on Windows / **Cmd+Shift+C** on macOS,
-copies the visible OCR sentence while the popup is active. The sentence preview
-and tooltip show what will be copied. It is the scanned context, not the
+copies the OCR sentence while the popup is active. The copy icon's tooltip
+shows what will be copied. It is the scanned context, not the
 dictionary lemma. A manual lookup or mode change clears it; Back restores the
 saved context. A scan cannot recover text outside the captured screen region.
 Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
@@ -63,7 +63,7 @@ outside Git. Additional local Yomitan packs can be added through the same UI.
 
 ## Screen lookup
 
-Enable **Scan**, then hold the configured scan key over text; the default
+Enable **Screen lookup** in the tray menu, then hold the configured scan key over text; the default
 activation is Shift or middle mouse. The preview follows the pointer. While
 holding the scan key, left-click anywhere to pin the current result and expand
 its dictionaries and kanji details. Pinning stops following and scanning; release
@@ -157,7 +157,7 @@ alias. It is never started or downloaded by the app. Requests use numeric
 loopback addresses, bypass proxies and reject redirects. No text goes to a
 cloud translation service. Search and translation do not download anything;
 neither Torch nor the older Argos/CTranslate2 backend is required or offered.
-The result identifies its selected model. Translation can still make errors;
+The result's tooltip identifies its selected model. Translation can still make errors;
 the selected model's published benchmarks do not establish accuracy for every
 language pair or passage.
 

@@ -10,12 +10,13 @@ from PyQt6.QtCore import QObject, QEvent, QSettings, QSignalBlocker, QSize, Qt, 
 from PyQt6.QtGui import QCursor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget,
+    QLineEdit, QMenu, QPushButton, QToolButton, QVBoxLayout, QWidget,
 )
 
 from meikipop.config.config import config
 from meikipop.dictionary.search import SearchEngine, SearchResult
 from meikipop.gui.popup_style import frame_stylesheet, popup_position
+from meikipop.gui.action_icons import action_icon
 from meikipop.gui.turkish.browser import DictionaryBrowser
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
 
@@ -120,10 +121,12 @@ class LookupWorker(QObject):
 
 class _GlossConverter(StructuredContentConverter):
     """Prune structured previews before conversion, retaining lists and emphasis."""
-    def __init__(self, expanded=False, limit=360, preview=False):
+    def __init__(self, expanded=False, limit=360, preview=False, generic_source=False):
         super().__init__()
         self.expanded = expanded
         self.preview = preview
+        self.generic_source = generic_source
+        self.first_source = ""
         self.remaining = limit
         self.clipped = False
 
@@ -152,6 +155,16 @@ class _GlossConverter(StructuredContentConverter):
             kind = str(data.get("content", "")) if isinstance(data, dict) else ""
             style = node.get("style", {})
             style = style if isinstance(style, dict) else {}
+            heading_text = content[0] if isinstance(content, list) and len(content) == 1 else content
+            source_heading = (isinstance(heading_text, str) and heading_text.strip() in
+                              ("Tureng", "Wiktionary", "TDK", "KeNet", "Etymology")
+                              and (tag in ("b", "strong") or style.get("fontWeight") in ("bold", "700")))
+            if source_heading and self.generic_source:
+                if not self.first_source:
+                    self.first_source = heading_text.strip()
+                    return ""
+                if self.preview:
+                    return ""
             # Turkdict's exporter retains this presentation signature for
             # examples, translations and sense context, but no CSS class name.
             turkdict_example = (tag == "div" and style.get("fontSize") == "0.9em"
@@ -227,11 +240,15 @@ def _metadata(entries):
                 inflections.setdefault(label, None)
     parts = []
     if frequencies:
-        parts.append('<p class="metadata"><small>' + " &nbsp; · &nbsp; ".join(
-            f'{escape(source)} <b>{escape(label)}</b>' for source, label in frequencies) + '</small></p>')
+        parts.extend(f'<span title="{escape(source, quote=True)}">{escape(label)}</span>'
+                     for source, label in frequencies)
     if inflections:
-        parts.append('<p class="metadata"><small>' + escape(" · ".join(inflections)) + '</small></p>')
-    return "".join(parts)
+        parts.append(escape(" · ".join(inflections)))
+    return '<p class="metadata"><small>' + " · ".join(parts) + '</small></p>' if parts else ""
+
+
+def _source_name(source):
+    return re.sub(r"\s*\[\d{4}[^\]]*\]", "", source).replace("Jitendex.org", "Jitendex").strip()
 
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False):
@@ -246,18 +263,19 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False):
              f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px 0;}} '
              'p {margin:2px 0;} ol,ul {margin:2px 0 4px 8px;padding:0;} '
              'li {margin:1px 0;} hr {margin:6px 0;} '
-             '.metadata {margin:1px 0 3px;} .source {margin:6px 0 2px;}</style>']
+             '.metadata {margin:1px 0 3px;color:#aaa;} .source {margin:5px 0 2px;color:#aaa;}</style>']
     if result.translation:
-        attribution = f' · {escape(result.translation_model)}' if result.translation_model else ''
-        parts.append(f'<p><small>{escape(language_name(result.source))} → '
-                     f'{escape(language_name(result.target))}{attribution}</small></p>'
-                     f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p><hr>')
+        parts.append(f'<p title="{escape(result.translation_model, quote=True)}">'
+                     f'{escape(result.translation).replace(chr(10), "<br>")}</p>')
+        if result.entries:
+            parts.append("<hr>")
     anchored = set()
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
         if group_index:
             parts.append("<hr>")
+        display_reading = f"[{reading}]" if result.source == "ja" else reading
         reading_html = (f' <span style="color:{config.color_highlight_reading};font-size:'
-                        f'{max(12, config.font_size_header - 3)}px">{escape(reading)}</span>'
+                        f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
                         if reading and reading != term else "")
         parts.append(f'<h2>{escape(term)}{reading_html}</h2>')
         parts.append(_metadata(entry for entries in dictionaries.values() for entry in entries))
@@ -266,18 +284,26 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False):
                 continue
             index, entries = sources.index(source), dictionaries[source]
             full, more = source in expanded and not preview, len(entries) > 2
-            converter = _GlossConverter(expanded=full, limit=180 if preview else 360, preview=preview)
+            generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
+            converter = _GlossConverter(expanded=full, limit=180 if preview else 360, preview=preview,
+                                        generic_source=generic_source)
             definitions = []
             for entry in entries if full else entries[:2]:
                 more = more or len(entry.definitions) > 3
                 definitions.extend(converter.glosses(entry.definitions if full else entry.definitions[:3]))
             more = more or converter.clipped
-            toggle = (f' &nbsp; <a href="expand:{index}">{"Show less" if full else "Show more"}</a>'
+            toggle = (f' <a href="expand:{index}" title="{"Collapse" if full else "Expand"}">'
+                      f'{"−" if full else "+"}</a>'
                       if more or full else "")
             if source not in anchored:
                 parts.append(f'<a name="dictionary-{index}"></a>')
                 anchored.add(source)
-            parts.append(f'<p class="source"><small><b>{escape(source)}</b>{toggle}</small></p>')
+            if not preview:
+                label = converter.first_source or _source_name(source)
+                parts.append(f'<p class="source"><small><span title="{escape(source, quote=True)}">'
+                             f'{escape(label)}</span>{toggle}</small></p>')
+            else:
+                parts.append(f'<span title="{escape(source, quote=True)}"></span>')
             if len(definitions) > 1:
                 parts.append("<ol>" + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
             else:
@@ -330,6 +356,7 @@ class QuickLookupWindow(QDialog):
         self._engine_factory = engine_factory
         self.translation_worker = None
         self._pending_context_translation = None
+        self._translation_busy = False
         self.setWindowTitle("Meikipop")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(340, 190)
@@ -342,41 +369,45 @@ class QuickLookupWindow(QDialog):
         layout = QVBoxLayout(self.frame)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(6)
-        toolbar = QHBoxLayout()
-        self.back = QToolButton()
-        self.back.setText("‹")
-        self.back.setToolTip("Back")
+        self.actions_row = QWidget()
+        toolbar = QHBoxLayout(self.actions_row)
+        toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.setSpacing(2)
+        self.back = self._action("back", "Back")
         self.back.setEnabled(False)
         self.back.clicked.connect(self.go_back)
         toolbar.addWidget(self.back)
-        self.title = QLabel("Meikipop")
+        self.title = QLabel("")
         self.title.installEventFilter(self)
         toolbar.addWidget(self.title, 1)
-        self.scan_toggle = QCheckBox("Scan")
+        self.scan_toggle = QCheckBox(self)
         self.scan_toggle.setToolTip("Screen lookup with your configured scan key")
         self.scan_toggle.toggled.connect(self.ocr_enabled_changed)
-        toolbar.addWidget(self.scan_toggle)
-        self.pin = QToolButton()
-        self.pin.setText("Pin")
+        self.scan_toggle.hide()
+        self.pin = self._action("pin", "Pin")
         self.pin.setCheckable(True)
         self.pin.setToolTip("Keep this result open and resize it")
         self.pin.toggled.connect(self._pin_changed)
-        toolbar.addWidget(self.pin)
-        self.copy_button = QToolButton()
-        self.copy_button.setText("Copy sentence")
+        self.copy_button = self._action("copy", "Copy sentence")
         self.copy_button.setEnabled(False)
         self.copy_button.clicked.connect(self.copy_sentence)
-        settings_button = QToolButton()
-        settings_button.setText("Setup")
-        settings_button.clicked.connect(self.open_settings)
-        toolbar.addWidget(settings_button)
-        close = QToolButton()
-        close.setText("×")
-        close.setToolTip("Dismiss")
+        self.settings_button = self._action("settings", "Settings")
+        self.settings_menu = QMenu(self.settings_button)
+        self.settings_menu.addAction("Setup", self.open_settings)
+        pin_action = self.settings_menu.addAction("Pin")
+        pin_action.setCheckable(True)
+        pin_action.toggled.connect(self.pin.setChecked)
+        self.pin.toggled.connect(pin_action.setChecked)
+        scan_action = self.settings_menu.addAction("Screen lookup")
+        scan_action.setCheckable(True)
+        scan_action.toggled.connect(self.scan_toggle.setChecked)
+        self.scan_toggle.toggled.connect(scan_action.setChecked)
+        self.settings_menu.aboutToShow.connect(lambda: scan_action.setEnabled(self.scan_toggle.isEnabled()))
+        self.settings_button.setMenu(self.settings_menu)
+        self.settings_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        close = self._action("close", "Close")
         close.clicked.connect(self.hide)
         self.dismiss_button = close
-        toolbar.addWidget(close)
-        layout.addLayout(toolbar)
         self.mode_row = QWidget()
         controls = QHBoxLayout(self.mode_row)
         controls.setContentsMargins(0, 0, 0, 0)
@@ -386,20 +417,15 @@ class QuickLookupWindow(QDialog):
         self.foreign = QComboBox()
         self.foreign.setAccessibleName("English lookup target")
         self.foreign.setToolTip("Target dictionary for English words")
+        self.source.setMaximumWidth(90)
+        self.foreign.setMaximumWidth(90)
         self.target_label = QLabel("→")
         self.update_languages(())
         self.source.setCurrentIndex(max(0, self.source.findData(self.settings.value("source", "auto"))))
         self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value("foreign", "ja"))))
-        controls.addWidget(self.source)
-        controls.addWidget(self.target_label)
-        controls.addWidget(self.foreign)
-        controls.addStretch()
-        self.translate = QPushButton("Translate")
-        self.translate.setToolTip("Translate with an installed local language pack")
+        self.translate = self._action("translate", "Translate")
         self.translate.setEnabled(False)
         self.translate.clicked.connect(lambda: self.submit(translate=True))
-        controls.addWidget(self.translate)
-        layout.addWidget(self.mode_row)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
         self.search.setAccessibleName("Search text")
@@ -407,12 +433,18 @@ class QuickLookupWindow(QDialog):
         self.search.setMaxLength(2000)
         self.search.textChanged.connect(self._edited)
         self.search.returnPressed.connect(self.submit)
-        layout.addWidget(self.search)
+        controls.addWidget(self.search, 1)
+        controls.addWidget(self.source)
+        controls.addWidget(self.target_label)
+        controls.addWidget(self.foreign)
+        controls.addWidget(self.translate)
+        controls.addWidget(self.settings_button)
+        layout.addWidget(self.mode_row)
         self.context_label = QLabel()
         self.context_label.setWordWrap(True)
         self.context_label.setVisible(False)
         self.context_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(self.context_label)
+        self.context_label.setParent(self)
         self.browser = LocalDictionaryBrowser()
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)
@@ -423,16 +455,17 @@ class QuickLookupWindow(QDialog):
         layout.addWidget(self.browser, 1)
         self.status = QLabel()
         self.status.setWordWrap(True)
-        footer = QHBoxLayout()
-        footer.addWidget(self.status, 1)
-        self.translate_sentence = QToolButton()
-        self.translate_sentence.setText("Translate sentence")
-        self.translate_sentence.setToolTip("Translate the scanned sentence with the selected local model")
+        self.status.hide()
+        layout.addWidget(self.status)
+        self.translate_sentence = self._action("translate", "Translate sentence")
         self.translate_sentence.setVisible(False)
         self.translate_sentence.clicked.connect(lambda: self.submit(translate=True, context=True))
-        footer.addWidget(self.translate_sentence)
-        footer.addWidget(self.copy_button)
-        layout.addLayout(footer)
+        toolbar.addWidget(self.translate_sentence)
+        toolbar.addWidget(self.copy_button)
+        toolbar.addWidget(self.pin)
+        toolbar.addWidget(close)
+        layout.addWidget(self.actions_row)
+        self.actions_row.hide()
         self.debounce = QTimer(self)
         self.debounce.setSingleShot(True)
         self.debounce.setInterval(180)
@@ -448,11 +481,22 @@ class QuickLookupWindow(QDialog):
         self.copy_shortcut = QShortcut(QKeySequence(
             "Meta+Shift+C" if sys.platform == "darwin" else "Ctrl+Shift+C"), self)
         self.copy_shortcut.activated.connect(self.copy_sentence)
+        self.back_shortcut = QShortcut(QKeySequence.StandardKey.Back, self)
+        self.back_shortcut.activated.connect(self.go_back)
         self.apply_style()
         self._update_target_visibility()
-        self.browser.setHtml("<p>Search a word or add dictionaries in Setup.</p>")
+        self.browser.clear()
         for widget in self.findChildren(QWidget):
             widget.installEventFilter(self)
+
+    def _action(self, name, description):
+        button = QToolButton()
+        button.setIcon(action_icon(name, config.color_foreground))
+        button.setIconSize(QSize(16, 16))
+        button.setFixedSize(25, 25)
+        button.setAccessibleName(description)
+        button.setToolTip(description)
+        return button
 
     @property
     def is_pinned(self):
@@ -475,6 +519,11 @@ class QuickLookupWindow(QDialog):
             QPushButton:hover,QToolButton:hover,QToolButton:checked {{background:#47627b;}}
             QPushButton:disabled,QToolButton:disabled {{color:#888;}}
             QCheckBox {{color:{config.color_foreground};spacing:4px;}}
+            QScrollBar:vertical {{background:transparent;width:6px;margin:2px 0;}}
+            QScrollBar::handle:vertical {{background:#707070;min-height:24px;border-radius:3px;}}
+            QScrollBar::handle:vertical:hover {{background:#969696;}}
+            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0;}}
+            QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical {{background:transparent;}}
         ''')
         font = QFont(config.font_family)
         font.setPixelSize(config.font_size_definitions)
@@ -527,6 +576,14 @@ class QuickLookupWindow(QDialog):
         self.worker.cancel()
         if self.translation_worker is not None:
             self.translation_worker.cancel()
+        self._set_translation_busy(False)
+
+    def _set_translation_busy(self, busy):
+        self._translation_busy = busy
+        self.translate.setEnabled(not busy and bool(self.search.text().strip()))
+        self.translate_sentence.setEnabled(not busy and bool(self._context))
+        self.translate.setToolTip("Translating…" if busy else "Translate")
+        self.translate_sentence.setToolTip("Translating…" if busy else "Translate sentence")
 
     def _edited(self):
         self._invalidate()
@@ -534,6 +591,7 @@ class QuickLookupWindow(QDialog):
         text = self.search.text().strip()
         self.translate.setEnabled(bool(text))
         self.status.setText("Searching…" if text else "")
+        self.status.hide()
         if text:
             self.debounce.start()
         else:
@@ -546,7 +604,9 @@ class QuickLookupWindow(QDialog):
             return
         self.revision += 1
         self._pending_context_translation = (self.revision, text) if context else None
+        self._set_translation_busy(bool(translate))
         self.status.setText("Translating…" if translate else "Searching…")
+        self.status.hide()
         worker = self.worker
         if translate:
             if self.translation_worker is None:
@@ -564,11 +624,13 @@ class QuickLookupWindow(QDialog):
     def deliver(self, revision, result):
         if revision != self.revision or self._shutting_down:
             return
+        self._set_translation_busy(False)
         self._display(result)
         if self._pending_context_translation and self._pending_context_translation[0] == revision:
             self.set_context(self._pending_context_translation[1])
             self._pending_context_translation = None
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
+        self.status.hide()
 
     def _display(self, result, remember=True):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
@@ -583,6 +645,7 @@ class QuickLookupWindow(QDialog):
         self._kanji_expanded = False
         self._render()
         self.back.setEnabled(bool(self._history))
+        self.back.setVisible(bool(self._history))
 
     def _render(self):
         if self._result is not None:
@@ -593,12 +656,18 @@ class QuickLookupWindow(QDialog):
             self.browser.setHtml(render_result(self._result, expanded,
                                                self._kanji_expanded or self._peek and not compact,
                                                preview=self._peek and not self.is_pinned and compact))
+            details = list(dict.fromkeys(entry.source for entry in self._result.entries))
+            details.extend(dict.fromkeys(f"{frequency.source}: {frequency.label or frequency.rank}"
+                                         for entry in self._result.entries for frequency in entry.frequencies))
+            if self._result.translation_model:
+                details.append(self._result.translation_model)
+            self.browser.setToolTip("\n".join(details))
             QTimer.singleShot(0, self._fit_preview)
 
     def _fit_preview(self):
         if self._shutting_down or not self._peek or self.is_pinned or not self.settings.value("compact_preview", True, type=bool):
             return
-        self.setMinimumHeight(120)
+        self.setMinimumHeight(72)
         self.layout().activate()
         document = self.browser.document()
         document.setTextWidth(self.browser.viewport().width())
@@ -615,10 +684,12 @@ class QuickLookupWindow(QDialog):
 
     def _failed(self, revision, message):
         if revision in (-1, self.revision):
+            self._set_translation_busy(False)
             self.show_message(message)
 
     def show_message(self, text):
         self.status.setText(str(text))
+        self.status.setVisible(bool(text))
 
     def _link(self, url):
         if self._result is None:
@@ -692,6 +763,7 @@ class QuickLookupWindow(QDialog):
         self._peek = bool(peek)
         self.mode_row.setVisible(not self._peek)
         self.search.setVisible(not self._peek)
+        self.actions_row.setVisible(self.is_pinned)
 
     def open_search(self, text=""):
         self._set_peek(False)
@@ -723,6 +795,7 @@ class QuickLookupWindow(QDialog):
         self._display(result)
         self.set_context("")
         self.status.setText("")
+        self.status.hide()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, bool(peek))
         if not self.is_pinned:
             self._place()
@@ -735,12 +808,14 @@ class QuickLookupWindow(QDialog):
         self._context = str(text or "").strip()
         self._result_context = self._context
         self.copy_button.setEnabled(bool(self._context))
-        self.copy_button.setToolTip(self._context or "Copy the scanned sentence")
+        self.copy_button.setToolTip("Copy sentence\n\n" + self._context if self._context else "Copy sentence")
         self.context_label.setToolTip(self._context)
         preview = self._context[:180] + ("…" if len(self._context) > 180 else "")
         self.context_label.setTextFormat(Qt.TextFormat.PlainText)
         self.context_label.setText(preview)
-        self.context_label.setVisible(bool(self._context) and (not self._peek or self.is_pinned))
+        self.context_label.hide()
+        self.copy_button.setVisible(bool(self._context))
+        self.translate_sentence.setEnabled(bool(self._context) and not self._translation_busy)
         self.translate_sentence.setVisible(bool(self._context) and self.is_pinned)
 
     def _clear_context(self):
@@ -751,10 +826,10 @@ class QuickLookupWindow(QDialog):
     def copy_sentence(self):
         if self._context:
             QApplication.clipboard().setText(self._context)
-            self.status.setText("Sentence copied")
+            self.copy_button.setToolTip("Copied\n\n" + self._context)
 
     def _pin_changed(self, checked):
-        self.pin.setText("Pinned" if checked else "Pin")
+        self.pin.setToolTip("Unpin" if checked else "Pin")
         self.setSizeGripEnabled(checked)
         if self._peek:
             if checked:
@@ -769,7 +844,8 @@ class QuickLookupWindow(QDialog):
             if self._peek and self._result is not None:
                 self._expanded.update(entry.source for entry in self._result.entries)
                 self._kanji_expanded = True
-        self.context_label.setVisible(bool(self._context) and (not self._peek or checked))
+        self.context_label.hide()
+        self.actions_row.setVisible(checked)
         self.translate_sentence.setVisible(bool(self._context) and checked)
         self._render()
 
@@ -797,7 +873,7 @@ class QuickLookupWindow(QDialog):
     def _dismiss_if_inactive(self):
         setup_open = self._setup is not None and self._setup.isVisible()
         if not self._peek and not self.is_pinned and not self.isActiveWindow() and not setup_open \
-                and QApplication.activeModalWidget() is None:
+                and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None:
             self.hide()
 
     def hideEvent(self, event):

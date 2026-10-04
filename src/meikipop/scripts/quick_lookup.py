@@ -44,6 +44,10 @@ def main(argv=None):
     tray.setToolTip("Meikipop")
     menu = QMenu()
     menu.addAction("Search", window.open_search)
+    scan_action = menu.addAction("Screen lookup")
+    scan_action.setCheckable(True)
+    scan_action.toggled.connect(window.scan_toggle.setChecked)
+    window.scan_toggle.toggled.connect(scan_action.setChecked)
     menu.addAction("Setup", window.open_settings)
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
@@ -60,11 +64,14 @@ def main(argv=None):
         try:
             from meikipop.gui.unified_ocr import UnifiedOCR
             ocr = UnifiedOCR(window)
+            window.scan_toggle.toggled.connect(lambda enabled: window.settings.setValue("ocr_enabled", enabled))
+            window.scan_toggle.setChecked(window.settings.value("ocr_enabled", False, type=bool))
         except (ImportError, RuntimeError) as error:
             window.scan_toggle.setEnabled(False)
             window.scan_toggle.setToolTip(str(error))
     else:
-        window.scan_toggle.setVisible(False)
+        window.scan_toggle.setEnabled(False)
+    scan_action.setEnabled(window.scan_toggle.isEnabled())
     binding = args.hotkey
     if binding == "default":
         binding = "<cmd>+<alt>+d" if sys.platform == "darwin" else "<ctrl>+<alt>+d"
