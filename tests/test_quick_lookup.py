@@ -231,12 +231,11 @@ class QuickLookupTests(unittest.TestCase):
             self.window.copy_sentence()
             clipboard.return_value.setText.assert_called_once()
 
-    def test_back_restores_sentence_after_manual_search(self):
+    def test_back_restores_sentence_after_nested_lookup(self):
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.set_context("猫がいる。")
-        self.window.search.setText("犬")
-        self.window.debounce.stop()
-        self.window.deliver(self.window.revision, SearchResult("犬", "ja", "en", (entry("犬"),)))
+        self.window.lookup_word("犬")
+        self.wait_until(lambda: self.window._result.text == "犬")
         self.window.go_back()
         self.assertEqual(self.window.search.text(), "猫")
         self.assertEqual(self.window._context, "猫がいる。")
@@ -246,9 +245,8 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.set_context("猫がいる。")
         self.window.deliver(self.window.revision, SearchResult("猫", "ja", "en", (entry(),), translation="cat"))
-        self.window.search.setText("犬")
-        self.window.debounce.stop()
-        self.window.deliver(self.window.revision, SearchResult("犬", "ja", "en", (entry("犬"),)))
+        self.window.lookup_word("犬")
+        self.wait_until(lambda: self.window._result.text == "犬")
         self.window.go_back()
         self.assertEqual(self.window._context, "猫がいる。")
 
@@ -434,6 +432,28 @@ class QuickLookupTests(unittest.TestCase):
         self.wait_until(lambda: self.window._result.text == "鳥")
         self.assertFalse(self.window._history)
         self.assertEqual(self.window.title.text(), "")
+
+    def test_typing_replaces_result_without_adding_partial_words_to_history(self):
+        self.window.open_search()
+        self.wait_until(lambda: not self.window._opening_search)
+        for fragment in ("k", "o", "yun"):
+            QTest.keyClicks(self.window.search, fragment)
+            text = self.window.search.text()
+            self.wait_until(lambda: self.window._result is not None and self.window._result.text == text)
+            self.assertFalse(self.window._history)
+            self.assertEqual(self.window.title.text(), "")
+        self.window.search.returnPressed.emit()
+        self.wait_until(lambda: len(self.engine.calls) == 4)
+        self.assertFalse(self.window._history)
+        self.window.lookup_word("sheep")
+        self.wait_until(lambda: self.window._result.text == "sheep")
+        self.assertEqual([state[0].text for state in self.window._history], ["koyun"])
+        QTest.keyClicks(self.window.search, "s")
+        self.wait_until(lambda: self.window._result.text == "sheeps")
+        self.assertEqual([state[0].text for state in self.window._history], ["koyun"])
+        self.window.go_back()
+        self.assertEqual(self.window._result.text, "koyun")
+        self.assertFalse(self.window._history)
 
     def test_reverse_results_never_create_a_combined_frequency_tooltip(self):
         entries = tuple(replace(entry(str(i)), frequencies=(Frequency("Jiten", i, str(i)),)) for i in range(80))

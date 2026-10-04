@@ -390,6 +390,7 @@ class QuickLookupWindow(QDialog):
         self._pending_context_translation = None
         self._translation_busy = False
         self._last_request_translate = False
+        self._remember_request = False
         self.audio = None
         self.tray_geometry = None
         self._manual_at_cursor = False
@@ -658,6 +659,7 @@ class QuickLookupWindow(QDialog):
 
     def _invalidate(self):
         self.revision += 1
+        self._remember_request = False
         self.debounce.stop()
         self.worker.cancel()
         if self.translation_worker is not None:
@@ -681,7 +683,7 @@ class QuickLookupWindow(QDialog):
         else:
             self.browser.clear()
 
-    def submit(self, translate=None, *, context=False):
+    def submit(self, translate=None, *, context=False, remember=False):
         text = self._context if context else self.search.text().strip()
         self.debounce.stop()
         if not text:
@@ -689,6 +691,7 @@ class QuickLookupWindow(QDialog):
         if translate is None:
             translate = is_sentence(text)
         self._last_request_translate = bool(translate)
+        self._remember_request = remember or context
         self.revision += 1
         self._pending_context_translation = (self.revision, text) if context else None
         self._set_translation_busy(bool(translate))
@@ -725,9 +728,9 @@ class QuickLookupWindow(QDialog):
         partial_japanese = result.source == "ja" and 0 < result.matched_length < len(result.text)
         if (not self._peek and not self._last_request_translate and not result.translation
                 and (not result.entries or partial_japanese)):
-            self.submit(translate=True)
+            self.submit(translate=True, remember=self._remember_request)
             return
-        self._display(result)
+        self._display(result, remember=self._remember_request)
         if self._pending_context_translation and self._pending_context_translation[0] == revision:
             self.set_context(self._pending_context_translation[1])
             self._pending_context_translation = None
@@ -836,7 +839,7 @@ class QuickLookupWindow(QDialog):
     def lookup_word(self, text):
         self._set_peek(False)
         self.search.setText(text)
-        self.submit()
+        self.submit(remember=True)
 
     def go_back(self):
         if not self._history:
