@@ -1,6 +1,21 @@
-# meikipop - universal japanese ocr popup dictionary
+# meikipop - multilingual popup dictionary
 
 instantly look up japanese words anywhere on your screen. meikipop uses optical character recognition (ocr) to read text from websites, games, scanned manga, or even hard-coded video subtitles, giving you effortless dictionary lookups with the press of a key (or even without)!
+
+This fork now opens one compact popup for Japanese, Turkish and other installed
+Yomitan languages. Use [Start-Meikipop.cmd](Start-Meikipop.cmd) on Windows,
+[Start-Meikipop.command](Start-Meikipop.command) on macOS, or `meikipop` /
+`meikipop search` after installing this checkout. Setup imports and orders local
+dictionaries; results support pinning, scrolling, source expansion and copying
+the visible OCR sentence. Local translation is optional. See the
+[shared setup guide](docs/TURKISH_SETUP.md) for language packs, shortcuts and OCR.
+
+The original Japanese app remains available as `meikipop legacy-japanese`,
+and the separate Turkish client as `meikipop-turkish`. The shared macOS popup
+uses native Vision OCR; macOS packaging/CI is prepared but has not been run in
+this Windows workspace. The remaining upstream guide below describes the
+legacy Japanese workflow; [the original guide](https://github.com/rtr46/meikipop#readme)
+and its provider options remain available.
 
 https://github.com/user-attachments/assets/a1834197-3059-438c-a2dc-716e8ec9078f
 
@@ -25,11 +40,15 @@ it is heavily inspired by the philosophy of [Nazeka](https://github.com/wareya/n
 to maintain this focus, there are a few things meikipop is **not**:
 
 *   **it is not an srs-mining tool.** meikipop does not include functionality to automatically create flashcards for programs like anki.
-*   **it is not a multi-dictionary tool.** while meikipops lets you import yomitan dictionaries, it is designed to run best with a single, semi-custom jmdict+kanjidic dictionary. 
+*   **dictionary coverage depends on installed packs.** the shared popup supports multiple Yomitan dictionaries, frequency and kanji packs; imported forms do not provide automatic morphology for every language.
 
 ## installation
 
-there are a few different ways to install and run meikipop. note that when meikipop is started for the first time, a dictionary and ocr models may be downloaded.
+The following installation/provider instructions describe the original Japanese
+app and upstream releases. For this fork's default shared popup, follow the
+[shared setup guide](docs/TURKISH_SETUP.md). Its dictionary and translation
+imports are explicit; the legacy Japanese app may download its original assets
+on first launch.
 
 ### easiest: prepackaged binaries
 
@@ -43,7 +62,7 @@ if you already have python 3.10+ installed, this is the most flexible option tha
 ```bash
 #... activate your environment if any
 pip install --upgrade meikipop
-meikipop  # run the application
+meikipop  # run the upstream application
 ```
 
 ### for development: editable install
@@ -55,7 +74,7 @@ if you are planning to modify, fork or contribute to meikipop, it is best to che
 git clone https://github.com/rtr46/meikipop.git
 cd meikipop
 pip install -e .
-meikipop  # run the application
+meikipop  # run the upstream application
 ```
 
 ### platform support
@@ -94,7 +113,7 @@ here are some tips and recommendations:
 
 ## how to use
 
-1.  run the application (`meikipop`).
+1.  run the original Japanese application (`meikipop legacy-japanese` in this fork).
 2.  the first time you run the app in `region` mode, you will be prompted to select an area of your screen to scan.
 3.  move your mouse over any japanese text on your screen.
 4.  a popup with dictionary entries will appear.
@@ -161,5 +180,3 @@ meikipop import-yomitan-dict-text dict1.zip dict2.zip
 ## license
 
 meikipop is licensed under the GNU General Public License v3.0. see the `LICENSE` file for the full license text.
-
-

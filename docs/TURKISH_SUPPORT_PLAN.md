@@ -1,96 +1,72 @@
-# Turkish support and Japanese parity
+Updated: 2026-10-05
 
-Updated: 2026-09-09. Turkish is a separate app branded `meikipop-turkish`. The
-Japanese build and its existing UI are the acceptance reference. Do not change
-Japanese behavior or presentation.
+# Shared Japanese, Turkish and Yomitan popup
 
-## Goal
+The requested shared app supersedes the earlier separate-app-only plan. Keep
+the compact Japanese/Nazeka appearance while using one language selector,
+search surface and dictionary library. The original Japanese and Turkish
+clients remain explicit compatibility entrypoints.
 
-Make Turkish behaviorally and visually identical to Japanese wherever the
-dictionary backend permits it. Only Turkish OCR, NLP, dictionary data and
-language-specific content may differ. Keep the identities distinct so both apps
-can be installed and used without confusion.
+## Current design
 
-## Implementation status
+1. **Indexed library.** Import local Yomitan definition, forms, frequency and
+   kanji archives into immutable SQLite packs. Imports are atomic and
+   cancellable; per-pack enablement and ordering are separate preferences.
+   Structured Turkdict content and multiple Japanese dictionaries share the
+   existing HTML converter. The working local library includes full Turkdict,
+   Jitendex, KANJIDIC and Jiten packs; data and models stay outside Git.
 
-1. **Japanese input parity implemented.** Clipboard, selected-text shortcut,
-   drag selection, optional double-click and typed search reuse existing shortcut
-   recording and clipboard-restoring selection capture. All text inputs default
-   off and each shortcut is independently configurable. Turkish drag and
-   double-click toggles are separate. Tray actions own search, clipboard,
-   settings, pause and quit; Japanese files and settings are unchanged.
+2. **One popup.** Debounced typing, Enter, explicit local translation and OCR
+   use the shared result surface. A worker retains only the newest pending
+   search; edits invalidate old results immediately. Keep source labels,
+   independent expansion, scrolling, pinning, resizing and Back. Show supplied
+   frequency, inflection and kanji data without merging distinct source senses
+   or inventing missing kanji components.
 
-2. **Turkish popup implemented.** Shared theme, positioning and popup styling;
-   compact source headers and definition indentation; italic examples; full-width
-   show-more rows; a checked pin icon; click-to-pin, outside-click and Escape
-   dismissal. Inside definitions/examples, dragged selections, double-click,
-   selected-text shortcuts and scan-key lookup share the same history and lookup
-   path, without clipboard capture. Empty OCR hits hide the popup.
-   TDK, Wiktionary and KeNet can be
-   reordered in Settings without combining their senses. KeNet is expanded by
-   default alongside dictionary results, and opens directly when it is the only
-   match.
+3. **Language policies.** Japanese deconjugation and Turkish accent recovery
+   remain specialized. Other installed languages use indexed entries/readings
+   and imported forms. Small Unicode word/sentence policies share a registry
+   design inspired by [Anki Miner's language registry](https://github.com/0xzerolight/anki_miner/blob/a1955f4a/anki_miner/languages/registry.py),
+   independently implemented without importing its NLP models. Original text
+   and offsets are preserved for OCR hit-testing and sentence copying.
 
-3. **OCR dispatch separated.** Screen capture and recognition run through their
-   own latest-frame worker; pointer hit-testing reads cached boxes on the Qt
-   thread, and only the latest text lookup waits for Stanza/TDK/KeNet/Wiktionary.
-   Background captures retain the configurable throttle and stale deliveries
-   are rejected. CPU inference and unchanged-image caching remain offline. The
-   historical 237 ms changed frame / 0.1 ms cached-hit measurements are not
-   new-build benchmarks.
+4. **Local OCR and context.** Windows uses MeikiOCR for Japanese and optional
+   Paddle for Turkish; macOS uses native Vision with runtime language checks.
+   The tested Windows desktop environment uses Python 3.12 and PaddleOCR 3.7
+   PP-OCRv6 small models on CPU for interactive latency. Unicode word assembly
+   corrects Paddle's accent fragments; nearby aligned lines retain visible
+   sentence context. This is not a claim of best accuracy across screen content.
+   Model creation and inference remain off the Qt thread. Copy sentence is an
+   explicit local clipboard action using visible scanned context, with a local
+   Ctrl/Cmd+Shift+C shortcut. History retains that context. No automatic text
+   upload or ChatGPT API connection is added.
 
-4. **Updateable English dictionary implemented.** Import Turkish-to-English
-   Yomitan releases from [wiktionary-to-yomitan](https://github.com/yomidevs/wiktionary-to-yomitan),
-   using the repository's current Hugging Face download feed. Settings explicitly
-   installs/updates a separate SQLite pack; no dictionary snapshot is bundled.
-   Record revision, source SHA-256 and attribution. Reuse the existing Yomitan
-   structured-content converter, preserving upstream glosses, labels, examples
-   and links. Turkish-specific overrides provide compact previews and local
-   link navigation. Upstream plain-text form references remain plain text.
-   No Tureng integration or global sense ranking.
+5. **Optional local translation.** Explicitly installed
+   [Hy-MT2](https://huggingface.co/tencent/Hy-MT2-7B-GGUF) GGUF models run through
+   local llama.cpp, with Quality 7B Q8_0 and Lightweight 1.8B Q8_0 selectors.
+   There is no silent fallback or Argos backend. Models start lazily when
+   Translate is pressed; downloads occur only in setup. Custom servers must
+   use loopback HTTP, without proxies or redirects. Results identify the model;
+   model claims do not imply verified accuracy for every passage or language.
 
-5. **Turkish Windows release process implemented.** Dedicated window, tray,
-   settings, notifications, executable, app ID, shortcuts and per-user Inno Setup
-   installer. Existing `Meikipop/Turkish` settings and `languages/tr` data paths
-   are retained, so no migration or Japanese settings rewrite is needed.
-   First launch opens data settings when TDK is missing. Python, Qt, Stanza,
-   Torch and Paddle dependencies are bundled; data/model downloads remain explicit.
-   Complete staged asset installs record checksums and retain one previous
-   installation for rollback. Optional pronunciation and opt-in autoplay use an
-   installed Turkish system voice instead of the Japanese audio database. The
-   Windows speech backend is queried with the Turkish locale so installed voices
-   are discoverable. Build locally with
-   `Build-Turkish.ps1` or the Turkish Windows workflow; installer artifacts have
-   SHA-256 sidecars. No publishing or installation on this desktop is automatic.
+## Compatibility and remaining acceptance
 
-## Rules
+- Preserve the existing configuration, original Japanese `dictionary.pkl`,
+  and separate Turkish data/settings. `meikipop legacy-japanese` and
+  `meikipop-turkish` retain the earlier workflows and providers.
+- Non-OCR global shortcuts are independently recorded and enabled. Defaults
+  remain off in library code; the user's requested search shortcut can be
+  provisioned in this workspace. Model and dictionary downloads remain explicit.
+- macOS launch/build configuration and CI are prepared. Actual macOS hardware,
+  Input Monitoring/Screen Recording permissions, packaged builds, mixed-DPI
+  placement and OCR accuracy still need platform acceptance. Windows Turkish
+  models are installed and passed a bounded screenshot check; wider OCR
+  accuracy remains dependent on fonts and screen content.
+- Fixture tests cover dictionary metadata, language policies, latest-request
+  delivery, popup controls/context, import safety and translation. Final broad
+  test results belong to the current run, not a fixed count in this document.
 
-- Treat `../meikipop-japanese-clipboard` as the etalon and keep Japanese files,
-  settings and implementation unchanged.
-- Keep Turkish runtime lookup offline, imports lazy, model/data setup explicit,
-  and downloaded data, weights, packs and environments out of Git.
-- Keep Turkish and Japanese work in separate focused commits and worktrees.
-- Extend shared components where that preserves Japanese behavior; document only
-  genuine Turkish divergence.
-
-## Validation and user acceptance
-
-- The fixture suite passed 99 tests. Focused GUI checks passed after the final
-  dispatch cleanup and in-popup lookup additions (28 GUI tests). Standalone dependency/resource imports passed without OCR
-  inference. No new actual-model OCR tests or benchmarks were run, as requested.
-- The user owns hands-on input/focus, popup appearance, audio, OCR accuracy,
-  browser/PDF, mixed-DPI and clean-machine install/upgrade/uninstall acceptance.
-  Code implementation does not establish visual or clean-machine acceptance.
-- This release uses CPU OCR. GPU compatibility and CPU/GPU performance
-  measurements are optional follow-up work, not claimed as completed.
-
-## Implementation locations
-
-- Japanese reference: `../meikipop-japanese-clipboard`, shared popup and input
-  components.
-- Turkish input and popup: `src/meikipop/gui/turkish/`.
-- Turkish dictionaries and analyzers: `src/meikipop/dictionary/` and
-  `src/meikipop/language/`.
-- Turkish OCR: `src/meikipop/ocr/turkish_paddle.py`.
-- Source locks: `src/meikipop/resources/turkish/`.
-- Setup and usage: [TURKISH_SETUP.md](TURKISH_SETUP.md).
+Implementation lives in `dictionary/library.py`, `dictionary/search.py`,
+`dictionary/translation.py`, `language/profiles.py`, `gui/quick_lookup.py`,
+`gui/dictionary_manager.py`, and `gui/unified_ocr.py`. The retained Turkish
+client lives under `gui/turkish/`. See [setup and usage](TURKISH_SETUP.md).

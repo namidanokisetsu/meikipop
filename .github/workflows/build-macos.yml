@@ -2,6 +2,10 @@ name: reusable macos build
 
 on:
   workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-macos:
@@ -9,8 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
 
     runs-on: ${{ matrix.runner }}
 
@@ -28,11 +34,31 @@ jobs:
           pip install -e .
           pip install pyinstaller
 
+      - name: check native bridge and lookup fixtures
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "import Vision, Quartz; from meikipop.ocr.macos_vision import recognize; from meikipop.scripts.quick_lookup import main"
+          python -m meikipop.scripts.quick_lookup --check-runtime
+          python -m unittest discover -s tests -p 'test_macos*.py'
+          python -m unittest discover -s tests -p 'test_translation_server.py'
+
+      - name: verify native architecture
+        run: |
+          python -c "import platform; assert platform.machine() == '${{ matrix.arch }}', platform.machine()"
+
       - name: clean previous builds
         run: rm -rf build dist || true
 
       - name: build with pyinstaller (macos)
         run: pyinstaller meikipop.macos.spec
+
+      - name: verify app resources and signature
+        run: |
+          test -f dist/meikipop.app/Contents/Resources/meikipop/scripts/deconjugator.json
+          codesign --verify --deep --strict dist/meikipop.app
+          # Native imports only: this exits before Qt, capture or accessibility.
+          dist/meikipop.app/Contents/MacOS/meikipop --check-runtime
 
       - name: create dmg
         run: |

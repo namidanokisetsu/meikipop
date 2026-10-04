@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meikipop"
-version = "2.0.4"
-description = "Universal Japanese OCR popup dictionary"
+version = "2.0.5"
+description = "Desktop OCR dictionary with multilingual Yomitan lookup"
 readme = "README.md"
 license = "GPL-3.0"
 authors = [
@@ -21,11 +21,14 @@ dependencies = [
     "betterproto>=2.0.0b7",
     "protobuf>=6.33.1",
     "websockets>=15.0.1",
-    "meikiocr>=0.3.4",
-    "onnxruntime==1.20.1; sys_platform == 'win32'",
+    # macOS uses its built-in Vision engine; no OCR model download is needed.
+    "meikiocr>=0.3.5; sys_platform != 'darwin'",
+    # Keep the established runtime where its wheels exist (through Python 3.13).
+    "onnxruntime==1.20.1; sys_platform == 'win32' and python_version < '3.14'",
     "python-xlib~=0.33; sys_platform == 'linux'",
     "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
     "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
     "lxml",
     "platformdirs",
 ]
@@ -33,10 +36,14 @@ dependencies = [
 [project.scripts]
 meikipop = "meikipop.main:main"
 meikipop-turkish = "meikipop.scripts.turkish:desktop"
+meikipop-search = "meikipop.scripts.quick_lookup:main"
+meikipop-translation = "meikipop.scripts.translation_server:main"
 
 [project.optional-dependencies]
 turkish = ["stanza==1.14.0", "torch==2.8.0"]
-turkish-ocr = ["paddleocr==3.7.0", "paddlex[ocr-core]==3.7.2", "paddlepaddle==3.3.1"]
+# MeikiOCR and PaddleX install cv2 under two distribution names. Keep their
+# wheels on the same release so Python wrappers match the native extension.
+turkish-ocr = ["paddleocr==3.7.0", "paddlex[ocr-core]==3.7.2", "paddlepaddle==3.3.1", "opencv-python-headless==4.10.0.84"]
 
 [project.entry-points."meikipop.scripts"]
 build-dict = "meikipop.scripts.build_dictionary:main"

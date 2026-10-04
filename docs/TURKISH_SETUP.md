@@ -1,143 +1,192 @@
-# meikipop-turkish setup
+Updated: 2026-10-05
 
-## Windows installer
+# Shared popup setup
 
-Run `meikipop-turkish-2.0.4-windows-x64-setup.exe` from `dist/` or the
-**Turkish Windows installer** workflow artifact. It installs for the current
-user at `%LOCALAPPDATA%\Programs\meikipop-turkish`, with a Start menu shortcut,
-optional desktop shortcut and uninstaller. No Python installation is needed.
-Japanese keeps its own executable, shortcuts and settings. Upgrades use the same
-Turkish installation directory; uninstall preserves your dictionaries and settings.
+## Launch
 
-First launch opens Settings if TDK is missing. In **Dictionaries**, install TDK,
-Stanza models and OCR models. Wiktionary and KeNet are optional. Setup needs a
-network connection; normal lookup works offline afterward. Buttons never install
-Python packages. Lookup pauses during setup, and closing Settings does not cancel
-it. Wait for setup to finish before quitting.
+Use [Start-Meikipop.cmd](../Start-Meikipop.cmd) on Windows or
+[Start-Meikipop.command](../Start-Meikipop.command) on macOS. The Windows launcher
+prefers the checkout's `.venv-desktop` (the tested Python 3.12 desktop environment)
+and falls back to `.venv`; the macOS launcher uses `.venv`.
+After an editable installation, `meikipop`,
+`meikipop search`, and `meikipop-search` open the same shared popup.
+`python -m meikipop.scripts.quick_lookup --no-ocr` runs dictionary search alone.
+The tray menu opens Search, Setup, or Quit.
 
-**Install / update Wiktionary** fetches the current Turkish-to-English pack from
-[yomidevs/wiktionary-to-yomitan](https://github.com/yomidevs/wiktionary-to-yomitan).
-Its current download feed is hosted on Hugging Face. The app imports Yomitan
-structured content into an indexed SQLite pack and records the revision and
-SHA-256. It does not bundle a one-time Wiktionary snapshot or download during
-lookup. TDK and KeNet use their checked-in source locks.
+The original Japanese app remains available as `meikipop legacy-japanese`.
+Its original OCR settings and dictionary tools are described in the
+[upstream guide](https://github.com/rtr46/meikipop#readme).
+`meikipop-turkish` and [Start-Turkish.cmd](../Start-Turkish.cmd) retain the
+separate Turkish client and its existing settings.
 
-Reorder **TDK**, **Wiktionary** and **KeNet** by dragging or using **Move up/down**,
-then Save. Order changes whole source sections; senses are kept separate.
-**Roll back** restores the previous verified installation of that asset. Failed
-updates leave the existing installation intact. One previous version is retained.
+## Dictionaries and controls
 
-## Controls
+Open **Setup → Dictionaries → Import ZIPs** and select local Yomitan archives.
+Definition, forms, frequency and kanji packs are indexed on disk without
+replacing `dictionary.pkl`. Enable packs and move them up or down, then Apply.
+Cancellation keeps completed imports and discards the unfinished pack.
+Archive language metadata takes precedence; for a legacy archive without it,
+choose its language or type a language code before importing.
 
-Hold **Shift** over a word for local OCR. Clicking a preview, token or pin icon
-keeps the result open. Pinned results stay in place and suspend scans. Click
-outside, press **Escape**, or use the close button to dismiss. Empty OCR hits
-hide the popup. Tray left-click pauses/resumes; the tray menu has clipboard,
-search, settings and quit.
+Choose **Auto**, Japanese, Turkish, English, or another installed language.
+The arrow selector chooses the dictionary searched by English input. Auto
+detection uses scripts and dictionary evidence; choose a language explicitly
+for ambiguous words. Japanese deconjugation and Turkish accent recovery have
+dedicated handling. Other languages use exact entries, readings and imported
+forms; importing a dictionary does not provide a universal morphology model.
 
-Text inputs are off by default. Enable automatic clipboard lookup, dragged
-selections or double-click capture separately in Settings. Shortcut presets:
+Typing searches after a short debounce; Enter searches immediately. **Translate**
+explicitly runs the local translation model. Dictionary sections have independent
+previews and expansion controls. Scroll long results, **Pin** to keep and resize
+them, and use Back or Escape. Imported frequency, inflection and kanji information
+is shown with its source. Kanji details, including components and examples when
+present, depend on the actual pack; missing information is not invented.
 
-| Action | Preset |
-| --- | --- |
-| Clipboard | Ctrl+Alt+L |
-| Search | Ctrl+Alt+D |
-| Selected text | Ctrl+Alt+S |
+**Copy sentence**, or **Ctrl+Shift+C** on Windows / **Cmd+Shift+C** on macOS,
+copies the visible OCR sentence while the popup is active. The sentence preview
+and tooltip show what will be copied. It is the scanned context, not the
+dictionary lemma. A manual lookup or mode change clears it; Back restores the
+saved context. A scan cannot recover text outside the captured screen region.
+Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
+**Translate sentence** action translates that same scanned context locally.
 
-Each shortcut has its own enable box and key recorder. Selection capture is
-Windows-only, waits for modifiers to be released, and restores the previous
-clipboard formats. Focus changes and timeouts cancel capture. Source applications
-must support copying selected text; image-only text still needs OCR.
+**Setup → Shortcut** records an independently enabled search shortcut. Presets
+are Ctrl+Alt+D and Cmd+Option+D. General installs leave it disabled; the current
+workspace enables the user's requested search shortcut. The legacy clients keep
+their separate opt-in clipboard, selection and search controls. Search does not
+monitor the clipboard or upload text automatically. Copy sentence changes the
+clipboard only when invoked.
 
-Copied and selected text opens a pinned popup. Typed search and clickable tokens,
-suggestions and related expressions use the same lookup. Inside definitions and examples, select text by dragging or double-clicking,
-use the selected-text shortcut, or hold the scan key over a word. These all use
-the same lookup and Back history without reading or replacing the clipboard. Back history is limited
-to 32 entries and cleared on dismissal. Clipboard input is limited to 2,000
-characters. Clipboard contents, lookup history and screenshots are not logged or
-uploaded. Each dictionary expands independently; **Show more** reveals longer
-definitions for the source you clicked without changing the current scroll position.
+The provisioned local library uses the full Turkdict pack and Jitendex
+(2026-10-03), plus KANJIDIC and Jiten metadata packs. These large data files are
+outside Git. Additional local Yomitan packs can be added through the same UI.
 
-The optional **Pronunciation button** and **Autoplay pronunciation** setting use
-a Turkish system speech voice. Install one through Windows Settings if none is
-available. It does not use the Japanese audio database or download pronunciation
-files.
+## Screen lookup
 
-## Build a Windows installer
+Enable **Scan**, then hold the configured scan key over text; the default
+activation is Shift or middle mouse. The preview follows the pointer. While
+holding the scan key, left-click anywhere to pin the current result and expand
+its dictionaries and kanji details. Pinning stops following and scanning; release
+hides an unpinned preview after a short grace period. Close or Escape dismisses
+the current scan until the trigger is released.
 
-Use Windows x64, Python 3.13, `uv`, and Inno Setup 6. From this checkout:
+**Setup → Screen lookup** selects left click, middle click, or popup-only pinning.
+Windows consumes the configured outside pin click while a scan preview is ready;
+on macOS and Linux it also reaches the underlying app. Other clicks are unchanged.
+**Compact preview** is on by default; turn it off for full definitions immediately.
+**Scan automatically on hover** is off by default. When enabled, scanning waits
+for a short pause over text and preserves pinned results. After dismissing an
+automatic preview, move the pointer to resume. OCR runs separately from dictionary
+search and retains visible sentence context.
 
-```powershell
-uv venv --python 3.13 .venv
-uv pip install --python .venv/Scripts/python.exe -r packaging/requirements-turkish.txt
-uv pip install --python .venv/Scripts/python.exe --no-deps -e .
-.\Build-Turkish.ps1
+The Japanese and Turkish OCR selectors are independent. Windows defaults remain
+**MeikiOCR (CPU)** for Japanese and **PaddleOCR** for Turkish; macOS defaults to
+**Apple Vision**. **Chrome Screen AI (local)** is an optional alternative for
+either language. Changing the selection invalidates pending scans and uses a
+separate recognition cache. Selecting a provider never downloads a model.
+
+For Chrome Screen AI, use the Google component link in **Setup → Screen lookup**
+or the [official Chromium package directory](https://chrome-infra-packages.appspot.com/p/chromium/third_party/screen-ai).
+Download the package matching the operating system and Python CPU architecture,
+extract the complete archive, and choose its folder with **Browse**. Keep the
+native library and model files together in `resources/`. Installed components
+under the app's `screen_ai` directory, the legacy `~/.config/screen_ai` directory,
+and supported Chrome profile locations are discovered automatically. Restart
+Meikipop after replacing a component already loaded in the process. Google's
+macOS component uses `libchromescreenai.so` despite being a macOS binary; the
+adapter follows the [Meikikai native bridge](https://github.com/hectahertz/meikikai/tree/50efb401/src/meikikai/ocr/providers/chrome_screen_ai).
+macOS native loading still needs verification on actual macOS hardware.
+
+- **Windows Japanese:** install `meikiocr>=0.3.5`. Its local recognizer supplies
+  text boxes for Japanese lookup. Model setup is explicit and separate from
+  ordinary typed lookup.
+- **Windows Turkish:** use Python 3.12 and install the optional `[turkish-ocr]`
+  dependencies, then run `meikipop setup-turkish-ocr` in that environment.
+  The dependency group aligns OpenCV packages at 4.10.0.84. PaddleOCR 3.7 uses
+  local PP-OCRv6 small detection and recognition models with word boxes,
+  CPU inference, four threads and MKLDNN disabled. These models are installed
+  and a Turkish screenshot check passed here. The small configuration favors
+  interactive latency; a medium-model check was slower on the same sample with
+  the same recognized text. That comparison does not establish accuracy across
+  fonts, languages or screen content. The adapter rejoins Turkish accent
+  fragments and preserves nearby wrapped lines for sentence copying.
+  Indexed Turkdict lookup does not require Stanza or Paddle.
+- **macOS:** the unified popup uses native Apple Vision for OCR. Available
+  recognition languages depend on the installed macOS version. Grant Screen
+  Recording and Input Monitoring/Accessibility permissions to the terminal or
+  app that launches Meikipop. Unsupported OCR languages produce an actionable
+  message; their typed dictionary lookup remains available.
+
+The new shared scan path uses local recognition. The legacy Japanese client
+still offers its original providers, including explicitly selected remote OCR.
+macOS packaging and CI have been prepared, but a macOS build and hardware check
+have not been run in this Windows workspace.
+
+## Local translation
+
+Choose a model in **Setup → Translation** and use **Download selected model**
+once. **Quality** uses Tencent's [Hy-MT2-7B Q8_0](https://huggingface.co/tencent/Hy-MT2-7B-GGUF)
+(about 8 GB of weights); **Lightweight** uses
+[Hy-MT2-1.8B Q8_0](https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF) (about 2 GB).
+Both support Japanese, Turkish and English in one model. Quality is the default;
+changing models is explicit and there is no automatic fallback.
+
+Setup downloads the selected official GGUF and a pinned
+[llama.cpp runtime](https://github.com/ggml-org/llama.cpp/releases), checks their
+hashes and records source metadata in the app's `translation/installation.json`.
+Equivalent commands, using Meikipop's Python environment:
+
+```sh
+python -m meikipop.scripts.translation_server --install quality
+python -m meikipop.scripts.translation_server --install lightweight
 ```
 
-The script builds a PyInstaller directory bundle and compiles the installer,
-then writes `dist/*-setup.exe.sha256`. It finds Inno Setup in the standard
-per-user or Program Files installation. Override with `-Python <python.exe>`
-and `-ISCC <ISCC.exe>`. `-SkipBundle` recompiles only the installer from an
-existing bundle. This build includes the local inference libraries, so it is
-larger than the Japanese executable. Downloaded models and dictionaries are
-not included. A bundled console helper runs setup without opening a console.
+**Translate** starts only the installed selected model, off the UI thread, at
+`http://127.0.0.1:8766/v1`. Windows uses the CUDA runtime for the selected NVIDIA
+GPU; Apple Silicon uses Metal. The server frees model memory after an idle
+minute and reloads it when needed. The app stops only its own server when
+exiting. CPU execution is possible
+but may be slower. Weight size excludes runtime and context memory, so close
+other GPU-heavy applications if necessary.
 
-The GitHub Actions **Turkish Windows installer** workflow supports manual runs
-and `turkish-v*` tags. It uploads the installer and checksum as artifacts; it
-does not publish a GitHub release. Existing Japanese workflows are unchanged.
+**Custom local server** accepts a local chat-completions endpoint and model
+alias. It is never started or downloaded by the app. Requests use numeric
+loopback addresses, bypass proxies and reject redirects. No text goes to a
+cloud translation service. Search and translation do not download anything;
+neither Torch nor the older Argos/CTranslate2 backend is required or offered.
+The result identifies its selected model. Translation can still make errors;
+the selected model's published benchmarks do not establish accuracy for every
+language pair or passage.
 
-For a lightweight build check, without model inference:
+## Legacy Turkish client
 
-```powershell
-.\dist\meikipop-turkish\meikipop-turkish-cli.exe --self-check
+The separate `meikipop-turkish` client retains TDK, Wiktionary, KeNet, optional
+Stanza analysis, Windows selection capture and system-voice pronunciation.
+Its Settings page and CLI asset commands remain available:
+
+```sh
+meikipop build-turkish-dict
+meikipop setup-turkish-model
+meikipop setup-turkish-ocr
+python -m meikipop.scripts.turkish setup-turkish-wiktionary
+meikipop setup-turkish-wordnet
 ```
 
-The installer is unsigned. Hands-on clean-machine installation, input/focus,
-mixed-DPI, voice availability and OCR acceptance remain with the user.
-
-## Run from source and manage data
-
-After installing the build requirements above, use [Start-Turkish.cmd](../Start-Turkish.cmd)
-or `.\.venv\Scripts\meikipop-turkish.exe`. For clipboard-only development,
-install PyQt6, pynput, platformdirs and the pinned Stanza/Torch packages instead
-of the OCR/build dependencies, followed by `--no-deps -e .`.
-
-```powershell
-.\.venv\Scripts\meikipop.exe build-turkish-dict
-.\.venv\Scripts\meikipop.exe setup-turkish-model
-.\.venv\Scripts\meikipop.exe setup-turkish-ocr
-.\.venv\Scripts\python.exe -m meikipop.scripts.turkish setup-turkish-wiktionary
-.\.venv\Scripts\meikipop.exe setup-turkish-wordnet
-```
-
-Packaged commands use
-`meikipop-turkish-cli.exe --setup <command>`. Setup commands support `--rollback`.
-Close the Turkish app before CLI updates. Use dedicated asset directories for
-`--output` or `--model-dir`; managed directories are replaced as a unit.
-
-Data remains under `%LOCALAPPDATA%\meikipop\languages\tr` for compatibility:
-TDK `packs/tr-tdk/poc-1`, Wiktionary `packs/tr-wiktionary/1`, KeNet
-`packs/tr-kenet/1`, Stanza `stanza/1.14.0`, and OCR `paddle/3.7.0`.
-`asset.json` records installed-file checksums; a sibling `.previous` directory
-holds the rollback version. Turkish QSettings retain the `Meikipop/Turkish`
-namespace. These locations do not overwrite Japanese dictionary/configuration.
-
-Missing Stanza models fall back to exact lookup. `--analyzer exact` explicitly
-selects it; `--dictionary` and `--model-dir` override runtime paths. Stanza uses
-IMST tokenize/MWT and CharLM POS/lemma models. Paddle uses local PP-OCRv6 small
-models, CPU inference, cached recognition and independent pointer hit-testing.
-Background preparation uses the Settings scan interval. Rescan after changing
-source content; cached boxes are retained during an active preview.
+Legacy asset commands support `--rollback`. Close that client before CLI asset
+updates. Its existing `languages/tr` data and `Meikipop/Turkish` settings remain
+separate from shared Yomitan packs and `Meikipop/QuickLookup` preferences.
+`Build-Turkish.ps1` and the Turkish Windows installer workflow still build the
+separate client; the unified launchers do not replace that installed app.
 
 ## Validation
 
-The full fixture suite passed 99 tests; the later in-popup lookup additions
-passed the focused 28-test GUI suite. Run it once when changing implementation:
+Run the project fixture suite once after implementation changes:
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests
+```sh
+python -m unittest discover -s tests
 ```
 
-`smoke_turkish` and `smoke_turkish_ocr` remain available for user-run actual-model
-checks; they were not rerun for this release. See the
-[support plan](TURKISH_SUPPORT_PLAN.md) for acceptance boundaries.
+Focused tests cover stale-result rejection, input/pinning/history, source
+rendering, import cancellation, offline inference and archive validation.
+Hands-on OCR accuracy, global keys, display scaling and clean-machine packaging
+remain platform acceptance work. See the [support plan](TURKISH_SUPPORT_PLAN.md).

@@ -5,6 +5,7 @@ __pycache__/
 # Environment folders
 venv/
 .venv/
+.venv-desktop/
 env/
 .env
 
