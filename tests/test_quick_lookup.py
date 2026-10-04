@@ -610,6 +610,39 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.browser.toPlainText().count("Tureng"), 1)
         self.assertNotIn("Turkish Bilingual", self.window.browser.toPlainText())
 
+    def test_turkdict_homonyms_share_heading_without_losing_senses_or_variants(self):
+        def lexical_group(term, meaning):
+            return {"tag": "div", "content": [
+                {"tag": "div", "content": [term],
+                 "style": {"fontWeight": "bold", "marginTop": "0.3em"}},
+                {"tag": "div", "content": [meaning]}]}
+
+        definition = {"type": "structured-content", "content": [
+            {"tag": "div", "content": ["Wiktionary"], "style": {"fontWeight": "bold"}},
+            lexical_group("koyun", "1. sheep"),
+            lexical_group("koyun", "1. embrace"),
+            lexical_group("koynu", "possessive form"),
+            {"tag": "div", "content": ["koyun means sheep"]},
+            {"tag": "div", "content": ["koyun"], "style": {"fontStyle": "italic"}},
+        ]}
+        result = SearchResult("koyun", "tr", "en", (
+            entry("koyun", source="Turkish Bilingual", definitions=(definition,), language="tr"),
+            entry("koyun", source="Other dictionary", definitions=("ewe",), language="tr"),
+            entry("koymak", source="Turkish Bilingual", definitions=("put",), language="tr")))
+        for preview, expanded in ((True, ()), (False, ()), (False, ("Turkish Bilingual",))):
+            with self.subTest(preview=preview, expanded=expanded):
+                html = render_result(result, preview=preview, expanded=expanded)
+                self.window.browser.setHtml(html)
+                text = self.window.browser.toPlainText()
+                self.assertEqual(html.count("<h2>koyun</h2>"), 1)
+                # One shared heading and one legitimate occurrence in the example.
+                self.assertEqual(text.splitlines().count("koyun"), 2)
+                for meaning in ("sheep", "embrace", "koynu", "possessive form", "koyun means sheep"):
+                    self.assertIn(meaning, text)
+                if not preview:
+                    for label in ("Wiktionary", "Other dictionary", "ewe", "koymak", "put"):
+                        self.assertIn(label, text)
+
     def test_settings_menu_keeps_search_open(self):
         self.window.open_search()
         self.window.settings_menu.popup(self.window.settings_button.mapToGlobal(self.window.settings_button.rect().bottomLeft()))

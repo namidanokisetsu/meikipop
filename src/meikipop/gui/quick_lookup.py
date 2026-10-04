@@ -130,11 +130,12 @@ class LookupWorker(QObject):
 
 class _GlossConverter(StructuredContentConverter):
     """Prune structured previews before conversion, retaining lists and emphasis."""
-    def __init__(self, expanded=False, limit=360, preview=False, generic_source=False):
+    def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term=""):
         super().__init__()
         self.expanded = expanded
         self.preview = preview
         self.generic_source = generic_source
+        self.term = term
         self.first_source = ""
         self.remaining = limit
         self.clipped = False
@@ -165,6 +166,11 @@ class _GlossConverter(StructuredContentConverter):
             style = node.get("style", {})
             style = style if isinstance(style, dict) else {}
             heading_text = content[0] if isinstance(content, list) and len(content) == 1 else content
+            # Turkdict repeats the headword for each homonym inside a source.
+            # The shared lexical heading already identifies these sense groups.
+            if (self.generic_source and tag == "div" and heading_text == self.term
+                    and style.get("fontWeight") == "bold" and style.get("marginTop") == "0.3em"):
+                return ""
             source_heading = (isinstance(heading_text, str) and heading_text.strip() in
                               ("Tureng", "Wiktionary", "TDK", "KeNet", "Etymology")
                               and (tag in ("b", "strong") or style.get("fontWeight") in ("bold", "700")))
@@ -303,7 +309,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
             full, more = source in expanded and not preview, len(entries) > 2
             generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
             converter = _GlossConverter(expanded=full, limit=180 if preview else 360, preview=preview,
-                                        generic_source=generic_source)
+                                        generic_source=generic_source, term=term)
             definitions = []
             for entry in entries if full else entries[:2]:
                 more = more or len(entry.definitions) > 3
