@@ -14,13 +14,22 @@ from meikipop.gui.magpie_manager import magpie_manager
 from meikipop.gui.popup_style import frame_stylesheet, popup_position
 
 # macOS-specific imports for focus management
+AppKit = None
 if IS_MACOS:
     try:
-        import Quartz
+        import AppKit
     except ImportError:
-        Quartz = None
+        pass
 
 logger = logging.getLogger(__name__)
+
+
+def _popup_window_flags():
+    flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
+    # Upstream v2.0.5 / 0dbb499: stay visible above fullscreen X11 windows.
+    if QApplication.platformName() == "xcb":
+        flags |= Qt.WindowType.X11BypassWindowManagerHint
+    return flags
 
 
 class Popup(QWidget):
@@ -47,11 +56,7 @@ class Popup(QWidget):
         self.header_chars_per_line = 50
         self.def_chars_per_line = 50
 
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
-        )
+        self.setWindowFlags(_popup_window_flags())
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet("background: transparent;")
 
@@ -354,12 +359,12 @@ class Popup(QWidget):
 
     def _store_active_window_on_mac(self):
         """Store the currently active window for focus restoration (macOS only)."""
-        if not IS_MACOS or not Quartz:
+        if not IS_MACOS or not AppKit:
             return
 
         try:
             # Get the currently active application
-            active_app = Quartz.NSWorkspace.sharedWorkspace().frontmostApplication()
+            active_app = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
             if active_app:
                 # Store the application reference instead of trying to get the window
                 # We'll use the application to restore focus later
@@ -370,12 +375,12 @@ class Popup(QWidget):
 
     def _restore_focus_on_mac(self):
         """Restore focus to the previously active application (macOS only)."""
-        if not IS_MACOS or not Quartz or not self._previous_active_window_on_mac:
+        if not IS_MACOS or not AppKit or not self._previous_active_window_on_mac:
             return
 
         try:
             # Activate the previously active application
-            self._previous_active_window_on_mac.activateWithOptions_(Quartz.NSApplicationActivateAllWindows)
+            self._previous_active_window_on_mac.activateWithOptions_(AppKit.NSApplicationActivateAllWindows)
         except Exception as e:
             logger.warning(f"Failed to restore focus: {e}")
         finally:

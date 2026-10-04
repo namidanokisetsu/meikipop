@@ -1,5 +1,6 @@
 # customdict.py
 import logging
+import os
 import pickle
 import time
 import urllib.request
@@ -8,6 +9,7 @@ import io
 from collections import defaultdict
 
 from meikipop.utils.paths import paths
+from meikipop.config.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ class Dictionary:
         try:
             with open(file_path, 'rb') as f:
                 data = pickle.load(f)
+                stat = os.fstat(f.fileno())
             self.entries            = data['entries']
             self.lookup_map         = data['lookup_map']
             self.kanji_entries      = data.get('kanji_entries', {})
@@ -56,7 +59,18 @@ class Dictionary:
                 f"Dictionary loaded in {time.perf_counter() - start:.2f}s"
                 f"({len(self.entries)} core entries, {n_refs} lookup refs)"
             )
-            self._validate()
+            # Upstream v2.0.5 / 44171ba skips this advisory full scan once
+            # validated. Include path and size so another file with the same
+            # timestamp cannot inherit a different dictionary's cache entry.
+            signature = f"{os.path.normcase(os.path.realpath(file_path))}|{stat.st_size}|{stat.st_mtime_ns}"
+            if config.validated_dict_ts != stat.st_mtime_ns or config.validated_dict_signature != signature:
+                issues = self._validate()
+                config.validated_dict_ts = stat.st_mtime_ns if issues == 0 else -1
+                config.validated_dict_signature = signature if issues == 0 else ''
+                try:
+                    config.save()
+                except OSError as error:
+                    logger.warning("Could not save dictionary validation cache: %s", error)
             return True
         except FileNotFoundError:
             logger.warning(f"Dictionary file not found. Trying download...")
@@ -158,3 +172,4 @@ class Dictionary:
         else:
             logger.warning(f"Dictionary validation found {issues} issue(s) — "
                            f"some entries may display incorrectly.")
+        return issues

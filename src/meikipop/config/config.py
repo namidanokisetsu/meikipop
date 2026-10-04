@@ -10,7 +10,7 @@ from meikipop.gui.activation import normalise_activation_bindings
 logger = logging.getLogger(__name__)
 
 APP_NAME = "meikipop"
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.0.5"
 MAX_DICT_ENTRIES = 10
 IS_LINUX = sys.platform.startswith('linux')
 IS_WINDOWS = sys.platform.startswith('win')
@@ -41,7 +41,9 @@ class Config:
             'auto_scan_interval_seconds': 0.5,
             'auto_scan_on_mouse_move': True,
             'magpie_compatibility': True,
-            'start_with_windows': False
+            'start_with_windows': False,
+            'validated_dict_ts': -1,
+            'validated_dict_signature': ''
         },
         'Audio': {
             'audio_autoplay_enabled': False,
