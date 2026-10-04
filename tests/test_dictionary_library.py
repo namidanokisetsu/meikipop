@@ -104,6 +104,26 @@ class LibraryTests(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_profile_pair_limits_detection_dictionaries_and_translation_direction(self):
+        self.pack("Turkish", [self.row("am", ["Turkish entry"]), self.row("araç", ["vehicle"])])
+        self.pack("Japanese", [self.row("猫", ["cat"], "ねこ")], "ja")
+        from unittest.mock import Mock
+        translator = Mock(last_model="fixture")
+        translator.translate.return_value = "translated"
+        engine = SearchEngine(self.directory, translator)
+        try:
+            self.assertEqual(engine.search("am", foreign="ja", pair=("ja", "en")).source, "en")
+            self.assertEqual(engine.search("cat", foreign="ja", pair=("ja", "en")).entries[0].source, "Japanese")
+            self.assertEqual(engine.search("vehicle", foreign="tr", pair=("tr", "en")).entries[0].source, "Turkish")
+            first = engine.search("猫", foreign="ja", pair=("ja", "en"), translate=True)
+            second = engine.search("cat", foreign="ja", pair=("ja", "en"), translate=True)
+            self.assertEqual((first.source, first.target), ("ja", "en"))
+            self.assertEqual((second.source, second.target), ("en", "ja"))
+            self.assertEqual(first.entries, ())
+            self.assertEqual(second.entries, ())
+        finally:
+            engine.close()
+
     def test_other_languages_share_import_lookup_forms_and_reverse(self):
         self.pack("Deutsch", [self.row("Buch", ["book"]), self.row("Bücher", [["Buch", []]]),
                               self.row("für", ["for"])], "de")

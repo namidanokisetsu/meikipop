@@ -74,7 +74,7 @@ class TranslationSettings:
 
     def validated(self):
         if self.provider not in ("server", "custom") or self.profile not in tuple(MODEL_NAMES):
-            raise ValueError("Choose a translation model in Setup.")
+            raise ValueError("Choose a translation model in Settings.")
         if not isinstance(self.auto_start, bool):
             raise ValueError("Invalid local server startup setting.")
         if self.provider == "server":
@@ -93,18 +93,18 @@ def load_settings(directory=None):
     path = Path(directory or default_translation_path()) / "settings.json"
     try:
         if path.stat().st_size > 16384:
-            raise ValueError("Translation settings are too large. Save them again in Setup.")
+            raise ValueError("Translation settings are too large. Save them again in Settings.")
         values = json.loads(path.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         return TranslationSettings()
     except (OSError, ValueError) as error:
-        raise ValueError("Cannot read translation settings. Save them again in Setup.") from error
+        raise ValueError("Cannot read translation settings. Save them again in Settings.") from error
     if not isinstance(values, dict):
-        raise ValueError("Invalid translation settings. Save them again in Setup.")
+        raise ValueError("Invalid translation settings. Save them again in Settings.")
     try:
         return TranslationSettings(**values).validated()
     except TypeError as error:
-        raise ValueError("Invalid translation settings. Save them again in Setup.") from error
+        raise ValueError("Invalid translation settings. Save them again in Settings.") from error
 
 
 def save_settings(settings, directory=None):
@@ -122,6 +122,17 @@ def save_settings(settings, directory=None):
     finally:
         Path(temporary).unlink(missing_ok=True)
     return settings
+
+
+def load_profile_settings(preferences, profile):
+    value = preferences.value(f"profiles/{profile}/translation", "")
+    if not value:
+        return load_settings()
+    return TranslationSettings(**json.loads(value)).validated()
+
+
+def save_profile_settings(preferences, profile, settings):
+    preferences.setValue(f"profiles/{profile}/translation", json.dumps(asdict(settings.validated())))
 
 
 def _translation_content(response):
@@ -152,6 +163,7 @@ class LocalTranslator:
         self.directory = Path(directory or default_translation_path())
         self.last_provider = ""
         self.last_model = ""
+        self.settings_override = None
         self._connection = None
         self._connection_lock = threading.Lock()
         self._cancelled = threading.Event()
@@ -169,7 +181,7 @@ class LocalTranslator:
                 connection.close()
 
     def cache_key(self):
-        return load_settings(self.directory)
+        return self.settings_override or load_settings(self.directory)
 
     def translate(self, text, source, target):
         self._cancelled.clear()
@@ -182,7 +194,7 @@ class LocalTranslator:
         target_name = LANGUAGE_NAMES.get(target) or LANGUAGE_NAMES.get(target.split("-", 1)[0])
         if not target_name:
             raise ValueError(f"Translation to {target} is not configured. Dictionary lookup is still available.")
-        settings = load_settings(self.directory)
+        settings = self.cache_key()
         if settings.provider == "server":
             for code in (source, target):
                 if code.split("-", 1)[0] not in MANAGED_LANGUAGES:
@@ -221,7 +233,7 @@ class LocalTranslator:
                                headers={"Content-Type": "application/json", "Accept": "application/json"})
             response = connection.getresponse()
             if response.status != 200:
-                raise RuntimeError(f"Local translation server returned HTTP {response.status}. Check Setup.")
+                raise RuntimeError(f"Local translation server returned HTTP {response.status}. Check Settings.")
             payload = response.read(1024 * 1024 + 1)
             if len(payload) > 1024 * 1024:
                 raise RuntimeError("The local translation response was too large.")
@@ -241,4 +253,3 @@ class LocalTranslator:
         self.last_provider = settings.provider
         self.last_model = MODEL_NAMES[settings.profile] if settings.provider == "server" else settings.model
         return translated
-

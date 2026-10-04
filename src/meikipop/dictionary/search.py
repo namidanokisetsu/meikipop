@@ -23,6 +23,7 @@ class SearchResult:
     message: str = ""
     kanji: tuple = ()
     translation_model: str = ""
+    matched_length: int = 0
 
 
 class SearchEngine:
@@ -43,10 +44,10 @@ class SearchEngine:
         if self.library.refresh_if_changed():
             self.cache.clear()
 
-    def detect(self, text, foreign="ja"):
+    def detect(self, text, foreign="ja", languages=None):
         if re.search(r"[\u3040-\u30ff\uff66-\uff9f]", text):
             return "ja"
-        languages = self.languages()
+        languages = self.languages() if languages is None else languages
         if JAPANESE.search(text):
             return "zh" if foreign.startswith("zh") or "ja" not in languages and "zh" in languages else "ja"
         for pattern, codes in ((r"[\uac00-\ud7af]", ("ko",)),
@@ -79,28 +80,41 @@ class SearchEngine:
     def languages(self):
         return tuple(dict.fromkeys(meta["language"] for _, meta, _ in self.library.packs if meta["enabled"]))
 
-    def search(self, text, source="auto", foreign="ja", translate=False):
+    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None):
         text = text.strip()
         if len(text) > 2000:
             raise ValueError("Enter at most 2,000 characters.")
         if source != "auto":
             source = language_code(source)
         foreign = language_code(foreign)
+        if isinstance(self.translator, LocalTranslator):
+            self.translator.settings_override = translation_settings
         translator_key = getattr(self.translator, "cache_key", lambda: None)() if translate else None
-        cache_key = (text, source, foreign, translate, translator_key)
+        requested_target = language_code(target) if target else None
+        pair = tuple(language_code(code) for code in pair) if pair else None
+        cache_key = (text, source, foreign, translate, translator_key, requested_target, pair)
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)
             return self.cache[cache_key]
-        source = self.detect(text, foreign) if source == "auto" else source
-        target = foreign if source == "en" else "en"
+        source = self.detect(text, foreign, languages=pair) if source == "auto" else source
+        if pair:
+            source = source if source in pair else pair[0]
+            target = pair[1] if source == pair[0] else pair[0]
+            foreign = pair[0]
+        else:
+            target = requested_target if translate and requested_target else foreign if source == "en" else "en"
+        if translate and target == source:
+            target = foreign if source == "en" and foreign != "en" else "en"
         entries, suggestions, message = (), (), ""
-        if text:
-            if source == "en":
-                entries = self.library.reverse(text, target)
+        matched_length = 0
+        if text and not translate:
+            if source == "en" or pair and source == pair[1]:
+                entries = self.library.reverse(text, foreign if pair else target)
                 if not entries:
                     suggestions = self.library.suggest(text, target)
             else:
                 entries = self._japanese(text) if source == "ja" else self.library.lookup(text, source)
+                matched_length = self._matched_length if source == "ja" else len(text) if entries else 0
                 if not entries:
                     suggestions = self.library.suggest(text, source)
             if not entries and not suggestions:
@@ -112,9 +126,9 @@ class SearchEngine:
                 translation = self.translator.translate(text, source, target)
             except (ImportError, RuntimeError, ValueError) as error:
                 message = str(error)
-        kanji = self.library.kanji_info(entries[0].term if entries else text) if source == "ja" or target == "ja" else ()
+        kanji = self.library.kanji_info(entries[0].term if entries else text) if not translate and (source == "ja" or target == "ja") else ()
         model = getattr(self.translator, "last_model", "") if translation else ""
-        result = SearchResult(text, source, target, entries, suggestions, translation, message, kanji, model)
+        result = SearchResult(text, source, target, entries, suggestions, translation, message, kanji, model, matched_length)
         # A missing or starting local server must be retryable on the same text.
         if not translate or translation:
             self.cache[cache_key] = result
@@ -123,6 +137,7 @@ class SearchEngine:
         return result
 
     def _japanese(self, text):
+        self._matched_length = 0
         from .deconjugator import Deconjugator
         if self.deconjugator is None:
             rules = Path(__file__).parents[1] / "scripts/deconjugator.json"
@@ -158,6 +173,7 @@ class SearchEngine:
                                                   if step and not step.startswith("(")))
                     results.append(replace(entry, route="inflected", inflection=process))
             if results:
+                self._matched_length = length
                 unique = {}
                 for entry in results:
                     unique.setdefault(entry.id, entry)
