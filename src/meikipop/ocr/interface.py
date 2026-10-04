@@ -21,6 +21,7 @@ class Word:
     text: str  # this can be either a word or a single character
     separator: str  # The separator that follows the word (e.g., a space) - optional
     box: BoundingBox
+    source_start: Optional[int] = None  # Exact offset when supplied by the adapter.
 
 
 @dataclass(frozen=True)

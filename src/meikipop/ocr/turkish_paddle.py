@@ -85,6 +85,7 @@ class LocalOCR:
         self.scan_cache = ScanCache()
 
     def recognize(self, pixels):
+        """Recognize a BGR uint8 array; returned boxes use these input pixels."""
         return list(self.engine.predict(pixels))
 
     def lookup_point(self, pixels, point):
@@ -98,14 +99,10 @@ class LocalOCR:
 
 def hit_word(result, point):
     """Return complete line and source offset for the actual box under the pointer."""
+    from .context import paddle_lines
     x, y = point
-    for text, words, boxes in zip(result.get("rec_texts", []), result.get("text_word", []), result.get("text_word_boxes", [])):
-        offset = 0
-        for word, box in zip(words, boxes):
-            start = text.find(word, offset)
-            if start < 0:
-                continue
-            offset = start + len(word)
+    for text, words in paddle_lines([result]):
+        for _, start, _, box in words:
             left, top, right, bottom = box
             if left <= x <= right and top <= y <= bottom:
                 return text, start

@@ -38,3 +38,29 @@ class OCRTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, patch("meikipop.ocr.turkish_paddle.model_root", return_value=Path(temporary)):
             with self.assertRaisesRegex(RuntimeError, "setup-turkish-ocr"):
                 LocalOCR()
+
+    def test_legacy_hover_reassembles_real_paddle_turkish_fragments(self):
+        result = dict(rec_texts=['Bu araç yeni.'], text_word=[['Bu', ' ', 'ara', 'ç ', 'yeni', '.']],
+                      text_word_boxes=[[[0,0,20,20], [20,0,30,20], [30,0,60,20],
+                                        [60,0,80,20], [80,0,120,20], [120,0,130,20]]])
+        self.assertEqual(hit_word(result, (65, 10)), ('Bu araç yeni.', 3))
+        self.assertIsNone(hit_word(result, (75, 10)))
+        self.assertIsNone(hit_word(result, (125, 10)))
+
+    def test_unified_provider_converts_rgb_to_contiguous_bgr_once(self):
+        from PIL import Image
+        from unittest.mock import Mock
+        from meikipop.gui.unified_ocr import ScanWorker
+        from meikipop.ocr.context import hit_paragraphs
+        provider = Mock()
+        provider.recognize.return_value = [dict(rec_texts=['araç'], text_word=[['ara', 'ç']],
+                                               text_word_boxes=[[[0,0,30,20],[30,0,40,20]]])]
+        image = Image.new('RGB', (80, 40), (250, 30, 5))
+        with patch('meikipop.gui.unified_ocr.sys.platform', 'win32'), \
+                patch('meikipop.ocr.turkish_paddle.LocalOCR', return_value=provider):
+            paragraphs = ScanWorker.provider('tr')(image)
+        pixels = provider.recognize.call_args.args[0]
+        self.assertEqual(pixels[0, 0].tolist(), [5, 30, 250])
+        self.assertTrue(pixels.flags.c_contiguous)
+        self.assertEqual(pixels.shape, (40, 80, 3))
+        self.assertEqual(hit_paragraphs(paragraphs, (35 / 80, 10 / 40), 'tr').query, 'araç')
