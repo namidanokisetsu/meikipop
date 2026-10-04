@@ -48,8 +48,9 @@ to keep and resize results. Imported frequency, inflection and kanji information
 The copy button previews its sentence on hover; other popup hover labels are hidden.
 Kanji always use compact cards with meanings and readings, without a separate label or details toggle.
 
-The audio menu reads the word, the full sentence, or its translation using the appropriate
-language voice. Sentence reading uses system TTS even when a Japanese word-audio database is configured.
+The top controls are Translate, Read sentence, then Read word. In pinned OCR results they
+sit alongside the heading; language switching stays in the tray and Settings.
+Sentence reading uses system TTS even when a Japanese word-audio database is configured.
 **Settings → Audio → Autoplay** saves immediately per profile: Off, On lookup, or When pinned.
 When pinned keeps OCR hover previews silent and plays when expanded; explicit text lookups are already expanded.
 **Settings → Appearance** offers Charcoal, Slate, Dusk and Light, plus Custom. Presets are opaque

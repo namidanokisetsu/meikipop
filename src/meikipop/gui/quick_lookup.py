@@ -261,7 +261,7 @@ def _source_name(source):
     return re.sub(r"\s*\[\d{4}[^\]]*\]", "", source).replace("Jitendex.org", "Jitendex").strip()
 
 
-def render_result(result, expanded=(), kanji_expanded=False, preview=False):
+def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
@@ -271,12 +271,12 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False):
         groups.setdefault((entry.term, entry.reading), OrderedDict()).setdefault(entry.source, []).append(entry)
     parts = [f'<style>body {{color:{config.color_foreground};}} '
              f'a,h2 {{color:{config.color_highlight_word};text-decoration:none;}} '
-             f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px 0;}} '
+             f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px {96 if overlay_actions else 0}px 3px 0;}} '
              'p {margin:2px 0;} ol,ul {margin:2px 0 4px 8px;padding:0;} '
              'li {margin:1px 0;} hr {margin:6px 0;} '
              f'.metadata {{margin:1px 0 3px;color:{muted};}} .source {{margin:5px 0 2px;color:{muted};}}</style>']
     if result.translation:
-        parts.append(f'<p>{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
+        parts.append(f'<p style="margin-right:{96 if overlay_actions else 0}px">{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
         parts.append(f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p>')
         if result.entries:
             parts.append("<hr>")
@@ -474,18 +474,20 @@ class QuickLookupWindow(QDialog):
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
         header_layout.addWidget(self.search, 1)
-        header_layout.addWidget(self.translate)
+        self.audio_actions = QWidget()
+        action_layout = QHBoxLayout(self.audio_actions)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(2)
+        action_layout.addWidget(self.translate)
+        self.sentence_audio_button = self._action("audio_sentence", "Read sentence")
+        self.sentence_audio_button.clicked.connect(lambda: self.play_audio(sentence=True))
+        self.sentence_audio_button.setEnabled(False)
+        action_layout.addWidget(self.sentence_audio_button)
         self.audio_button = self._action("audio", "Play pronunciation")
-        self.audio_button.setFixedWidth(36)
         self.audio_button.setEnabled(False)
         self.audio_button.clicked.connect(self.play_audio)
-        self.audio_menu = QMenu(self.audio_button)
-        self.read_word = self.audio_menu.addAction("Read word", self.play_audio)
-        self.read_sentence = self.audio_menu.addAction("Read sentence", lambda: self.play_audio(sentence=True))
-        self.read_translation = self.audio_menu.addAction("Read translation", lambda: self.play_audio(translation=True))
-        self.audio_button.setMenu(self.audio_menu)
-        self.audio_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        header_layout.addWidget(self.audio_button)
+        action_layout.addWidget(self.audio_button)
+        header_layout.addWidget(self.audio_actions)
         layout.addWidget(self.header)
         controls.addWidget(self.source)
         controls.addWidget(self.target_label)
@@ -746,11 +748,8 @@ class QuickLookupWindow(QDialog):
         self.back.setEnabled(bool(self._history))
         self.back.setVisible(bool(self._history))
         self._update_trail()
-        self.audio_button.setEnabled(bool(result.entries or result.text))
-        self.audio_button.setToolTip("Play pronunciation" if result.entries else "Read sentence")
-        self.read_word.setVisible(bool(result.entries))
-        self.read_sentence.setEnabled(bool(result.text))
-        self.read_translation.setVisible(bool(result.translation))
+        self.audio_button.setEnabled(bool(result.entries))
+        self.sentence_audio_button.setEnabled(bool(result.text))
         autoplay = audio_autoplay_mode(self.settings, self.preferred_foreign)
         if (result.entries or result.translation) and (autoplay == "lookup" or
                 autoplay == "pin" and (not self._peek or self.is_pinned)):
@@ -764,8 +763,10 @@ class QuickLookupWindow(QDialog):
                 expanded = {entry.source for entry in self._result.entries}
             self.browser.setHtml(render_result(self._result, expanded,
                                                self._kanji_expanded or self._peek and not compact,
-                                               preview=self._peek and not self.is_pinned and compact))
+                                               preview=self._peek and not self.is_pinned and compact,
+                                               overlay_actions=self._peek and self.is_pinned))
             self.browser.setToolTip("")
+            self._place_actions()
             QTimer.singleShot(0, self._fit_preview)
 
     def _fit_preview(self):
@@ -893,10 +894,27 @@ class QuickLookupWindow(QDialog):
             self.setMinimumHeight(190)
             self.resize(self._normal_size)
         self._peek = bool(peek)
-        self.mode_row.setVisible(not self._peek)
-        self.header.setVisible(not self._peek or self.is_pinned)
+        self._place_actions()
         self.search.setVisible(not self._peek)
         self.actions_row.setVisible(self.is_pinned or not self._peek)
+
+    def _place_actions(self):
+        if self._shutting_down:
+            return
+        self.mode_row.hide()
+        self.header.setVisible(not self._peek)
+        if self._peek:
+            viewport = self.browser.viewport()
+            if self.audio_actions.parentWidget() is not viewport:
+                self.audio_actions.setParent(viewport)
+            self.audio_actions.adjustSize()
+            self.audio_actions.move(max(0, viewport.width() - self.audio_actions.width() - 4), 0)
+            self.audio_actions.setVisible(self.is_pinned)
+            self.audio_actions.raise_()
+        else:
+            if self.audio_actions.parentWidget() is not self.header:
+                self.header.layout().addWidget(self.audio_actions)
+            self.audio_actions.show()
 
     def open_search(self, text="", *, at_cursor=False, passive=False):
         self.remember_foreground()
@@ -1053,13 +1071,15 @@ class QuickLookupWindow(QDialog):
                 self._kanji_expanded = True
         self.context_label.hide()
         self.actions_row.setVisible(checked or not self._peek)
-        self.header.setVisible(checked or not self._peek)
+        self._place_actions()
         self._render()
 
         if checked and self._peek and audio_autoplay_mode(self.settings, self.preferred_foreign) == "pin":
             self.play_audio()
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
+            QTimer.singleShot(0, self._place_actions)
         if event.type() == QEvent.Type.ToolTip and watched is not self.copy_button:
             QToolTip.hideText()
             return True
