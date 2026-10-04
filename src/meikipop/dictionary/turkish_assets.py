@@ -49,7 +49,7 @@ def activate(stage, target):
             raise
 
 
-def setup_asset(kind, source=None, output=None, model_dir=None, rollback=False):
+def setup_asset(kind, source=None, output=None, model_dir=None, rollback=False, *, onnx_dir=None):
     from meikipop.dictionary.turkish_store import default_dictionary_path
     from meikipop.dictionary.turkish_wordnet import default_wordnet_path, setup_wordnet
     from meikipop.dictionary.turkish_wiktionary import default_wiktionary_path, setup_wiktionary
@@ -98,7 +98,7 @@ def setup_asset(kind, source=None, output=None, model_dir=None, rollback=False):
         elif kind == "model":
             setup_models(stage)
         elif kind == "ocr":
-            setup_ocr(stage)
+            setup_ocr(stage, onnx_dir=onnx_dir)
         write_manifest(stage, kind)
         # Legacy assets have no common manifest; preserve them for rollback too.
         if target.exists() and not (target / "asset.json").exists():

@@ -25,6 +25,7 @@ def main(argv=None):
     wordnet.add_argument("--source", type=Path)
     wordnet.add_argument("--output", type=Path)
     ocr = sub.add_parser("setup-turkish-ocr", help="Explicitly download local PaddleOCR models")
+    ocr.add_argument("--onnx-dir", type=Path, help="Install verified local exports from export_turkish_ocr")
     english = sub.add_parser("setup-turkish-wiktionary", help="Update English Wiktionary from wiktionary-to-yomitan")
     english.add_argument("--source", type=Path)
     english.add_argument("--output", type=Path)
@@ -48,7 +49,8 @@ def main(argv=None):
     if args.command in kinds:
         from meikipop.dictionary.turkish_assets import setup_asset
         print(setup_asset(kinds[args.command], getattr(args, "source", None), getattr(args, "output", None),
-                          getattr(args, "model_dir", None), args.rollback))
+                          getattr(args, "model_dir", None), args.rollback,
+                          **({"onnx_dir": args.onnx_dir} if args.command == "setup-turkish-ocr" else {})))
         return
     from meikipop.dictionary.turkish_store import default_dictionary_path, TurkishStore
     dictionary = args.dictionary or default_dictionary_path()

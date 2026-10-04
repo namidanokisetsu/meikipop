@@ -104,7 +104,10 @@ macOS native loading still needs verification on actual macOS hardware.
   dependencies, then run `meikipop setup-turkish-ocr` in that environment.
   The dependency group aligns OpenCV packages at 4.10.0.84. PaddleOCR 3.7 uses
   local PP-OCRv6 small detection and recognition models with word boxes,
-  CPU inference, four threads and MKLDNN disabled. These models are installed
+  CPU inference, four threads and oneDNN acceleration with Paddle 3.2.2. Paddle
+  3.3.1 failed locally in the optimized CPU path, matching the reported
+  [oneDNN conversion regression](https://github.com/PaddlePaddle/Paddle/issues/77340).
+  These models are installed
   and a Turkish screenshot check passed here. The small configuration favors
   interactive latency; a medium-model check was slower on the same sample with
   the same recognized text. That comparison does not establish accuracy across
@@ -157,6 +160,35 @@ neither Torch nor the older Argos/CTranslate2 backend is required or offered.
 The result identifies its selected model. Translation can still make errors;
 the selected model's published benchmarks do not establish accuracy for every
 language pair or passage.
+
+## Optional Turkish OCR export
+
+The same Paddle models can run through PaddleX's ONNX Runtime engine. On this
+Windows machine, a 1200×480 Turkish fixture took about 75 ms per warm scan with
+ONNX Runtime, versus 115 ms with Paddle 3.2.2/oneDNN and 568 ms with the previous
+unoptimized setup. Text, word fragments and word coordinates matched exactly
+on that fixture; this is not an accuracy benchmark across screen content.
+
+Ordinary OCR setup uses native Paddle. For the optional export, first run
+`meikipop setup-turkish-ocr`, then use a separate Python 3.12 conversion environment
+from the checkout. Keep the desktop environment on Paddle 3.2.2; the Windows
+converter requires the tested Paddle 3.1.1/Paddle2ONNX 2.1.0 combination:
+
+```powershell
+py -3.12 -m venv .venv-ocr-export
+.\.venv-ocr-export\Scripts\python -m pip install paddlepaddle==3.1.1 paddle2onnx==2.1.0 onnx==1.17.0
+.\.venv-ocr-export\Scripts\python -m pip install --no-deps -e .
+.\.venv-ocr-export\Scripts\python -m meikipop.scripts.export_turkish_ocr --source-dir "$env:USERPROFILE\.paddlex\official_models" --output build\turkish-onnx
+.\.venv-desktop\Scripts\python -m meikipop.scripts.turkish setup-turkish-ocr --onnx-dir build\turkish-onnx
+```
+
+The export records hashes of both original models and both ONNX files. Setup
+checks those hashes against the staged native models, opens both models with
+the installed runtime, and activates the complete installation atomically.
+Runtime lookup downloads nothing and uses ONNX only when both files are in its
+verified manifest. Normal setup restores native Paddle; `--rollback` restores
+the previous complete asset installation. Windows already installs ONNX Runtime
+with Meikipop. The conversion packages are not runtime dependencies.
 
 ## Legacy Turkish client
 

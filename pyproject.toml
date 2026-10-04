@@ -43,7 +43,8 @@ meikipop-translation = "meikipop.scripts.translation_server:main"
 turkish = ["stanza==1.14.0", "torch==2.8.0"]
 # MeikiOCR and PaddleX install cv2 under two distribution names. Keep their
 # wheels on the same release so Python wrappers match the native extension.
-turkish-ocr = ["paddleocr==3.7.0", "paddlex[ocr-core]==3.7.2", "paddlepaddle==3.3.1", "opencv-python-headless==4.10.0.84"]
+# Paddle 3.3.x has a PIR/oneDNN regression; 3.2.2 accelerates the same v6 models.
+turkish-ocr = ["paddleocr==3.7.0", "paddlex[ocr-core]==3.7.2", "paddlepaddle==3.2.2", "opencv-python-headless==4.10.0.84"]
 
 [project.entry-points."meikipop.scripts"]
 build-dict = "meikipop.scripts.build_dictionary:main"
