@@ -27,24 +27,37 @@ class LookupAudio(QObject):
         if not text.startswith("Audio database ready"):
             self.failed.emit(text)
 
-    def play(self, entry, revision, settings):
+    def _prepare(self, revision, key, settings, profile):
         self.player.stop()
         if self.speech:
             self.speech.stop()
-        self.latest = (revision, (entry.term, entry.reading or ""))
-        volume = settings.value(f"profiles/{entry.language}/audio_volume", config.audio_volume, type=int)
+        self.latest = (revision, key)
+        volume = settings.value(f"profiles/{profile}/audio_volume", config.audio_volume, type=int)
         self.output.setVolume(volume / 100)
+        return volume
+
+    def play(self, entry, revision, settings, profile=None):
+        volume = self._prepare(revision, (entry.term, entry.reading or ""), settings, profile or entry.language)
         path = settings.value("profiles/ja/audio_database", config.audio_database_path)
         if entry.language == "ja" and path:
             sources = settings.value("profiles/ja/audio_sources", config.audio_preferred_sources)
             self.worker.submit(AudioRequest(revision, self.latest[1], path,
                                             tuple(s.strip() for s in sources.split(",") if s.strip())))
             return
+        self._speak(entry.reading or entry.term, entry.language, volume)
+
+    def play_text(self, text, language, revision, settings, profile=None):
+        if not text.strip():
+            return
+        volume = self._prepare(revision, ("sentence", language, text), settings, profile or language)
+        self._speak(text, language, volume)
+
+    def _speak(self, text, language, volume):
         from PyQt6.QtTextToSpeech import QTextToSpeech
         if self.speech is None:
             self.speech = QTextToSpeech(self)
             self.speech.errorOccurred.connect(lambda _, text: self.failed.emit(text))
-        locale = QLocale(entry.language)
+        locale = QLocale(language)
         self.speech.setLocale(locale)
         voices = [v for v in self.speech.availableVoices() if v.locale().language() == locale.language()]
         if not voices:
@@ -52,7 +65,7 @@ class LookupAudio(QObject):
             return
         self.speech.setVoice(voices[0])
         self.speech.setVolume(volume / 100)
-        self.speech.say(entry.reading or entry.term)
+        self.speech.say(text)
 
     def _play_clip(self, clip):
         if self.latest != (clip.activation_id, clip.key):

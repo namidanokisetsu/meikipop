@@ -3,14 +3,22 @@
 from PyQt6.QtGui import QColor
 
 
+def surface_colors(background, foreground):
+    bg, fg = QColor(background), QColor(foreground)
+    def mix(amount):
+        return QColor(*(round(b + (f-b)*amount) for b, f in zip(bg.getRgb()[:3], fg.getRgb()[:3]))).name()
+    return {"muted": mix(.7), "border": mix(.25), "hover": mix(.12), "scroll": mix(.45)}
+
+
 def frame_stylesheet(background, foreground, opacity, font_family):
     color = QColor(background)
+    border = surface_colors(background, foreground)["border"]
     return f'''
         QFrame {{
             background-color: rgba({color.red()}, {color.green()}, {color.blue()}, {opacity});
             color: {foreground};
             border-radius: 8px;
-            border: 1px solid #555;
+            border: 1px solid {border};
         }}
         QLabel {{
             background-color: transparent;

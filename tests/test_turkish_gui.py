@@ -122,7 +122,7 @@ class ClipboardTests(unittest.TestCase):
         from meikipop.config.config import config
         original = dict(config.__dict__)
         dialog = SettingsDialog(self.window)
-        dialog.theme.setCurrentText("Academic")
+        dialog.theme.setCurrentText("Light")
         from PyQt6.QtGui import QKeySequence
         dialog.fields["search_hotkey"].recorder.setKeySequence(QKeySequence("Ctrl+Alt+K"))
         dialog.fields["search_hotkey"].enabled.setChecked(True)
@@ -130,7 +130,7 @@ class ClipboardTests(unittest.TestCase):
             dialog.save()
         self.assertEqual(config.__dict__, original)
         self.assertEqual(self.window.search_hotkey, "<ctrl>+<alt>+k")
-        self.assertEqual(self.window.word_color, "#8C2121")
+        self.assertEqual(self.window.word_color, "#185ABC")
 
     def test_newer_request_and_dismissal_reject_old_delivery(self):
         self.window.submit("kitap")

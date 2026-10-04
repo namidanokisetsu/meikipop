@@ -1,7 +1,7 @@
 """Compact, shared dictionary surface with a latest-request background worker."""
 from collections import OrderedDict
 from html import escape
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 import re
 import math
 import sys
@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 
 from meikipop.config.config import config
 from meikipop.dictionary.search import SearchEngine, SearchResult
-from meikipop.gui.popup_style import frame_stylesheet, popup_position
+from meikipop.gui.popup_style import frame_stylesheet, popup_position, surface_colors
 from meikipop.gui.action_icons import action_icon
 from meikipop.gui.turkish.browser import DictionaryBrowser
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
@@ -244,12 +244,13 @@ def _metadata(entries):
                 label = f"#{label}"
             frequencies.setdefault((frequency.source, label), None)
         for step in entry.inflection:
-            label = re.sub(r"\([^)]*\)", "", str(step)).strip()
+            label = (re.sub(r"\([^)]*\)", "", str(step)) if entry.language == "ja" else str(step)).strip()
             if label and not label.startswith("stem-"):
                 inflections.setdefault(label, None)
     parts = []
     if frequencies:
-        parts.extend(f'<a href="frequency:{quote(source + ": " + label)}" style="color:#999">{escape(label)}</a>'
+        muted = surface_colors(config.color_background, config.color_foreground)["muted"]
+        parts.extend(f'<a href="frequency:{quote(source + ": " + label)}" style="color:{muted}">{escape(label)}</a>'
                      for source, label in frequencies)
     if inflections:
         parts.append(escape(" · ".join(inflections)))
@@ -262,6 +263,7 @@ def _source_name(source):
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False):
     """Share lexical headings while preserving the configured dictionary order."""
+    muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
     for entry in result.entries:
         if preview and (entry.source != sources[0] or groups and (entry.term, entry.reading) not in groups):
@@ -272,10 +274,10 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False):
              f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px 0;}} '
              'p {margin:2px 0;} ol,ul {margin:2px 0 4px 8px;padding:0;} '
              'li {margin:1px 0;} hr {margin:6px 0;} '
-             '.metadata {margin:1px 0 3px;color:#aaa;} .source {margin:5px 0 2px;color:#aaa;}</style>']
+             f'.metadata {{margin:1px 0 3px;color:{muted};}} .source {{margin:5px 0 2px;color:{muted};}}</style>']
     if result.translation:
-        parts.append(f'<p title="{escape(result.translation_model, quote=True)}">'
-                     f'{escape(result.translation).replace(chr(10), "<br>")}</p>')
+        parts.append(f'<p>{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
+        parts.append(f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p>')
         if result.entries:
             parts.append("<hr>")
     anchored = set()
@@ -288,6 +290,11 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False):
                         if reading and reading != term else "")
         parts.append(f'<h2>{escape(term)}{reading_html}</h2>')
         parts.append(_metadata(entry for entries in dictionaries.values() for entry in entries))
+        if preview and result.source == "tr":
+            alternatives = tuple(dict.fromkeys(f"{other.term} · {' · '.join(other.inflection)}"
+                                 for other in result.entries if other.term != term and other.inflection))[:3]
+            if alternatives:
+                parts.append('<p class="metadata"><small>' + escape(" OR ".join(alternatives)) + '</small></p>')
         for source in sources:
             if source not in dictionaries:
                 continue
@@ -311,8 +318,6 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False):
                 label = converter.first_source or _source_name(source)
                 parts.append(f'<p class="source"><small><span title="{escape(source, quote=True)}">'
                              f'{escape(label)}</span>{toggle}</small></p>')
-            else:
-                parts.append(f'<span title="{escape(source, quote=True)}"></span>')
             if len(definitions) > 1:
                 parts.append("<ol>" + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
             else:
@@ -334,10 +339,8 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False):
 class LocalDictionaryBrowser(DictionaryBrowser):
     def viewportEvent(self, event):
         if event.type() == QEvent.Type.ToolTip:
-            anchor = self.anchorAt(event.pos())
-            if anchor.startswith("frequency:"):
-                QToolTip.showText(event.globalPos(), unquote(anchor[len("frequency:"):]), self)
-                return True
+            QToolTip.hideText()
+            return True
         return super().viewportEvent(event)
 
     def loadResource(self, resource_type, name):
@@ -367,6 +370,7 @@ class QuickLookupWindow(QDialog):
         self._context = ""
         self._peek = False
         self._history = []
+        self._new_chain = True
         self._expanded = set()
         self._kanji_expanded = False
         self._pin_anchor_click = False
@@ -386,6 +390,7 @@ class QuickLookupWindow(QDialog):
         self._previous_foreground = None
         self._passive_text = False
         self._selection_passive = False
+        self._selection_for_search = False
         self.setWindowTitle("Meikipop")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(340, 190)
@@ -407,6 +412,9 @@ class QuickLookupWindow(QDialog):
         self.back.clicked.connect(self.go_back)
         toolbar.addWidget(self.back)
         self.title = QLabel("")
+        self.title.setTextFormat(Qt.TextFormat.RichText)
+        self.title.linkActivated.connect(self._history_jump)
+        self.title.setMinimumWidth(0)
         self.title.installEventFilter(self)
         toolbar.addWidget(self.title, 1)
         self.scan_toggle = QCheckBox(self)
@@ -415,6 +423,8 @@ class QuickLookupWindow(QDialog):
         self.scan_toggle.hide()
         self.pin = self._action("pin", "Pin")
         self.pin.setCheckable(True)
+        self.pin.setParent(self)
+        self.pin.hide()
         self.pin.setToolTip("Keep this result open and resize it")
         self.pin.toggled.connect(self._pin_changed)
         self.copy_button = self._action("copy", "Copy sentence")
@@ -423,12 +433,10 @@ class QuickLookupWindow(QDialog):
         self.settings_button = self._action("settings", "Settings")
         self.settings_menu = QMenu(self.settings_button)
         self.settings_menu.addAction("Settings", self.open_settings)
-        pin_action = self.settings_menu.addAction("Pin")
-        pin_action.setCheckable(True)
-        pin_action.toggled.connect(self.pin.setChecked)
-        self.pin.toggled.connect(pin_action.setChecked)
         self.settings_button.setMenu(self.settings_menu)
         self.settings_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.settings_button.setParent(self)
+        self.settings_button.hide()
         close = self._action("close", "Close")
         close.clicked.connect(self.hide)
         self.dismiss_button = close
@@ -451,11 +459,9 @@ class QuickLookupWindow(QDialog):
         self.source.setCurrentIndex(max(0, self.source.findData(initial_profile)))
         self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{initial_profile}/target", "en"))))
         self.translate = self._action("translate", "Translate")
-        self.translate.setText("Translate")
-        self.translate.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.translate.setFixedWidth(92)
         self.translate.setEnabled(False)
-        self.translate.clicked.connect(lambda: self.submit(translate=True))
+        self.translate.clicked.connect(lambda: self.submit(translate=True, context=bool(self._peek and self._context)))
+        self.translate_sentence = self.translate
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
         self.search.setAccessibleName("Search text")
@@ -463,13 +469,28 @@ class QuickLookupWindow(QDialog):
         self.search.setMaxLength(2000)
         self.search.textChanged.connect(self._edited)
         self.search.returnPressed.connect(self.submit)
-        layout.addWidget(self.search)
+        self.header = QWidget()
+        header_layout = QHBoxLayout(self.header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self.search, 1)
+        header_layout.addWidget(self.translate)
+        self.audio_button = self._action("audio", "Play pronunciation")
+        self.audio_button.setFixedWidth(36)
+        self.audio_button.setEnabled(False)
+        self.audio_button.clicked.connect(self.play_audio)
+        self.audio_menu = QMenu(self.audio_button)
+        self.read_word = self.audio_menu.addAction("Read word", self.play_audio)
+        self.read_sentence = self.audio_menu.addAction("Read sentence", lambda: self.play_audio(sentence=True))
+        self.read_translation = self.audio_menu.addAction("Read translation", lambda: self.play_audio(translation=True))
+        self.audio_button.setMenu(self.audio_menu)
+        self.audio_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        header_layout.addWidget(self.audio_button)
+        layout.addWidget(self.header)
         controls.addWidget(self.source)
         controls.addWidget(self.target_label)
         controls.addWidget(self.foreign)
         controls.addStretch()
-        controls.addWidget(self.translate)
-        controls.addWidget(self.settings_button)
         layout.addWidget(self.mode_row)
         self.context_label = QLabel()
         self.context_label.setWordWrap(True)
@@ -488,15 +509,7 @@ class QuickLookupWindow(QDialog):
         self.status.setWordWrap(True)
         self.status.hide()
         layout.addWidget(self.status)
-        self.translate_sentence = self._action("translate", "Translate sentence")
-        self.translate_sentence.setVisible(False)
-        self.translate_sentence.clicked.connect(lambda: self.submit(translate=True, context=True))
-        self.audio_button = self._action("audio", "Play pronunciation")
-        self.audio_button.clicked.connect(self.play_audio)
-        toolbar.addWidget(self.audio_button)
-        toolbar.addWidget(self.translate_sentence)
         toolbar.addWidget(self.copy_button)
-        toolbar.addWidget(self.pin)
         toolbar.addWidget(close)
         layout.addWidget(self.actions_row)
         self.actions_row.hide()
@@ -511,10 +524,11 @@ class QuickLookupWindow(QDialog):
         self.worker.failed.connect(self._failed)
         self.worker.languages.connect(self.update_languages)
         self.worker.start()
-        self.hotkey_requested.connect(self.open_search)
+        self.hotkey_requested.connect(self.request_lookup)
         from meikipop.gui.selection import SelectionCapture
         self.selection = SelectionCapture(self)
-        self.selection.completed.connect(lambda text: self.lookup_selected(text, passive=self._selection_passive))
+        self.selection.completed.connect(self._selected_text_ready)
+        self.selection.unavailable.connect(self._selection_unavailable)
         self.selection_requested.connect(self.request_selection)
         self.clipboard_requested.connect(lambda: self.lookup_selected(QApplication.clipboard().text()))
         self.copy_shortcut = QShortcut(QKeySequence(
@@ -548,20 +562,25 @@ class QuickLookupWindow(QDialog):
         return mode if mode not in ("auto", "en", None) else self.settings.value("profile", "ja")
 
     def apply_style(self):
+        colors = surface_colors(config.color_background, config.color_foreground)
         self.frame.setStyleSheet(frame_stylesheet(config.color_background, config.color_foreground,
                                                   config.background_opacity, config.font_family) + f'''
             QLineEdit,QComboBox,QTextBrowser {{background:transparent;color:{config.color_foreground};
-                border:0;padding:3px;selection-background-color:#47627b;}}
-            QLineEdit {{border-bottom:1px solid #555;}}
+                border:0;padding:3px;selection-background-color:{config.color_highlight_word};
+                selection-color:{config.color_background};}}
+            QLineEdit {{border-bottom:1px solid {colors['border']};}}
             QComboBox QAbstractItemView {{background:{config.color_background};color:{config.color_foreground};}}
             QPushButton,QToolButton {{background:transparent;color:{config.color_foreground};
                 border:0;border-radius:4px;padding:3px 5px;}}
-            QPushButton:hover,QToolButton:hover,QToolButton:checked {{background:#47627b;}}
-            QPushButton:disabled,QToolButton:disabled {{color:#888;}}
+            QPushButton:hover,QToolButton:hover,QToolButton:checked {{background:{colors['hover']};}}
+            QPushButton:disabled,QToolButton:disabled {{color:{colors['muted']};}}
+            QMenu {{background:{config.color_background};color:{config.color_foreground};
+                border:1px solid {colors['border']};padding:4px;}}
+            QMenu::item:selected {{background:{colors['hover']};}}
             QCheckBox {{color:{config.color_foreground};spacing:4px;}}
             QScrollBar:vertical {{background:transparent;width:6px;margin:2px 0;}}
-            QScrollBar::handle:vertical {{background:#707070;min-height:24px;border-radius:3px;}}
-            QScrollBar::handle:vertical:hover {{background:#969696;}}
+            QScrollBar::handle:vertical {{background:{colors['scroll']};min-height:24px;border-radius:3px;}}
+            QScrollBar::handle:vertical:hover {{background:{colors['muted']};}}
             QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0;}}
             QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical {{background:transparent;}}
         ''')
@@ -637,10 +656,8 @@ class QuickLookupWindow(QDialog):
 
     def _set_translation_busy(self, busy):
         self._translation_busy = busy
-        self.translate.setEnabled(not busy and bool(self.search.text().strip()))
-        self.translate_sentence.setEnabled(not busy and bool(self._context))
-        self.translate.setToolTip("Translating…" if busy else "Translate")
-        self.translate_sentence.setToolTip("Translating…" if busy else "Translate sentence")
+        self.translate.setEnabled(not busy and bool(self.search.text().strip() or self._context))
+        self.translate.setToolTip("Translating…" if busy else "Translate sentence" if self._peek and self._context else "Translate")
 
     def _edited(self):
         self._invalidate()
@@ -713,19 +730,30 @@ class QuickLookupWindow(QDialog):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
             result.text, result.source, result.target)
         previous_context = getattr(self, "_result_context", "")
-        if remember and self._result is not None and not same:
-            self._history.append((self._result, getattr(self, "_result_context", "")))
+        if remember and not self._new_chain and self._result is not None and not same:
+            self._history.append((self._result, getattr(self, "_result_context", ""),
+                                  self._result_profile, self._result_target, tuple(self._expanded),
+                                  self.browser.verticalScrollBar().value()))
             self._history = self._history[-30:]
+        self._new_chain = False
         self._result = result
+        self._result_profile = self.preferred_foreign
+        self._result_target = self.foreign.currentData()
         self._result_context = previous_context if same else ""
         self._expanded.clear()
         self._kanji_expanded = False
         self._render()
         self.back.setEnabled(bool(self._history))
         self.back.setVisible(bool(self._history))
-        self.audio_button.setEnabled(bool(result.entries))
-        if result.entries and self.settings.value(f"profiles/{self.preferred_foreign}/audio_autoplay",
-                                                  config.audio_autoplay_enabled if result.source == "ja" else False, type=bool):
+        self._update_trail()
+        self.audio_button.setEnabled(bool(result.entries or result.text))
+        self.audio_button.setToolTip("Play pronunciation" if result.entries else "Read sentence")
+        self.read_word.setVisible(bool(result.entries))
+        self.read_sentence.setEnabled(bool(result.text))
+        self.read_translation.setVisible(bool(result.translation))
+        autoplay = audio_autoplay_mode(self.settings, self.preferred_foreign)
+        if (result.entries or result.translation) and (autoplay == "lookup" or
+                autoplay == "pin" and (not self._peek or self.is_pinned)):
             self.play_audio()
 
     def _render(self):
@@ -738,8 +766,6 @@ class QuickLookupWindow(QDialog):
                                                self._kanji_expanded or self._peek and not compact,
                                                preview=self._peek and not self.is_pinned and compact))
             self.browser.setToolTip("")
-            if self._result.translation_model and not self._translation_busy:
-                self.translate.setToolTip("Translate · " + self._result.translation_model)
             QTimer.singleShot(0, self._fit_preview)
 
     def _fit_preview(self):
@@ -807,22 +833,44 @@ class QuickLookupWindow(QDialog):
         if not self._history:
             return
         self._invalidate()
-        result, context = self._history.pop()
+        result, context, profile, target, expanded, scroll = self._history.pop()
         with QSignalBlocker(self.search), QSignalBlocker(self.source), QSignalBlocker(self.foreign):
             self.search.setText(result.text)
-            if self.source.findData(result.source) < 0:
-                self.source.addItem(language_name(result.source), result.source)
-            self.source.setCurrentIndex(self.source.findData(result.source))
-            if result.source == "en":
-                if self.foreign.findData(result.target) < 0:
-                    self.foreign.addItem(language_name(result.target), result.target)
-                self.foreign.setCurrentIndex(self.foreign.findData(result.target))
+            if self.source.findData(profile) < 0:
+                self.source.addItem(language_name(profile), profile)
+            self.source.setCurrentIndex(self.source.findData(profile))
+            self.foreign.setCurrentIndex(self.foreign.findData(target))
         self._update_target_visibility()
         self.mode_changed.emit(self.source.currentData())
         self._display(result, remember=False)
         self.set_context(context)
+        self._expanded = set(expanded)
+        self._render()
+        self.browser.verticalScrollBar().setValue(scroll)
         self.translate.setEnabled(bool(result.text))
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
+
+    def _update_trail(self):
+        if not self._history:
+            self.title.clear()
+            return
+        labels = []
+        start = max(0, len(self._history) - 2)
+        if start:
+            labels.append("…")
+        for index in range(start, len(self._history)):
+            text = self._history[index][0].text
+            short = text[:12] + ("…" if len(text) > 12 else "")
+            labels.append(f'<a href="{index}" style="color:{config.color_highlight_word}">{escape(short)}</a>')
+        text = self._result.text
+        labels.append(escape(text[:12] + ("…" if len(text) > 12 else "")))
+        self.title.setText(" › ".join(labels))
+
+    def _history_jump(self, index):
+        index = int(index)
+        if 0 <= index < len(self._history):
+            self._history = self._history[:index + 1]
+            self.go_back()
 
     def _place(self):
         point = QCursor.pos()
@@ -846,11 +894,16 @@ class QuickLookupWindow(QDialog):
             self.resize(self._normal_size)
         self._peek = bool(peek)
         self.mode_row.setVisible(not self._peek)
+        self.header.setVisible(not self._peek or self.is_pinned)
         self.search.setVisible(not self._peek)
         self.actions_row.setVisible(self.is_pinned or not self._peek)
 
     def open_search(self, text="", *, at_cursor=False, passive=False):
         self.remember_foreground()
+        self._history.clear()
+        self._new_chain = True
+        self.title.clear()
+        self.back.hide()
         self._passive_text = passive
         self._opening_search = True
         self._manual_at_cursor = at_cursor
@@ -882,18 +935,51 @@ class QuickLookupWindow(QDialog):
             self.open_search(text.strip()[:2000], at_cursor=True, passive=passive)
 
     def request_selection(self):
+        self._selection_for_search = False
         self._selection_passive = False
         self.selection.start(wait_for_modifiers=True)
 
-    def play_audio(self):
-        if self._result is None or not self._result.entries:
+    def request_lookup(self):
+        self._lookup_clipboard = QApplication.clipboard().text()[:2000]
+        if QApplication.activeWindow() is not None:
+            focused = QApplication.focusWidget()
+            text = focused.selectedText() if isinstance(focused, QLineEdit) else (
+                self.browser.textCursor().selectedText() if focused in (self.browser, self.browser.viewport()) else "")
+            self.open_search(text or self._lookup_clipboard)
+            return
+        if self.selection.pending:
+            return
+        self._selection_for_search = True
+        self.selection.start(wait_for_modifiers=True)
+
+    def _selected_text_ready(self, text):
+        if self._selection_for_search:
+            self._selection_for_search = False
+            self.open_search(text)
+        else:
+            self.lookup_selected(text, passive=self._selection_passive)
+
+    def _selection_unavailable(self, same_application):
+        requested, self._selection_for_search = self._selection_for_search, False
+        if requested and same_application:
+            self.open_search(self._lookup_clipboard)
+
+    def play_audio(self, *, sentence=False, translation=False):
+        if self._result is None:
             return
         if self.audio is None:
             from meikipop.gui.lookup_audio import LookupAudio
             self.audio = LookupAudio(self)
             self.audio.failed.connect(self.show_message)
-        entry = self._result.entries[0]
-        self.audio.play(entry, self.revision, self.settings)
+        result = self._result
+        if translation:
+            text, language = result.translation, result.target
+        elif sentence or not result.entries:
+            text, language = (self._context or result.text) if sentence else result.text, result.source
+        else:
+            self.audio.play(result.entries[0], self.revision, self.settings, profile=self.preferred_foreign)
+            return
+        self.audio.play_text(text, language, self.revision, self.settings, profile=self.preferred_foreign)
 
     def show_entries(self, entries, text="", source="ja", peek=False, kanji=()):
         if peek and self.is_pinned:
@@ -903,6 +989,8 @@ class QuickLookupWindow(QDialog):
                 and self._result.source == source and self._result.entries == entries and self.isVisible()):
             return True
         self._invalidate()
+        self._history.clear()
+        self._new_chain = True
         entries = tuple(entries or ())
         target = self.foreign.currentData() if source == "en" else "en"
         result = SearchResult(text, source, target, entries, kanji=tuple(kanji))
@@ -933,8 +1021,7 @@ class QuickLookupWindow(QDialog):
         self.context_label.setText(preview)
         self.context_label.hide()
         self.copy_button.setVisible(bool(self._context))
-        self.translate_sentence.setEnabled(bool(self._context) and not self._translation_busy)
-        self.translate_sentence.setVisible(bool(self._context) and self.is_pinned)
+        self._set_translation_busy(self._translation_busy)
 
     def _clear_context(self):
         previous = getattr(self, "_result_context", "")
@@ -966,10 +1053,16 @@ class QuickLookupWindow(QDialog):
                 self._kanji_expanded = True
         self.context_label.hide()
         self.actions_row.setVisible(checked or not self._peek)
-        self.translate_sentence.setVisible(bool(self._context) and checked)
+        self.header.setVisible(checked or not self._peek)
         self._render()
 
+        if checked and self._peek and audio_autoplay_mode(self.settings, self.preferred_foreign) == "pin":
+            self.play_audio()
+
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.ToolTip and watched is not self.copy_button:
+            QToolTip.hideText()
+            return True
         if event.type() == QEvent.Type.MouseButtonPress:
             self._passive_text = False
         if (event.type() == QEvent.Type.MouseButtonPress and self._peek and not self.is_pinned
@@ -1048,11 +1141,8 @@ class QuickLookupWindow(QDialog):
 
     def apply_shortcut(self, value, preset=None):
         from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
-        bindings = {binding: callback for binding, callback in (
-            (value, self.hotkey_requested.emit),
-            (self.settings.value("selection_hotkey", ""), self.selection_requested.emit),
-            (self.settings.value("clipboard_hotkey", ""), self.clipboard_requested.emit)) if binding}
-        validate_shortcuts([value, self.settings.value("selection_hotkey", ""), self.settings.value("clipboard_hotkey", "")])
+        bindings = {value: self.hotkey_requested.emit} if value else {}
+        validate_shortcuts([value])
         replacement = TextHotKeys(bindings) if bindings else None
         if replacement:
             replacement.start()
@@ -1088,3 +1178,9 @@ class QuickLookupWindow(QDialog):
 
 def shortcut_preset():
     return "Meta+Shift+D" if sys.platform == "darwin" else "Ctrl+Shift+D"
+
+
+def audio_autoplay_mode(settings, profile):
+    legacy = settings.value(f"profiles/{profile}/audio_autoplay",
+                            config.audio_autoplay_enabled if profile == "ja" else False, type=bool)
+    return settings.value(f"profiles/{profile}/audio_autoplay_mode", "lookup" if legacy else "off")

@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 
 from meikipop.dictionary.library import Library, default_library_path, import_yomitan, save_preferences
 from meikipop.dictionary.translation import TranslationSettings, load_settings, load_profile_settings, save_profile_settings
-from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset
+from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
 
 
@@ -95,7 +95,6 @@ class SetupDialog(QDialog):
         self.resize(700, 520)
         layout = QVBoxLayout(self)
         profile_row = QHBoxLayout()
-        profile_row.addWidget(QLabel("Language profile"))
         self.profile = QComboBox()
         for code in ("ja", "tr"):
             self.profile.addItem(language_name(code), code)
@@ -198,18 +197,10 @@ class SetupDialog(QDialog):
         default_search = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
         self.shortcut = ShortcutEdit(settings.value("hotkey", default_search),
                                      settings.value("hotkey_preset", shortcut_preset()))
-        shortcut_layout.addRow("Open search", self.shortcut)
-        modifier = "Meta" if sys.platform == "darwin" else "Ctrl"
-        self.selection_shortcut = ShortcutEdit(settings.value("selection_hotkey", ""), modifier + "+Alt+S")
-        self.clipboard_shortcut = ShortcutEdit(settings.value("clipboard_hotkey", ""), modifier + "+Alt+C")
-        shortcut_layout.addRow("Look up selected text", self.selection_shortcut)
-        shortcut_layout.addRow("Look up clipboard", self.clipboard_shortcut)
+        shortcut_layout.addRow("Look up text", self.shortcut)
         self.selected_text = QCheckBox("Look up selected text automatically")
-        self.clipboard_lookup = QCheckBox("Look up copied text automatically")
         shortcut_layout.addRow(self.selected_text)
-        shortcut_layout.addRow(self.clipboard_lookup)
         self.selected_text.toggled.connect(self.save_text_triggers)
-        self.clipboard_lookup.toggled.connect(self.save_text_triggers)
         save_shortcut = QPushButton("Apply")
         save_shortcut.clicked.connect(self.save_shortcut)
         shortcut_layout.addRow(save_shortcut)
@@ -295,8 +286,10 @@ class SetupDialog(QDialog):
         tabs.addTab(self.appearance, "Appearance")
         audio = QWidget()
         audio_form = QFormLayout(audio)
-        self.audio_autoplay = QCheckBox("Play pronunciation automatically")
-        audio_form.addRow(self.audio_autoplay)
+        self.audio_autoplay = QComboBox()
+        for label, mode in (("Off", "off"), ("On lookup", "lookup"), ("When pinned", "pin")):
+            self.audio_autoplay.addItem(label, mode)
+        audio_form.addRow("Autoplay", self.audio_autoplay)
         self.audio_volume = QSpinBox()
         self.audio_volume.setRange(0, 100)
         audio_form.addRow("Volume", self.audio_volume)
@@ -314,6 +307,7 @@ class SetupDialog(QDialog):
         audio_apply.clicked.connect(self.save_audio)
         audio_form.addRow(audio_apply)
         tabs.addTab(audio, "Audio")
+        self.audio_autoplay.currentIndexChanged.connect(self.save_autoplay)
 
         self.status = QLabel()
         self.status.setWordWrap(True)
@@ -390,21 +384,17 @@ class SetupDialog(QDialog):
     def save_text_triggers(self):
         prefix = f"profiles/{self.profile.currentData()}/"
         self.settings.setValue(prefix + "selected_text", self.selected_text.isChecked())
-        self.settings.setValue(prefix + "clipboard_lookup", self.clipboard_lookup.isChecked())
         if self.parent() is not None:
             self.parent().scan_settings_changed.emit()
 
     def save_shortcut(self):
         try:
             from meikipop.gui.text_shortcuts import validate_shortcuts
-            validate_shortcuts((self.shortcut.text(), self.selection_shortcut.text(), self.clipboard_shortcut.text()))
-            self.settings.setValue("selection_hotkey", self.selection_shortcut.text())
-            self.settings.setValue("clipboard_hotkey", self.clipboard_shortcut.text())
+            validate_shortcuts((self.shortcut.text(),))
             self._apply_shortcut(self.shortcut.text(), self.shortcut.recorder.keySequence().toString())
             bindings = ",".join(value for value in (self.scan_key.currentData(), self.scan_mouse.currentData()) if value)
             self.settings.setValue(f"profiles/{self.profile.currentData()}/scan_bindings", bindings)
             self.settings.setValue(f"profiles/{self.profile.currentData()}/selected_text", self.selected_text.isChecked())
-            self.settings.setValue(f"profiles/{self.profile.currentData()}/clipboard_lookup", self.clipboard_lookup.isChecked())
             if self.parent() is not None:
                 self.parent().set_mode(self.profile.currentData())
                 self.parent().scan_settings_changed.emit()
@@ -442,9 +432,8 @@ class SetupDialog(QDialog):
         code = self.profile.currentData()
         self.status.clear()
         bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
-        with QSignalBlocker(self.selected_text), QSignalBlocker(self.clipboard_lookup):
+        with QSignalBlocker(self.selected_text):
             self.selected_text.setChecked(self.settings.value(f"profiles/{code}/selected_text", False, type=bool))
-            self.clipboard_lookup.setChecked(self.settings.value(f"profiles/{code}/clipboard_lookup", False, type=bool))
         self.scan_key.setCurrentIndex(max(0, next((self.scan_key.findData(b) for b in bindings if self.scan_key.findData(b) >= 0), 0)))
         self.scan_mouse.setCurrentIndex(max(0, next((self.scan_mouse.findData(b) for b in bindings if self.scan_mouse.findData(b) >= 0), 0)))
         for index in range(self.packs.count()):
@@ -466,7 +455,8 @@ class SetupDialog(QDialog):
         self.auto_scan.setChecked(self.settings.value(f"profiles/{code}/auto_scan", self.settings.value("auto_scan", False, type=bool), type=bool))
         self.compact_preview.setChecked(self.settings.value(f"profiles/{code}/compact_preview", self.settings.value("compact_preview", True, type=bool), type=bool))
         self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(self.settings.value(f"profiles/{code}/pin_gesture", self.settings.value("pin_gesture", "left")))))
-        self.audio_autoplay.setChecked(self.settings.value(f"profiles/{code}/audio_autoplay", config.audio_autoplay_enabled if code == "ja" else False, type=bool))
+        with QSignalBlocker(self.audio_autoplay):
+            self.audio_autoplay.setCurrentIndex(max(0, self.audio_autoplay.findData(audio_autoplay_mode(self.settings, code))))
         self.audio_volume.setValue(self.settings.value(f"profiles/{code}/audio_volume", config.audio_volume, type=int))
         self.audio_database.setText(self.settings.value("profiles/ja/audio_database", config.audio_database_path))
         self.audio_sources.setText(self.settings.value("profiles/ja/audio_sources", config.audio_preferred_sources))
@@ -493,12 +483,15 @@ class SetupDialog(QDialog):
 
     def save_audio(self):
         code = self.profile.currentData()
-        self.settings.setValue(f"profiles/{code}/audio_autoplay", self.audio_autoplay.isChecked())
+        self.save_autoplay()
         self.settings.setValue(f"profiles/{code}/audio_volume", self.audio_volume.value())
         if code == "ja":
             self.settings.setValue("profiles/ja/audio_database", self.audio_database.text().strip())
             self.settings.setValue("profiles/ja/audio_sources", self.audio_sources.text())
         self.status.setText("Saved.")
+
+    def save_autoplay(self):
+        self.settings.setValue(f"profiles/{self.profile.currentData()}/audio_autoplay_mode", self.audio_autoplay.currentData())
 
     def choose_screenai(self):
         directory = QFileDialog.getExistingDirectory(self, "Chrome Screen AI component", self.screenai_directory.text())

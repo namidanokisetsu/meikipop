@@ -34,15 +34,27 @@ appearance and audio preferences. Lookup detects the input side of that pair
 and uses only that profile's dictionaries. Japanese deconjugation and Turkish accent recovery have
 dedicated handling. Other languages use exact entries, readings and imported
 forms; importing a dictionary does not provide a universal morphology model.
+Imported Turkish forms retain the dictionary's grammar labels, including alternative analyses.
+Reimport an older forms pack to restore labels discarded by earlier versions; existing dictionary preferences are preserved.
 
 Typed search opens beside the tray with keyboard focus. Enter searches immediately.
 Explicit sentences go straight to translation; words try dictionaries first and
 translate automatically when no entry matches. Hover OCR stays dictionary-only.
-Dictionary sections have independent
-previews and expansion controls. Scroll long results, **Pin** to keep and resize
-them, and use Back or Escape. Imported frequency, inflection and kanji information
-uses compact labels. Frequency tooltips describe only the hovered rank.
+Translations show the original sentence, a divider, then the translation. Translate and audio
+sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
+with Copy and Close at the right. Back restores the previous result and sentence context.
+Dictionary sections have independent previews and expansion controls. Pin with the scan gesture
+to keep and resize results. Imported frequency, inflection and kanji information uses compact labels.
+The copy button previews its sentence on hover; other popup hover labels are hidden.
 Kanji always use compact cards with meanings and readings, without a separate label or details toggle.
+
+The audio menu reads the word, the full sentence, or its translation using the appropriate
+language voice. Sentence reading uses system TTS even when a Japanese word-audio database is configured.
+**Settings → Audio → Autoplay** saves immediately per profile: Off, On lookup, or When pinned.
+When pinned keeps OCR hover previews silent and plays when expanded; explicit text lookups are already expanded.
+**Settings → Appearance** offers Charcoal, Slate, Dusk and Light, plus Custom. Presets are opaque
+with contrasting text and accents. Changes apply immediately; Custom remembers its own colors
+when switching presets. Appearance remains independent per language profile.
 
 **Copy sentence**, or **Ctrl+Shift+C** on Windows / **Cmd+Shift+C** on macOS,
 copies the OCR sentence while the popup is active. The copy icon's tooltip
@@ -52,11 +64,12 @@ saved context. A scan cannot recover text outside the captured screen region.
 Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 **Translate sentence** action translates that same scanned context locally.
 
-**Settings → Shortcuts** configures search, selected-text and clipboard lookup
-independently. Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS); selected-text
-and clipboard shortcuts are optional. Automatic selection and copied-text lookup
-are separate, disabled-by-default options for each profile. These previews leave
-keyboard focus in the original app. Selected-text lookup preserves the clipboard.
+**Settings → Shortcuts** configures one text-lookup shortcut and optional automatic selection.
+Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected
+text, preserving the clipboard, or uses the clipboard if nothing is selected. Sentences
+translate automatically; the prefilled input remains selected for immediate typing.
+Automatic lookup on double-click or drag selection is disabled by default and configured per profile.
+These previews leave keyboard focus in the original app. Selected-text lookup preserves the clipboard.
 Copy sentence changes the clipboard only when invoked.
 
 The provisioned local library uses the full Turkdict pack and Jitendex

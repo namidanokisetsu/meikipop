@@ -1,10 +1,10 @@
-"""Appearance controls shared with legacy themes, stored per language profile."""
+"""Live appearance controls and a saved custom palette per language profile."""
 import sys
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (QColorDialog, QComboBox, QFontComboBox, QFormLayout,
-                            QLineEdit, QPushButton, QSpinBox, QWidget)
+                            QPushButton, QSpinBox, QWidget)
 from meikipop.config.config import config
-from meikipop.gui.themes import THEMES
+from meikipop.gui.themes import THEMES, theme_name
 
 KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions",
         "color_background", "color_foreground", "color_highlight_word", "color_highlight_reading",
@@ -15,8 +15,14 @@ DEFAULTS["font_family"] = DEFAULTS["font_family"] or ("Segoe UI" if sys.platform
 
 def load_appearance(settings, profile):
     scale = settings.value(f"profiles/{profile}/scale", 100, type=int) / 100
+    name = theme_name(settings.value(f"profiles/{profile}/theme_name", DEFAULTS["theme_name"]))
     for key, default in DEFAULTS.items():
-        value = settings.value(f"profiles/{profile}/{key}", default, type=type(default))
+        if key in THEMES.get(name, {}):
+            value = THEMES[name][key]
+        else:
+            value = settings.value(f"profiles/{profile}/{key}", default, type=type(default))
+        if key == "theme_name":
+            value = name
         if key.startswith("font_size"):
             value = round(value * scale)
         setattr(config, key, value)
@@ -26,7 +32,8 @@ class ProfileAppearance(QWidget):
     def __init__(self, settings, profile, saved):
         super().__init__()
         self.settings, self.profile, self.saved = settings, profile, saved
-        form = QFormLayout(self)
+        self._loading = True
+        form = self.form = QFormLayout(self)
         self.theme = QComboBox()
         self.theme.addItems(THEMES)
         form.addRow("Theme", self.theme)
@@ -47,23 +54,30 @@ class ProfileAppearance(QWidget):
             button.clicked.connect(lambda _, key=key: self.pick_color(key))
             self.controls[key] = button
             form.addRow(label, button)
-        apply = QPushButton("Apply")
-        apply.clicked.connect(self.save)
-        form.addRow(apply)
         self.reload()
         self.theme.currentTextChanged.connect(self.apply_theme)
+        self.font.currentFontChanged.connect(self.save)
+        for key, widget in self.controls.items():
+            if not key.startswith("color"):
+                widget.valueChanged.connect(self.save)
 
     def reload(self):
+        self._loading = True
         self.theme.blockSignals(True)
-        self.theme.setCurrentText(self.settings.value(f"profiles/{self.profile()}/theme_name", DEFAULTS["theme_name"]))
+        name = theme_name(self.settings.value(f"profiles/{self.profile()}/theme_name", DEFAULTS["theme_name"]))
+        self.theme.setCurrentText(name)
         self.theme.blockSignals(False)
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
+            value = THEMES.get(name, {}).get(key, value)
             if key.startswith("color"):
                 self.set_color(key, value)
             else:
                 widget.setValue(int(value))
+            if key.startswith("color") or key == "background_opacity":
+                self.form.setRowVisible(widget, name == "Custom")
+        self._loading = False
 
     def set_color(self, key, color):
         self.controls[key].setText(color)
@@ -72,20 +86,35 @@ class ProfileAppearance(QWidget):
     def pick_color(self, key):
         color = QColorDialog.getColor(QColor(self.controls[key].text()), self)
         if color.isValid():
-            self.theme.setCurrentText("Custom")
             self.set_color(key, color.name())
+            self.save()
 
     def apply_theme(self, name):
-        for key, value in THEMES[name].items():
+        self._loading = True
+        palette = THEMES[name] if name != "Custom" else {
+            key: self.settings.value(f"profiles/{self.profile()}/custom/{key}",
+                                     widget.text() if key.startswith("color") else widget.value())
+            for key, widget in self.controls.items() if key.startswith("color") or key == "background_opacity"}
+        for key, value in palette.items():
             if key.startswith("color"):
                 self.set_color(key, value)
             elif key in self.controls:
-                self.controls[key].setValue(value)
+                self.controls[key].setValue(int(value))
+        for key, widget in self.controls.items():
+            if key.startswith("color") or key == "background_opacity":
+                self.form.setRowVisible(widget, name == "Custom")
+        self._loading = False
+        self.save()
 
-    def save(self):
+    def save(self, *_):
+        if self._loading:
+            return
         prefix = f"profiles/{self.profile()}/"
         self.settings.setValue(prefix + "theme_name", self.theme.currentText())
         self.settings.setValue(prefix + "font_family", self.font.currentFont().family())
         for key, widget in self.controls.items():
-            self.settings.setValue(prefix + key, widget.text() if key.startswith("color") else widget.value())
+            value = widget.text() if key.startswith("color") else widget.value()
+            self.settings.setValue(prefix + key, value)
+            if self.theme.currentText() == "Custom" and (key.startswith("color") or key == "background_opacity"):
+                self.settings.setValue(prefix + "custom/" + key, value)
         self.saved()

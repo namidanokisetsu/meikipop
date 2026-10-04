@@ -1,4 +1,4 @@
-"""Opt-in selection and clipboard lookup; native callbacks never touch widgets."""
+"""Opt-in selection lookup; native callbacks never touch widgets."""
 from time import monotonic
 from PyQt6.QtCore import QObject, QPoint, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QApplication
@@ -12,9 +12,7 @@ class TextTriggers(QObject):
         self.window = window
         self.listener = None
         self.press = self.last_click = None
-        self.last_text = ""
         self.clicked.connect(self.click)
-        QApplication.clipboard().dataChanged.connect(self.clipboard_changed)
         window.mode_changed.connect(self.reload)
         window.scan_settings_changed.connect(self.reload)
         self.reload()
@@ -44,15 +42,14 @@ class TextTriggers(QObject):
         self.last_click = None if double else (now, x, y)
         self.press = None
         if dragged or double:
-            self.window._selection_passive = True
-            QTimer.singleShot(60, self.window.selection.start)
+            QTimer.singleShot(60, self.capture_selection)
 
-    def clipboard_changed(self):
-        text = QApplication.clipboard().text()
-        previous, self.last_text = self.last_text, text
-        if (text != previous and text.strip() and not self.window.selection.pending and QApplication.activeWindow() is None
-                and self.window.settings.value(f"profiles/{self.window.preferred_foreign}/clipboard_lookup", False, type=bool)):
-            self.window.lookup_selected(text, passive=True)
+    def capture_selection(self):
+        if (not self.window.selection.pending and QApplication.activeWindow() is None
+                and self.window.settings.value(f"profiles/{self.window.preferred_foreign}/selected_text", False, type=bool)):
+            self.window._selection_for_search = False
+            self.window._selection_passive = True
+            self.window.selection.start()
 
     def shutdown(self):
         if self.listener:

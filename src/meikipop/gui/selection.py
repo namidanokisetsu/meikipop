@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication
 
 class SelectionCapture(QObject):
     completed = pyqtSignal(str)
+    unavailable = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,6 +35,8 @@ class SelectionCapture(QObject):
             text = clipboard.text(clipboard.Mode.Selection) if clipboard.supportsSelection() else ""
             if text.strip():
                 self.completed.emit(text[:2000])
+            else:
+                self.unavailable.emit(True)
             return
         self.foreground = self.user32.GetForegroundWindow()
         self.waiting = wait_for_modifiers
@@ -48,6 +51,7 @@ class SelectionCapture(QObject):
         # Do not release modifiers the reader is holding or copy into a new foreground app.
         if any(self.user32.GetAsyncKeyState(key) & 0x8000 for key in (0x10, 0x11, 0x12, 0x5B, 0x5C)):
             self.cancel()
+            self.unavailable.emit(False)
             return
         self.waiting = False
         self.sequence = self.user32.GetClipboardSequenceNumber()
@@ -71,16 +75,19 @@ class SelectionCapture(QObject):
                 keys.release(modifier)
         except Exception:
             self.cancel()
+            self.unavailable.emit(True)
             return
         self.timer.start()
 
     def poll(self):
         if self.user32.GetForegroundWindow() != self.foreground:
             self.cancel()
+            self.unavailable.emit(False)
             return
         if self.waiting:
             if monotonic() >= self.deadline:
                 self.cancel()
+                self.unavailable.emit(False)
             elif not any(self.user32.GetAsyncKeyState(key) & 0x8000 for key in (0x10, 0x11, 0x12, 0x5B, 0x5C)):
                 self.copy()
             return
@@ -94,8 +101,11 @@ class SelectionCapture(QObject):
             self.cancel()
             if text.strip() and len(text) <= 2000:
                 self.completed.emit(text)
+            else:
+                self.unavailable.emit(True)
         elif monotonic() >= self.deadline:
             self.cancel()
+            self.unavailable.emit(True)
 
     def cancel(self):
         self.timer.stop()

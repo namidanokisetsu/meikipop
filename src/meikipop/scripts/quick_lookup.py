@@ -50,8 +50,8 @@ def main(argv=None):
     window.tray_geometry = tray.geometry
     menu = QMenu()
     menu.addAction("Search", window.open_search)
-    menu.addAction("Look up clipboard", lambda: window.lookup_selected(app.clipboard().text()))
-    profiles = menu.addMenu("Language profile")
+    profiles = menu.addMenu(window.source.currentText())
+    window.mode_changed.connect(lambda *_: profiles.setTitle(window.source.currentText()))
     profile_group = QActionGroup(profiles)
     def populate_profiles():
         profiles.clear()

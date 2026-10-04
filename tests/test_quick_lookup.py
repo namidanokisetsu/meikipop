@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
-from PyQt6.QtCore import QSettings, Qt, QUrl
+from PyQt6.QtCore import QEvent, QSettings, Qt, QUrl
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
@@ -190,7 +190,8 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window._result.text, "猫")
         self.assertEqual(self.window._context, sentence)
         self.window.search.setText("manual")
-        self.assertFalse(self.window.translate_sentence.isVisible())
+        self.assertTrue(self.window.translate.isEnabled())
+        self.assertEqual(self.window._context, "")
 
     def test_jitendex_preview_reduces_nesting_and_separates_tags(self):
         definitions = ({"type": "structured-content", "content": [
@@ -301,6 +302,94 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry(),), "猫")
         self.window.audio_button.click()
         self.window.audio.play.assert_called_once()
+
+    def test_sentence_audio_reads_source_or_translation_in_its_language(self):
+        self.window.set_mode("tr")
+        self.window.audio = Mock()
+        result = SearchResult("Bugün hava çok güzel.", "tr", "en", translation="The weather is lovely today.")
+        self.window._display(result)
+        self.window.audio_button.click()
+        self.window.audio.play_text.assert_called_with(result.text, "tr", self.window.revision,
+                                                       self.settings, profile="tr")
+        self.window.read_translation.trigger()
+        self.window.audio.play_text.assert_called_with(result.translation, "en", self.window.revision,
+                                                       self.settings, profile="tr")
+        plain = self.window.browser.toPlainText()
+        self.assertLess(plain.index(result.text), plain.index(result.translation))
+        self.assertIn("</p><hr>", render_result(result))
+
+    def test_pinned_audio_control_reads_full_ocr_context(self):
+        self.window.audio = Mock()
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("公園で猫が寝ている。")
+        self.window.pin.setChecked(True)
+        self.assertTrue(self.window.audio_button.isVisible())
+        self.assertEqual(self.window.header.layout().indexOf(self.window.translate), 1)
+        self.assertEqual(self.window.header.layout().indexOf(self.window.audio_button), 2)
+        self.assertEqual(self.window.actions_row.layout().indexOf(self.window.audio_button), -1)
+        self.assertTrue(self.window.pin.isHidden())
+        self.assertEqual(self.window.actions_row.layout().indexOf(self.window.copy_button), 2)
+        self.assertEqual(self.window.actions_row.layout().indexOf(self.window.dismiss_button), 3)
+        self.window.read_sentence.trigger()
+        self.window.audio.play_text.assert_called_once_with("公園で猫が寝ている。", "ja", self.window.revision,
+                                                            self.settings, profile="ja")
+
+    def test_pin_autoplay_keeps_hover_silent_and_plays_when_expanded(self):
+        self.settings.setValue("profiles/ja/audio_autoplay_mode", "pin")
+        self.window.audio = Mock()
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.audio.play.assert_not_called()
+        self.window.pin.setChecked(True)
+        self.window.audio.play.assert_called_once()
+        self.window.pin.setChecked(False)
+        self.window.audio.play.assert_called_once()
+        self.window.set_mode("tr")
+        self.window.show_entries((entry("araç", language="tr"),), "araç", "tr", peek=True)
+        self.window.pin.setChecked(True)
+        self.window.audio.play.assert_called_once()
+
+    def test_turkish_grammar_is_compact_and_preserves_qualifiers(self):
+        result = SearchResult("oğlum", "tr", "en", (replace(entry("oğul", language="tr"),
+                                                            inflection=("my (possessive)",)),))
+        self.window.show_entries(result.entries, result.text, "tr", peek=True)
+        self.assertIn("my (possessive)", self.window.browser.toPlainText())
+        self.window.show_entries((entry("geldim", language="tr"),
+                                  replace(entry("gelmek", language="tr"), inflection=("past", "I"))),
+                                 "geldim", "tr", peek=True)
+        self.assertIn("gelmek · past · I", self.window.browser.toPlainText())
+
+    def test_nested_history_trail_restores_context_expansion_and_profile(self):
+        self.window.set_mode("tr")
+        self.window.show_entries((entry("ev", language="tr"),), "ev", "tr", peek=True)
+        self.window.set_context("Ev çok büyük.")
+        self.window.pin.setChecked(True)
+        self.window._expanded.add("Dictionary")
+        self.window.lookup_word("house")
+        self.wait_until(lambda: self.window._result.text == "house")
+        self.window.lookup_word("home")
+        self.wait_until(lambda: self.window._result.text == "home")
+        self.assertIn("ev", self.window.title.text())
+        self.assertIn("house", self.window.title.text())
+        self.assertIn("home", self.window.title.text())
+        self.window.go_back()
+        self.assertEqual(self.window._result.text, "house")
+        self.assertNotIn("home", self.window.title.text())
+        self.window.title.linkActivated.emit("0")
+        self.assertEqual(self.window._result.text, "ev")
+        self.assertEqual(self.window._context, "Ev çok büyük.")
+        self.assertEqual(self.window.preferred_foreign, "tr")
+        self.assertIn("Dictionary", self.window._expanded)
+        self.assertFalse(self.window._history)
+
+    def test_new_search_starts_a_separate_history_chain(self):
+        self.window.show_entries((entry(),), "猫")
+        self.window.lookup_word("犬")
+        self.wait_until(lambda: self.window._result.text == "犬")
+        self.assertTrue(self.window._history)
+        self.window.open_search("鳥")
+        self.wait_until(lambda: self.window._result.text == "鳥")
+        self.assertFalse(self.window._history)
+        self.assertEqual(self.window.title.text(), "")
 
     def test_reverse_results_never_create_a_combined_frequency_tooltip(self):
         entries = tuple(replace(entry(str(i)), frequencies=(Frequency("Jiten", i, str(i)),)) for i in range(80))
@@ -447,7 +536,7 @@ class QuickLookupTests(unittest.TestCase):
             self.assertFalse(button.icon().isNull())
             self.assertEqual(button.text(), "")
 
-    def test_frequency_source_and_translation_model_are_tooltips_not_labels(self):
+    def test_popup_hides_technical_tooltips_and_keeps_copy_preview(self):
         record = replace(entry(source="Jitendex.org [2026-10-03]"),
                          frequencies=(Frequency("Jiten", 186, "186"),))
         self.window.deliver(self.window.revision, SearchResult("猫", "ja", "en", (record,),
@@ -459,7 +548,11 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("2026-10-03", rendered)
         self.assertNotIn("Hy-MT2", rendered)
         self.assertNotIn("Jiten", self.window.browser.toolTip())
-        self.assertIn("Hy-MT2-7B Q8_0", self.window.translate.toolTip())
+        self.assertNotIn("Hy-MT2", self.window.translate.toolTip())
+        self.assertNotIn("Hy-MT2", self.window.browser.toHtml())
+        self.assertTrue(self.window.eventFilter(self.window.translate, QEvent(QEvent.Type.ToolTip)))
+        self.assertFalse(self.window.eventFilter(self.window.copy_button, QEvent(QEvent.Type.ToolTip)))
+        self.assertIn("猫", self.window.copy_button.toolTip())
 
     def test_turkdict_source_is_shown_once_only_after_pinning(self):
         definition = {"type": "structured-content", "content": [
@@ -533,6 +626,35 @@ class QuickLookupTests(unittest.TestCase):
             self.window.restore_shortcut()
             self.assertIsNone(self.window._keys)
 
+    def test_lookup_shortcut_prefers_selection_then_falls_back_to_clipboard(self):
+        with patch.object(QApplication, "activeWindow", return_value=None), \
+                patch.object(QApplication, "clipboard") as clipboard, \
+                patch.object(self.window.selection, "start") as capture:
+            clipboard.return_value.text.return_value = "clipboard"
+            self.window.request_lookup()
+            capture.assert_called_once_with(wait_for_modifiers=True)
+            self.assertFalse(self.window.isVisible())
+            self.window.selection.completed.emit("selected")
+            self.assertEqual(self.window.search.text(), "selected")
+            self.window.request_lookup()
+            self.window.selection.unavailable.emit(True)
+            self.assertEqual(self.window.search.text(), "clipboard")
+            self.window.hide()
+            self.window.request_lookup()
+            self.window.selection.unavailable.emit(False)
+            self.assertFalse(self.window.isVisible())
+
+    def test_shortcut_clipboard_sentence_translates_without_dictionary_lookup(self):
+        with patch.object(QApplication, "activeWindow", return_value=None), \
+                patch.object(QApplication, "clipboard") as clipboard, \
+                patch.object(self.window.selection, "start"):
+            clipboard.return_value.text.return_value = "This is a complete sentence."
+            self.window.request_lookup()
+            self.window.selection.unavailable.emit(True)
+            self.wait_until(lambda: self.window._result is not None)
+            self.assertEqual(len(self.engine.calls), 1)
+            self.assertTrue(self.engine.calls[0][3])
+
     def test_typed_lookup_takes_focus_after_passive_selection(self):
         with patch("meikipop.utils.window_focus.focus_search") as focus:
             self.window.lookup_selected("word", passive=True)
@@ -548,21 +670,25 @@ class QuickLookupTests(unittest.TestCase):
         triggers = TextTriggers(self.window)
         self.assertIsNone(triggers.listener)
         try:
-            with patch("meikipop.gui.text_triggers.QApplication") as app, patch.object(self.window, "lookup_selected") as lookup:
-                app.activeWindow.return_value = None
-                app.clipboard.return_value.text.return_value = "first"
-                triggers.clipboard_changed()
-                lookup.assert_not_called()
-                self.settings.setValue(f"profiles/{self.window.preferred_foreign}/clipboard_lookup", True)
-                app.clipboard.return_value.text.return_value = "second"
-                triggers.clipboard_changed()
-                lookup.assert_called_once_with("second", passive=True)
-                lookup.reset_mock()
-                self.window.selection.pending = True
-                app.clipboard.return_value.text.return_value = "internal selection copy"
-                triggers.clipboard_changed()
-                lookup.assert_not_called()
-                self.window.selection.pending = False
+            with patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch.object(self.window.selection, "start") as capture, patch("pynput.mouse.Listener") as listener:
+                triggers.capture_selection()
+                capture.assert_not_called()
+                self.settings.setValue(f"profiles/{self.window.preferred_foreign}/selected_text", True)
+                triggers.reload()
+                listener.return_value.start.assert_called_once()
+                triggers.click(-100, -100, True)
+                triggers.click(-100, -100, False)
+                triggers.click(-100, -100, True)
+                triggers.click(-100, -100, False)
+                QTest.qWait(80)
+                capture.assert_called_once()
+                self.assertTrue(self.window._selection_passive)
+                self.settings.setValue(f"profiles/{self.window.preferred_foreign}/selected_text", False)
+                triggers.reload()
+                listener.return_value.stop.assert_called_once()
+                triggers.capture_selection()
+                capture.assert_called_once()
         finally:
             triggers.shutdown()
             triggers.deleteLater()
