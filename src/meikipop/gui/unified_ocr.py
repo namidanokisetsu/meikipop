@@ -211,7 +211,7 @@ class UnifiedOCR(QObject):
 
         if settings is not None:
             from meikipop.config.config import config
-            bindings = settings.value(f"profiles/{profile}/scan_bindings", config.activation_bindings)
+            bindings = settings.value(f"profiles/{profile}/scan_bindings", "shift")
             previous_bindings = getattr(self, "activation_bindings", None)
             self.activation_bindings = bindings
             if self.input and bindings and bindings != previous_bindings:

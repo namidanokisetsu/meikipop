@@ -195,7 +195,8 @@ class SetupDialog(QDialog):
             self.scan_mouse.addItem(label, value)
         shortcut_layout.addRow("Screen lookup key", self.scan_key)
         shortcut_layout.addRow("Screen lookup mouse", self.scan_mouse)
-        self.shortcut = ShortcutEdit(settings.value("hotkey", ""),
+        default_search = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
+        self.shortcut = ShortcutEdit(settings.value("hotkey", default_search),
                                      settings.value("hotkey_preset", shortcut_preset()))
         shortcut_layout.addRow("Open search", self.shortcut)
         modifier = "Meta" if sys.platform == "darwin" else "Ctrl"
@@ -203,6 +204,12 @@ class SetupDialog(QDialog):
         self.clipboard_shortcut = ShortcutEdit(settings.value("clipboard_hotkey", ""), modifier + "+Alt+C")
         shortcut_layout.addRow("Look up selected text", self.selection_shortcut)
         shortcut_layout.addRow("Look up clipboard", self.clipboard_shortcut)
+        self.selected_text = QCheckBox("Look up selected text automatically")
+        self.clipboard_lookup = QCheckBox("Look up copied text automatically")
+        shortcut_layout.addRow(self.selected_text)
+        shortcut_layout.addRow(self.clipboard_lookup)
+        self.selected_text.toggled.connect(self.save_text_triggers)
+        self.clipboard_lookup.toggled.connect(self.save_text_triggers)
         save_shortcut = QPushButton("Apply")
         save_shortcut.clicked.connect(self.save_shortcut)
         shortcut_layout.addRow(save_shortcut)
@@ -380,6 +387,13 @@ class SetupDialog(QDialog):
         except OSError as error:
             self.status.setText(str(error))
 
+    def save_text_triggers(self):
+        prefix = f"profiles/{self.profile.currentData()}/"
+        self.settings.setValue(prefix + "selected_text", self.selected_text.isChecked())
+        self.settings.setValue(prefix + "clipboard_lookup", self.clipboard_lookup.isChecked())
+        if self.parent() is not None:
+            self.parent().scan_settings_changed.emit()
+
     def save_shortcut(self):
         try:
             from meikipop.gui.text_shortcuts import validate_shortcuts
@@ -389,6 +403,8 @@ class SetupDialog(QDialog):
             self._apply_shortcut(self.shortcut.text(), self.shortcut.recorder.keySequence().toString())
             bindings = ",".join(value for value in (self.scan_key.currentData(), self.scan_mouse.currentData()) if value)
             self.settings.setValue(f"profiles/{self.profile.currentData()}/scan_bindings", bindings)
+            self.settings.setValue(f"profiles/{self.profile.currentData()}/selected_text", self.selected_text.isChecked())
+            self.settings.setValue(f"profiles/{self.profile.currentData()}/clipboard_lookup", self.clipboard_lookup.isChecked())
             if self.parent() is not None:
                 self.parent().set_mode(self.profile.currentData())
                 self.parent().scan_settings_changed.emit()
@@ -425,7 +441,10 @@ class SetupDialog(QDialog):
         from meikipop.config.config import config
         code = self.profile.currentData()
         self.status.clear()
-        bindings = self.settings.value(f"profiles/{code}/scan_bindings", config.activation_bindings).split(",")
+        bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
+        with QSignalBlocker(self.selected_text), QSignalBlocker(self.clipboard_lookup):
+            self.selected_text.setChecked(self.settings.value(f"profiles/{code}/selected_text", False, type=bool))
+            self.clipboard_lookup.setChecked(self.settings.value(f"profiles/{code}/clipboard_lookup", False, type=bool))
         self.scan_key.setCurrentIndex(max(0, next((self.scan_key.findData(b) for b in bindings if self.scan_key.findData(b) >= 0), 0)))
         self.scan_mouse.setCurrentIndex(max(0, next((self.scan_mouse.findData(b) for b in bindings if self.scan_mouse.findData(b) >= 0), 0)))
         for index in range(self.packs.count()):

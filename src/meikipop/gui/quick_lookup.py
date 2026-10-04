@@ -384,6 +384,8 @@ class QuickLookupWindow(QDialog):
         self._manual_at_cursor = False
         self._opening_search = False
         self._previous_foreground = None
+        self._passive_text = False
+        self._selection_passive = False
         self.setWindowTitle("Meikipop")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(340, 190)
@@ -512,8 +514,8 @@ class QuickLookupWindow(QDialog):
         self.hotkey_requested.connect(self.open_search)
         from meikipop.gui.selection import SelectionCapture
         self.selection = SelectionCapture(self)
-        self.selection.completed.connect(self.lookup_selected)
-        self.selection_requested.connect(lambda: self.selection.start(wait_for_modifiers=True))
+        self.selection.completed.connect(lambda text: self.lookup_selected(text, passive=self._selection_passive))
+        self.selection_requested.connect(self.request_selection)
         self.clipboard_requested.connect(lambda: self.lookup_selected(QApplication.clipboard().text()))
         self.copy_shortcut = QShortcut(QKeySequence(
             "Meta+Shift+C" if sys.platform == "darwin" else "Ctrl+Shift+C"), self)
@@ -847,35 +849,41 @@ class QuickLookupWindow(QDialog):
         self.search.setVisible(not self._peek)
         self.actions_row.setVisible(self.is_pinned or not self._peek)
 
-    def open_search(self, text="", *, at_cursor=False):
+    def open_search(self, text="", *, at_cursor=False, passive=False):
         self.remember_foreground()
+        self._passive_text = passive
         self._opening_search = True
         self._manual_at_cursor = at_cursor
         self.pin.setChecked(False)
         self._set_peek(False)
         self._render()
         self._clear_context()
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, self._passive_text)
         if not self.is_pinned or not self.isVisible():
             self._place()
         self.show()
         self.raise_()
-        self.activateWindow()
+        if not self._passive_text:
+            self.activateWindow()
         self.search.setText(text)
         self.search.setFocus()
         self.search.selectAll()
         def focus():
             from meikipop.utils.window_focus import focus_search
-            if self.isVisible():
+            if self.isVisible() and not self._passive_text:
                 focus_search(self)
             self._opening_search = False
         QTimer.singleShot(0, focus)
         if text:
             self.submit()
 
-    def lookup_selected(self, text):
+    def lookup_selected(self, text, *, passive=False):
         if text.strip():
-            self.open_search(text.strip()[:2000], at_cursor=True)
+            self.open_search(text.strip()[:2000], at_cursor=True, passive=passive)
+
+    def request_selection(self):
+        self._selection_passive = False
+        self.selection.start(wait_for_modifiers=True)
 
     def play_audio(self):
         if self._result is None or not self._result.entries:
@@ -962,6 +970,8 @@ class QuickLookupWindow(QDialog):
         self._render()
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.MouseButtonPress:
+            self._passive_text = False
         if (event.type() == QEvent.Type.MouseButtonPress and self._peek and not self.is_pinned
                 and watched not in (self.dismiss_button, self.pin)):
             self._pin_anchor_click = watched is self.browser.viewport()
@@ -983,7 +993,7 @@ class QuickLookupWindow(QDialog):
             QTimer.singleShot(0, self._dismiss_if_inactive)
 
     def _dismiss_if_inactive(self):
-        if self._opening_search:
+        if self._opening_search or self._passive_text:
             return
         setup_open = self._setup is not None and self._setup.isVisible()
         if (not self._peek or self.is_pinned) and not self.isActiveWindow() and not setup_open \
@@ -1054,7 +1064,8 @@ class QuickLookupWindow(QDialog):
             self.settings.setValue("hotkey_preset", preset)
 
     def restore_shortcut(self, explicit=None):
-        binding = explicit if explicit is not None else self.settings.value("hotkey", "")
+        default = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
+        binding = explicit if explicit is not None else self.settings.value("hotkey", default)
         self.apply_shortcut(binding)
 
     def shutdown(self):
@@ -1076,4 +1087,4 @@ class QuickLookupWindow(QDialog):
 
 
 def shortcut_preset():
-    return "Meta+Alt+D" if sys.platform == "darwin" else "Ctrl+Alt+D"
+    return "Meta+Shift+D" if sys.platform == "darwin" else "Ctrl+Shift+D"

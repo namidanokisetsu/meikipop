@@ -37,6 +37,9 @@ def main(argv=None):
         app.setFont(QFont("Segoe UI", 10))
     app.setQuitOnLastWindowClosed(False)
     window = QuickLookupWindow(args.library)
+    from meikipop.gui.text_triggers import TextTriggers
+    text_triggers = TextTriggers(window)
+    app.aboutToQuit.connect(text_triggers.shutdown)
     icon = QIcon(paths.get_resource_path("icon.ico"))
     if icon.isNull():
         icon = app.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView)
@@ -83,7 +86,7 @@ def main(argv=None):
         window.scan_toggle.setEnabled(False)
     binding = args.hotkey
     if binding == "default":
-        binding = "<cmd>+<alt>+d" if sys.platform == "darwin" else "<ctrl>+<alt>+d"
+        binding = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
     try:
         window.restore_shortcut(binding)
     except (ValueError, OSError, RuntimeError) as error:

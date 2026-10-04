@@ -53,10 +53,11 @@ Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 **Translate sentence** action translates that same scanned context locally.
 
 **Settings → Shortcuts** configures search, selected-text and clipboard lookup
-independently. This user's Windows install uses Ctrl+Alt+D, Ctrl+Alt+S and Ctrl+Alt+C
-respectively. Selected-text lookup preserves the clipboard. Search does not
-monitor the clipboard or upload text automatically. Copy sentence changes the
-clipboard only when invoked.
+independently. Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS); selected-text
+and clipboard shortcuts are optional. Automatic selection and copied-text lookup
+are separate, disabled-by-default options for each profile. These previews leave
+keyboard focus in the original app. Selected-text lookup preserves the clipboard.
+Copy sentence changes the clipboard only when invoked.
 
 The provisioned local library uses the full Turkdict pack and Jitendex
 (2026-10-03), plus KANJIDIC and Jiten metadata packs. These large data files are
@@ -65,7 +66,7 @@ outside Git. Additional local Yomitan packs can be added through the same UI.
 ## Screen lookup
 
 Set a screen lookup key or mouse shortcut in **Settings → Shortcuts**, then hold it over text; the default
-activation is Shift or middle mouse. The preview follows the pointer. While
+activation is Shift. The preview follows the pointer. While
 holding the scan key, left-click anywhere to pin the current result and expand
 its dictionaries. Pinning stops following; a click outside or a fresh scan elsewhere dismisses it. Release
 hides an unpinned preview after a short grace period. Close or Escape dismisses

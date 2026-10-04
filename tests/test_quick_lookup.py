@@ -519,16 +519,53 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Strokes", self.window.browser.toPlainText())
         self.assertIn("Fourth sense", self.window.browser.toPlainText())
 
-    def test_global_shortcut_is_disabled_until_requested(self):
-        self.assertIsNone(self.window._keys)
-        self.window.restore_shortcut()
+    def test_default_search_shortcut_can_be_disabled(self):
         self.assertIsNone(self.window._keys)
         with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:
-            self.window.apply_shortcut("<ctrl>+<alt>+d")
+            self.window.restore_shortcut()
+            import sys
+            self.assertEqual(self.settings.value("hotkey"),
+                             "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d")
             hotkeys.return_value.start.assert_called_once()
             self.window.apply_shortcut("")
             hotkeys.return_value.stop.assert_called_once()
             self.assertIsNone(self.window._keys)
+            self.window.restore_shortcut()
+            self.assertIsNone(self.window._keys)
+
+    def test_typed_lookup_takes_focus_after_passive_selection(self):
+        with patch("meikipop.utils.window_focus.focus_search") as focus:
+            self.window.lookup_selected("word", passive=True)
+            self.app.processEvents()
+            focus.assert_not_called()
+            self.window.open_search()
+            self.app.processEvents()
+            focus.assert_called_once_with(self.window)
+            self.assertFalse(self.window._passive_text)
+
+    def test_automatic_text_lookup_is_opt_in_and_does_not_steal_focus(self):
+        from meikipop.gui.text_triggers import TextTriggers
+        triggers = TextTriggers(self.window)
+        self.assertIsNone(triggers.listener)
+        try:
+            with patch("meikipop.gui.text_triggers.QApplication") as app, patch.object(self.window, "lookup_selected") as lookup:
+                app.activeWindow.return_value = None
+                app.clipboard.return_value.text.return_value = "first"
+                triggers.clipboard_changed()
+                lookup.assert_not_called()
+                self.settings.setValue(f"profiles/{self.window.preferred_foreign}/clipboard_lookup", True)
+                app.clipboard.return_value.text.return_value = "second"
+                triggers.clipboard_changed()
+                lookup.assert_called_once_with("second", passive=True)
+                lookup.reset_mock()
+                self.window.selection.pending = True
+                app.clipboard.return_value.text.return_value = "internal selection copy"
+                triggers.clipboard_changed()
+                lookup.assert_not_called()
+                self.window.selection.pending = False
+        finally:
+            triggers.shutdown()
+            triggers.deleteLater()
 
     def test_latest_worker_coalesces_pending_requests(self):
         started, release = threading.Event(), threading.Event()
