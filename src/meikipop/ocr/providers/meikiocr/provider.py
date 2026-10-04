@@ -29,7 +29,7 @@ class MeikiOcrProvider(OcrProvider):
     """
     NAME = "meikiocr (local)"
 
-    def __init__(self):
+    def __init__(self, execution_provider=None):
         """
         Initializes the provider by creating an instance of the MeikiOCR client.
         The library handles the model downloading and session management internally.
@@ -37,7 +37,7 @@ class MeikiOcrProvider(OcrProvider):
         logger.info(f"initializing {self.NAME} provider...")
         self.ocr_client = None
         try:
-            self.ocr_client = MeikiOCR()
+            self.ocr_client = MeikiOCR(provider=execution_provider)
             logger.info(f"{self.NAME} initialized successfully, running on: {self.ocr_client.active_provider}")
 
         except Exception as e:
@@ -52,8 +52,9 @@ class MeikiOcrProvider(OcrProvider):
             return None
 
         try:
-            image_np_rgb = np.array(image.convert("RGB"))
-            img_height, img_width = image_np_rgb.shape[:2]
+            # MeikiOCR's public run_ocr API expects OpenCV BGR pixels.
+            image_np_bgr = np.asarray(image.convert("RGB"))[:, :, ::-1].copy()
+            img_height, img_width = image_np_bgr.shape[:2]
 
             if img_width == 0 or img_height == 0:
                 logger.error("invalid image dimensions received.")
@@ -61,7 +62,7 @@ class MeikiOcrProvider(OcrProvider):
 
             # --- 1. Run the entire OCR pipeline with a single library call ---
             ocr_results = self.ocr_client.run_ocr(
-                image_np_rgb,
+                image_np_bgr,
                 det_threshold=DET_CONFIDENCE_THRESHOLD,
                 rec_threshold=REC_CONFIDENCE_THRESHOLD,
                 punct_conf_factor=0.2

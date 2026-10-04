@@ -63,43 +63,48 @@ def paddle_lines(results, language="tr"):
     https://github.com/PaddlePaddle/PaddleX/blob/release/3.7/paddlex/inference/models/text_recognition/processors.py
     """
     for result in results or ():
-        for text, fragments, boxes in zip(result.get("rec_texts", ()), result.get("text_word", ()),
-                                           result.get("text_word_boxes", ())):
-            positioned, offset = [], 0
-            for fragment, box in zip(fragments, boxes):
-                if not isinstance(fragment, str) or not fragment:
+        lines = ((text, zip(fragments, boxes)) for text, fragments, boxes in
+                 zip(result.get("rec_texts", ()), result.get("text_word", ()), result.get("text_word_boxes", ())))
+        yield from fragment_lines(lines, language)
+
+
+def fragment_lines(lines, language="tr"):
+    """Reassemble source words from (line_text, [(fragment, pixel_box), ...])."""
+    for text, fragments in lines:
+        positioned, offset = [], 0
+        for fragment, box in fragments:
+            if not isinstance(fragment, str) or not fragment:
+                continue
+            start = text.find(fragment, offset)
+            if start < 0:
+                continue
+            offset = start + len(fragment)
+            try:
+                left, top, right, bottom = map(float, box)
+            except (ValueError, TypeError):
+                continue
+            if not all(map(math.isfinite, (left, top, right, bottom))) or right <= left or bottom <= top:
+                continue
+            positioned.append((start, offset, (left, top, right, bottom)))
+        words = []
+        for start, end in get_profile(language).word_spans(text):
+            parts = []
+            covered = start
+            for first, last, (left, top, right, bottom) in positioned:
+                a, b = max(start, first), min(end, last)
+                if a >= b:
                     continue
-                start = text.find(fragment, offset)
-                if start < 0:
-                    continue
-                offset = start + len(fragment)
-                try:
-                    left, top, right, bottom = map(float, box)
-                except (ValueError, TypeError):
-                    continue
-                if not all(map(math.isfinite, (left, top, right, bottom))) or right <= left or bottom <= top:
-                    continue
-                positioned.append((start, offset, (left, top, right, bottom)))
-            words = []
-            for start, end in get_profile(language).word_spans(text):
-                parts = []
-                covered = start
-                for first, last, (left, top, right, bottom) in positioned:
-                    a, b = max(start, first), min(end, last)
-                    if a >= b:
-                        continue
-                    if a > covered:
-                        break
-                    covered = max(covered, b)
-                    # Symbol runs can include spaces or punctuation beside an
-                    # accented letter. Trim only that shared fragment's extent.
-                    span = right - left
-                    parts.append((left + span * (a - first) / (last - first), top,
-                                  left + span * (b - first) / (last - first), bottom))
-                if parts and covered >= end:
-                    words.append((text[start:end], start, end, _bounds(parts)))
-            if words:
-                yield text, words
+                if a > covered:
+                    break
+                covered = max(covered, b)
+                # A fragment may include punctuation beside an accented letter.
+                span = right - left
+                parts.append((left + span * (a - first) / (last - first), top,
+                              left + span * (b - first) / (last - first), bottom))
+            if parts and covered >= end:
+                words.append((text[start:end], start, end, _bounds(parts)))
+        if words:
+            yield text, words
 
 
 def _bounds(boxes):
@@ -134,6 +139,18 @@ def _paddle_groups(lines):
 
 def paddle_paragraphs(results, width, height):
     """Adapt pixel-space fragments into normalized words and visible paragraphs."""
+    if width <= 0 or height <= 0:
+        raise ValueError("OCR image dimensions must be positive.")
+    paragraphs = []
+    for result in results or ():
+        lines = ((text, zip(fragments, boxes)) for text, fragments, boxes in
+                 zip(result.get("rec_texts", ()), result.get("text_word", ()), result.get("text_word_boxes", ())))
+        paragraphs.extend(fragment_paragraphs(lines, width, height))
+    return paragraphs
+
+
+def fragment_paragraphs(lines, width, height, language="tr"):
+    """Normalize local OCR word/symbol fragments with complete source offsets."""
     from .interface import BoundingBox, Paragraph, Word
     if width <= 0 or height <= 0:
         raise ValueError("OCR image dimensions must be positive.")
@@ -144,16 +161,14 @@ def paddle_paragraphs(results, width, height):
                            (right - left) / width, (bottom - top) / height)
 
     paragraphs = []
-    # Separate results can represent different images; never merge across them.
-    for result in results or ():
-        for group in _paddle_groups(paddle_lines([result])):
-            items = []
-            line_offset = 0
-            for text, words, _ in group:
-                for index, (word, start, end, box) in enumerate(words):
-                    next_start = words[index + 1][1] if index + 1 < len(words) else len(text)
-                    items.append(Word(word, text[end:next_start], normalized(box), line_offset + start))
-                line_offset += len(text) + 1
-            text = "\n".join(line[0] for line in group)
-            paragraphs.append(Paragraph(text, items, normalized(_bounds([line[2] for line in group])), False))
+    for group in _paddle_groups(fragment_lines(lines, language)):
+        items = []
+        line_offset = 0
+        for text, words, _ in group:
+            for index, (word, start, end, box) in enumerate(words):
+                next_start = words[index + 1][1] if index + 1 < len(words) else len(text)
+                items.append(Word(word, text[end:next_start], normalized(box), line_offset + start))
+            line_offset += len(text) + 1
+        text = "\n".join(line[0] for line in group)
+        paragraphs.append(Paragraph(text, items, normalized(_bounds([line[2] for line in group])), False))
     return paragraphs
