@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sqlite3
 import tempfile
+from time import time_ns
 import unicodedata
 import zipfile
 
@@ -168,7 +169,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 CREATE INDEX form_folded ON forms(folded);
                 CREATE INDEX frequency_key ON frequencies(key,reading_key);
             """)
-            metadata = dict(schema_version="2", title=title, language=source_language,
+            metadata = dict(schema_version="2", imported_at_ns=str(time_ns()), title=title, language=source_language,
                             target_language=str(index.get("targetLanguage", "")),
                             frequency_mode=str(index.get("frequencyMode", "rank-based")),
                             revision=str(index.get("revision", "")), sha256=sha,
@@ -236,12 +237,17 @@ class Library:
                 if metadata.get("schema_version") not in ("1", "2"):
                     raise ValueError("Unsupported dictionary pack")
                 identity = (metadata["language"], metadata["title"])
-                if identity in selected:
-                    db.close()
-                    continue
-                selected[identity] = True
+                previous = selected.get(identity)
+                if previous:
+                    previous_time = int(previous[1].get("imported_at_ns", previous[0].stat().st_mtime_ns))
+                    if previous_time >= int(metadata.get("imported_at_ns", path.stat().st_mtime_ns)):
+                        db.close()
+                        continue
+                    previous[2].close()
+                    self.packs.remove(previous)
                 metadata["enabled"] = path.name not in disabled
-                self.packs.append((path, metadata, db))
+                selected[identity] = (path, metadata, db)
+                self.packs.append(selected[identity])
             except (OSError, sqlite3.Error, ValueError, KeyError) as error:
                 if db:
                     db.close()
