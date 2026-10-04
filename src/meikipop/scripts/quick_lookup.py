@@ -55,7 +55,7 @@ def main(argv=None):
     tray.setToolTip("Meikipop")
     window.tray_geometry = tray.geometry
     menu = QMenu()
-    menu.addAction("Search", window.open_search)
+    menu.addAction("Search", lambda: window.open_search())
     profiles = menu.addMenu(window.source.currentText())
     window.mode_changed.connect(lambda *_: profiles.setTitle(window.source.currentText()))
     profile_group = QActionGroup(profiles)
