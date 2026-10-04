@@ -205,6 +205,12 @@ class LocalTranslator:
         endpoint = urlsplit(settings.endpoint)
         connection = http.client.HTTPConnection(endpoint.hostname, endpoint.port, timeout=120)
         try:
+            if self._cancelled.is_set():
+                raise RuntimeError("Translation cancelled.")
+            # A cancellation must not let HTTPConnection silently reopen a
+            # closed socket between registration and request dispatch.
+            connection.auto_open = 0
+            connection.connect()
             with self._connection_lock:
                 if self._cancelled.is_set():
                     raise RuntimeError("Translation cancelled.")

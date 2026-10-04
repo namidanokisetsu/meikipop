@@ -35,6 +35,10 @@ class ClipboardTests(unittest.TestCase):
                 patch("meikipop.gui.turkish.window.QSettings", return_value=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)):
             self.window = ClipboardWindow(root / "pack/dictionary.sqlite3", "exact")
             self.window.settings.setValue("auto_scan", False)
+            # Gesture tests invoke scan_pointer explicitly. Background capture
+            # must not replace fixture lookups or load the user's OCR models.
+            self.window.scan_timer.stop()
+            self.window.prefetch_timer.stop()
 
     def tearDown(self):
         self.window.shutdown()
