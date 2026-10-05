@@ -285,6 +285,8 @@ class UnifiedOCR(QObject):
             self.timer.stop()
             self.follow_timer.stop()
             self.holding = False
+            if hasattr(self.window, "scan_hold_changed"):
+                self.window.scan_hold_changed(False)
             self._dismissed_hold = False
             if self.input:
                 self.input.shutdown()
@@ -318,11 +320,15 @@ class UnifiedOCR(QObject):
     def hold_changed(self, active):
         if not active:
             self._dismissed_hold = False
+            if hasattr(self.window, "scan_hold_changed"):
+                self.window.scan_hold_changed(False)
         elif self._dismissed_hold:
             return
         if not self.enabled or active == self.holding:
             return
         self.holding = active
+        if active and hasattr(self.window, "scan_hold_changed"):
+            self.window.scan_hold_changed(True)
         if active:
             if self.window.is_pinned and not self.window.geometry().contains(QCursor.pos()):
                 self.window.pin.setChecked(False)

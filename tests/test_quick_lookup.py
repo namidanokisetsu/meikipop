@@ -87,6 +87,28 @@ class QuickLookupTests(unittest.TestCase):
         self.window.deliver(revision, SearchResult("old", "ja", "en", (entry("OLD"),)))
         self.assertNotIn("OLD", self.window.browser.toPlainText())
 
+    def test_autoplay_remembers_all_words_until_scan_hold_ends(self):
+        self.settings.setValue("profiles/ja/audio_autoplay_mode", "lookup")
+        with patch.object(self.window, "play_audio") as play:
+            self.window.scan_hold_changed(True)
+            for word in ("猫", "犬", "猫", "犬"):
+                self.window.show_entries((entry(word),), text=word, peek=True)
+            self.assertEqual(play.call_count, 2)
+            self.window.scan_hold_changed(False)
+            self.window.scan_hold_changed(True)
+            self.window.show_entries((entry("犬"),), text="犬", peek=True)
+            self.assertEqual(play.call_count, 3)
+            self.window.show_entries((entry("猫"),), text="猫", peek=True)
+            self.assertEqual(play.call_count, 4)
+
+    def test_manual_audio_can_repeat_during_hold(self):
+        self.window.audio = Mock()
+        self.window.scan_hold_changed(True)
+        self.window.show_entries((entry(),), text="猫", peek=True)
+        self.window.play_audio()
+        self.window.play_audio()
+        self.assertEqual(self.window.audio.play.call_count, 2)
+
     def test_cached_settings_follow_active_profile_and_live_theme(self):
         from meikipop.config.config import config
         self.settings.setValue("profiles/ja/theme_name", "Light")

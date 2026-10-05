@@ -424,6 +424,7 @@ class QuickLookupWindow(QDialog):
         self._last_request_translate = False
         self._remember_request = False
         self.audio = None
+        self._autoplayed = None
         self.tray_geometry = None
         self._manual_at_cursor = False
         self._opening_search = False
@@ -797,7 +798,7 @@ class QuickLookupWindow(QDialog):
         self.sentence_audio_button.setEnabled(bool(result.text))
         autoplay = audio_autoplay_mode(self.settings, self.preferred_foreign)
         if self._peek and (result.entries or result.translation) and autoplay == "lookup":
-            self.play_audio()
+            self._autoplay()
 
     def _render(self):
         if self._result is not None:
@@ -1028,9 +1029,31 @@ class QuickLookupWindow(QDialog):
         if requested and same_application:
             self.open_search(self._lookup_clipboard)
 
+    def scan_hold_changed(self, active):
+        self._autoplayed = set() if active else None
+
+    def _audio_key(self):
+        result = self._result
+        if result.entries:
+            entry = result.entries[0]
+            return entry.language, entry.term, entry.reading or ""
+        return result.source, result.text, ""
+
+    def _autoplay(self):
+        if self._result is None:
+            return
+        key = self._audio_key()
+        if self._autoplayed is not None:
+            if key in self._autoplayed:
+                return
+            self._autoplayed.add(key)
+        self.play_audio()
+
     def play_audio(self, *, sentence=False, translation=False):
         if self._result is None:
             return
+        if not sentence and not translation and self._autoplayed is not None:
+            self._autoplayed.add(self._audio_key())
         if self.audio is None:
             from meikipop.gui.lookup_audio import LookupAudio
             self.audio = LookupAudio(self)
@@ -1051,6 +1074,8 @@ class QuickLookupWindow(QDialog):
         entries = tuple(entries or ())
         if (peek and self._peek and self._result is not None and self._result.text == text
                 and self._result.source == source and self._result.entries == entries and self.isVisible()):
+            if self._autoplayed is not None and audio_autoplay_mode(self.settings, self.preferred_foreign) == "lookup":
+                self._autoplay()
             return True
         self._invalidate()
         self._history.clear()
@@ -1122,7 +1147,7 @@ class QuickLookupWindow(QDialog):
         self._render()
 
         if checked and self._peek and audio_autoplay_mode(self.settings, self.preferred_foreign) == "pin":
-            self.play_audio()
+            self._autoplay()
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
