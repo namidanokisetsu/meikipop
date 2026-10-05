@@ -1,7 +1,6 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from io import BytesIO
 from queue import Queue
 import threading
 import sys
@@ -9,8 +8,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from PIL import Image
 from PyQt6.QtCore import QPoint, QRect, pyqtSignal
+from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication, QCheckBox, QLineEdit, QToolButton, QWidget
 
 from meikipop.gui.unified_ocr import ScanWorker, UnifiedOCR
@@ -19,9 +18,9 @@ from meikipop.ocr.interface import BoundingBox, Paragraph, Word
 
 
 def image_bytes():
-    buffer = BytesIO()
-    Image.new("RGB", (100, 50), "white").save(buffer, format="PNG")
-    return buffer.getvalue()
+    image = QImage(100, 50, QImage.Format.Format_RGB32)
+    image.fill(0xffffffff)
+    return image
 
 
 def recognized():
@@ -53,7 +52,7 @@ class ScanWorkerTests(unittest.TestCase):
 
     def test_pointer_moves_reuse_recognition_and_lookup_uses_current_word(self):
         image = image_bytes()
-        worker, sink = self.make_worker([(1, image, (0.2, 0.5), "tr"), (2, image, (0.7, 0.5), "tr"), None])
+        worker, sink = self.make_worker([(1, image, (0.2, 0.5), "tr"), (2, None, (0.7, 0.5), "tr"), None])
         engine, provider = Mock(), Mock(return_value=recognized())
         with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
                 patch.object(worker, "provider", return_value=provider):
@@ -245,6 +244,36 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.assertNotEqual(first, shifted)
         self.assertTrue(shifted.contains(edge))
 
+    def test_pointer_retest_skips_capture_until_frame_expires(self):
+        controller = self.controller
+        controller.capture_region = QRect(0, 0, 400, 200)
+        controller._last_capture_at = 10
+        controller.worker = SimpleNamespace(queue=Queue(), stop=Mock(), join=Mock())
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch("meikipop.gui.unified_ocr.monotonic", return_value=10.05) as clock, \
+                patch("meikipop.gui.unified_ocr.QTimer.singleShot") as capture:
+            controller.scan()
+            capture.assert_not_called()
+            self.assertIsNone(controller.worker.queue.get_nowait()[1])
+            controller.busy = False
+            controller.last_point = QPoint(120, 100)
+            clock.return_value = 10.2
+            controller.scan()
+            capture.assert_called_once()
+
+    def test_capture_exclusion_is_reused_and_restored_when_pinned(self):
+        self.window.show()
+        self.controller._capture_excluded = True
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch("meikipop.utils.capture.exclude_from_capture", return_value=True) as exclude, \
+                patch("meikipop.gui.unified_ocr.QTimer.singleShot"):
+            self.controller.scan()
+            exclude.assert_not_called()
+            self.window.pin.setChecked(True)
+            exclude.assert_called_once_with(self.window, False)
+
     def test_supported_capture_excludes_popup_without_hiding_it(self):
         self.window.show()
         with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
@@ -414,6 +443,7 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.controller.capture(self.controller.generation, QPoint(50, 25))
         self.assertTrue(self.window.isVisible())
         self.assertEqual(self.controller.worker.queue.qsize(), 1)
+        self.assertIsInstance(self.controller.worker.queue.get_nowait()[1], QImage)
 
     def test_pin_during_capture_gap_restores_preview_and_rejects_pending_capture(self):
         self.controller.input = SimpleNamespace(visible=threading.Event(), pin_ready=threading.Event(),

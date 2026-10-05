@@ -1,12 +1,11 @@
 """Optional local OCR for the shared popup; no inference on the Qt thread."""
 from dataclasses import replace
-from io import BytesIO
 import sys
 import threading
 from time import monotonic
 
 from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QCursor, QImage
 from PyQt6.QtWidgets import QApplication
 
 from meikipop.ocr.context import hit_paragraphs, paddle_paragraphs
@@ -44,17 +43,23 @@ class ScanWorker(threading.Thread):
                 job = self.queue.get()
                 if job is None or self._stopped.is_set():
                     return
-                generation, image_bytes, point, language, *options = job
+                generation, pixels, point, language, *options = job
                 try:
                     if engine is None:
                         engine = SearchEngine(self.directory)
-                    image = Image.open(BytesIO(image_bytes)).convert("RGB")
                     selection = tuple(options[0]) if options else ()
                     provider_key = (language, *selection)
                     if provider_key not in providers:
                         providers[provider_key] = self.provider(language, *selection)
                         caches[provider_key] = ScanCache()
-                    paragraphs = caches[provider_key].scan(image, providers[provider_key])
+                    if pixels is None:
+                        paragraphs = caches[provider_key].result
+                    else:
+                        pixels = pixels.convertToFormat(QImage.Format.Format_RGB888)
+                        image = Image.frombytes("RGB", (pixels.width(), pixels.height()),
+                                                pixels.constBits().asstring(pixels.sizeInBytes()),
+                                                "raw", "RGB", pixels.bytesPerLine())
+                        paragraphs = caches[provider_key].scan(image, providers[provider_key])
                     if self._stopped.is_set():
                         return
                     hit = hit_paragraphs(paragraphs, point, language)
@@ -131,6 +136,7 @@ class UnifiedOCR(QObject):
         self._hover_point = None
         self._hover_since = 0
         self._last_scan_at = 0
+        self._last_capture_at = 0
         self._capture_hidden = False
         self._capture_excluded = False
         self._follow_point = None
@@ -141,10 +147,12 @@ class UnifiedOCR(QObject):
         self.capture_region = None
         self.capture_screen = None
         self.timer = QTimer(self)
-        self.timer.setInterval(90)
+        self.timer.setInterval(16)
+        self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self.scan)
         self.follow_timer = QTimer(self)
         self.follow_timer.setInterval(16)
+        self.follow_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.follow_timer.timeout.connect(self.follow_cursor)
         self.leave_timer = QTimer(self)
         self.leave_timer.setSingleShot(True)
@@ -173,6 +181,7 @@ class UnifiedOCR(QObject):
                 self.input.visible.set()
                 self._sync_pin_ready()
             elif event.type() == QEvent.Type.Hide and not self._capture_hidden:
+                self.restore_capture_visibility()
                 self.input.visible.clear()
                 if hasattr(self.input, "pin_ready"):
                     self.input.pin_ready.clear()
@@ -245,6 +254,7 @@ class UnifiedOCR(QObject):
 
     def pin_changed(self, pinned):
         if pinned:
+            self.restore_capture_visibility()
             self.invalidate()
             self.leave_timer.stop()
         self._sync_pin_ready()
@@ -282,6 +292,7 @@ class UnifiedOCR(QObject):
         self.enabled = bool(enabled)
         self.invalidate()
         if not enabled:
+            self.restore_capture_visibility()
             self.timer.stop()
             self.follow_timer.stop()
             self.holding = False
@@ -340,6 +351,7 @@ class UnifiedOCR(QObject):
             self.follow_timer.start()
             self.scan()
         else:
+            self.restore_capture_visibility()
             if not self.auto_scan:
                 self.timer.stop()
                 self.follow_timer.stop()
@@ -348,6 +360,7 @@ class UnifiedOCR(QObject):
         self._sync_pin_ready()
 
     def dismiss(self):
+        self.restore_capture_visibility()
         self._dismissed_hold = self.holding
         self._dismissed_point = QCursor.pos()
         self.holding = False
@@ -407,9 +420,16 @@ class UnifiedOCR(QObject):
         self.busy = True
         self.generation += 1
         generation = self.generation
+        # Retest the pointer against the recognized frame between fresh captures.
+        # A short lifetime also keeps animated or scrolling content current.
+        if (self.capture_region is not None and now - self._last_capture_at < .15
+                and self.capture_region.adjusted(16, 16, -16, -16).contains(point)):
+            self._queue_scan(generation, point)
+            return
         visible = self.window.isVisible()
         from meikipop.utils.capture import exclude_from_capture
-        self._capture_excluded = visible and exclude_from_capture(self.window, True)
+        if visible and not self._capture_excluded:
+            self._capture_excluded = exclude_from_capture(self.window, True)
         if visible and not self._capture_excluded:
             self._capture_hidden = True
             self.window.hide()
@@ -426,7 +446,6 @@ class UnifiedOCR(QObject):
                 self._sync_pin_ready()
             return
         try:
-            from PyQt6.QtCore import QBuffer, QIODevice
             if sys.platform == "darwin":
                 from meikipop.utils.macos import require_screen_capture_permission
                 require_screen_capture_permission()
@@ -441,21 +460,14 @@ class UnifiedOCR(QObject):
             pixels = pixmap.toImage().copy(round((region.x() - geometry.x()) * scale_x),
                                            round((region.y() - geometry.y()) * scale_y),
                                            round(region.width() * scale_x), round(region.height() * scale_y))
-            buffer = QBuffer()
-            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-            pixels.save(buffer, "PNG")
-            language = self.window.source.currentData()
-            if language in ("auto", "en"):
-                language = self.window.preferred_foreign
-            job = (generation, bytes(buffer.data()),
-                   ((point.x() - region.x()) / region.width(), (point.y() - region.y()) / region.height()), language)
-            job += ((self.profile_ocr_provider, self.screenai_directory),)
-            self.worker.queue.put(job)
+            self._queue_scan(generation, point, pixels)
+            self._last_capture_at = monotonic()
         except Exception as error:
             self.busy = False
+            self.invalidate()
+            self.restore_capture_visibility()
             self.window.show_message(str(error))
         finally:
-            self.restore_capture_visibility()
             if self._capture_hidden:
                 self._capture_hidden = False
                 # Keep the prior peek usable while native recognition runs.
@@ -463,6 +475,14 @@ class UnifiedOCR(QObject):
                 if generation == self.generation and (self.holding or self.auto_scan):
                     self.window.show()
                     self.follow_cursor()
+
+    def _queue_scan(self, generation, point, pixels=None):
+        region = self.capture_region
+        language = self.window.preferred_foreign
+        self.worker.queue.put((generation, pixels,
+                               ((point.x() - region.x()) / region.width(),
+                                (point.y() - region.y()) / region.height()), language,
+                               (self.profile_ocr_provider, self.screenai_directory)))
 
     def restore_capture_visibility(self):
         if self._capture_excluded:
