@@ -18,7 +18,7 @@ from meikipop.config.config import config
 from meikipop.dictionary.search import SearchEngine, SearchResult
 from meikipop.gui.popup_style import frame_stylesheet, popup_position, surface_colors
 from meikipop.gui.action_icons import action_icon
-from meikipop.gui.turkish.browser import DictionaryBrowser
+from meikipop.gui.ruby import RubyBrowser, ruby_html
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
 
 
@@ -140,6 +140,22 @@ class _GlossConverter(StructuredContentConverter):
         self._preview_source_complete = False
         self.remaining = limit
         self.clipped = False
+
+    def _ruby_to_html(self, content):
+        parts, base = [], []
+        nodes = content if isinstance(content, list) else [content]
+        for child in nodes:
+            tag = child.get("tag") if isinstance(child, dict) else None
+            if tag == "rp":
+                continue
+            if tag == "rt":
+                reading = self._node_to_html(child.get("content"))
+                text = "".join(base)
+                parts.append(ruby_html(text, reading) if text and reading else text)
+                base = []
+            else:
+                base.append(self._node_to_html(child))
+        return "".join(parts + base)
 
     def _node_to_html(self, node):
         if self._preview_source_complete:
@@ -279,7 +295,8 @@ def _source_name(source):
     return re.sub(r"\s*\[\d{4}[^\]]*\]", "", source).replace("Jitendex.org", "Jitendex").strip()
 
 
-def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True):
+def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
+                  headword_furigana=False):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
@@ -307,7 +324,10 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
         reading_html = (f' <span style="color:{config.color_highlight_reading};font-size:'
                         f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
                         if reading and reading != term else "")
-        parts.append(f'<h2>{escape(term)}{reading_html}</h2>')
+        if result.source == "ja" and headword_furigana and reading and reading != term:
+            parts.append(f'<h2>{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
+        else:
+            parts.append(f'<h2>{escape(term)}{reading_html}</h2>')
         parts.append(_metadata(entry for entries in dictionaries.values() for entry in entries))
         if preview and result.source == "tr":
             alternatives = tuple(dict.fromkeys(f"{other.term} · {' · '.join(other.inflection)}"
@@ -355,7 +375,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
     return "".join(parts)
 
 
-class LocalDictionaryBrowser(DictionaryBrowser):
+class LocalDictionaryBrowser(RubyBrowser):
     def viewportEvent(self, event):
         if event.type() == QEvent.Type.ToolTip:
             QToolTip.hideText()
@@ -787,7 +807,8 @@ class QuickLookupWindow(QDialog):
                                                self._kanji_expanded or self._peek and not compact,
                                                preview=self._peek and not self.is_pinned and compact,
                                                overlay_actions=self._peek and self.is_pinned,
-                                               show_source=self._peek))
+                                               show_source=self._peek,
+                                               headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool)))
             self.browser.setToolTip("")
             self._place_actions()
             QTimer.singleShot(0, self._fit_preview)
@@ -985,7 +1006,7 @@ class QuickLookupWindow(QDialog):
         if QApplication.activeWindow() is not None:
             focused = QApplication.focusWidget()
             text = focused.selectedText() if isinstance(focused, QLineEdit) else (
-                self.browser.textCursor().selectedText() if focused in (self.browser, self.browser.viewport()) else "")
+                self.browser.selected_text() if focused in (self.browser, self.browser.viewport()) else "")
             self.open_search(text or self._lookup_clipboard)
             return
         if self.selection.pending:

@@ -1,7 +1,7 @@
 """Live appearance controls and a saved custom palette per language profile."""
 import sys
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import (QColorDialog, QComboBox, QFontComboBox, QFormLayout,
+from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFontComboBox, QFormLayout,
                             QPushButton, QSpinBox, QWidget)
 from meikipop.config.config import config
 from meikipop.gui.themes import THEMES, theme_name
@@ -39,6 +39,8 @@ class ProfileAppearance(QWidget):
         form.addRow("Theme", self.theme)
         self.font = QFontComboBox()
         form.addRow("Font", self.font)
+        self.headword_furigana = QCheckBox("Furigana")
+        form.addRow("Headword reading", self.headword_furigana)
         self.controls = {}
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
@@ -57,6 +59,7 @@ class ProfileAppearance(QWidget):
         self.reload()
         self.theme.currentTextChanged.connect(self.apply_theme)
         self.font.currentFontChanged.connect(self.save)
+        self.headword_furigana.toggled.connect(self.save)
         for key, widget in self.controls.items():
             if not key.startswith("color"):
                 widget.valueChanged.connect(self.save)
@@ -68,6 +71,8 @@ class ProfileAppearance(QWidget):
         self.theme.setCurrentText(name)
         self.theme.blockSignals(False)
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
+        self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
+        self.form.setRowVisible(self.headword_furigana, self.profile() == "ja")
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
             value = THEMES.get(name, {}).get(key, value)
@@ -112,6 +117,8 @@ class ProfileAppearance(QWidget):
         prefix = f"profiles/{self.profile()}/"
         self.settings.setValue(prefix + "theme_name", self.theme.currentText())
         self.settings.setValue(prefix + "font_family", self.font.currentFont().family())
+        if self.profile() == "ja":
+            self.settings.setValue(prefix + "headword_furigana", self.headword_furigana.isChecked())
         for key, widget in self.controls.items():
             value = widget.text() if key.startswith("color") else widget.value()
             self.settings.setValue(prefix + key, value)

@@ -43,6 +43,27 @@ class ProfileThemeTests(unittest.TestCase):
                     self.assertGreaterEqual(contrast(bg, theme[key]), 4.5)
                 self.assertGreaterEqual(contrast(bg, surface_colors(bg, theme['color_foreground'])['muted']), 4.5)
 
+    def test_headword_furigana_is_opt_in_and_only_shown_for_japanese(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            profile = ['ja']
+            widget = ProfileAppearance(settings, lambda: profile[0], Mock())
+            try:
+                self.assertFalse(widget.headword_furigana.isChecked())
+                widget.headword_furigana.click()
+                self.assertTrue(settings.value('profiles/ja/headword_furigana', False, bool))
+                profile[0] = 'tr'
+                widget.reload()
+                self.assertFalse(widget.form.isRowVisible(widget.headword_furigana))
+                widget.save()
+                self.assertFalse(settings.contains('profiles/tr/headword_furigana'))
+                profile[0] = 'ja'
+                widget.reload()
+                self.assertTrue(widget.headword_furigana.isChecked())
+                self.assertTrue(widget.form.isRowVisible(widget.headword_furigana))
+            finally:
+                widget.deleteLater()
+
     def test_live_theme_changes_preserve_custom_palette_and_other_profile(self):
         with tempfile.TemporaryDirectory() as folder:
             settings = QSettings(str(Path(folder)/'settings.ini'), QSettings.Format.IniFormat)
@@ -66,4 +87,3 @@ class ProfileThemeTests(unittest.TestCase):
             finally:
                 config.__dict__.update(previous)
                 widget.deleteLater()
-
