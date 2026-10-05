@@ -151,6 +151,16 @@ class LibraryTests(unittest.TestCase):
             self.assertEqual((second.source, second.target), ("en", "ja"))
             self.assertEqual(first.entries, ())
             self.assertEqual(second.entries, ())
+            manual = engine.search("Merhaba", source="tr", target="ru", foreign="ja",
+                                   pair=("ja", "en"), translate=True)
+            self.assertEqual((manual.source, manual.target), ("tr", "ru"))
+            detected = engine.search("Привет", target="tr", foreign="ja", pair=("ja", "en"), translate=True)
+            self.assertEqual((detected.source, detected.target), ("ru", "tr"))
+            automatic_target = engine.search("Merhaba", source="tr", foreign="ja",
+                                             pair=("ja", "en"), translate=True)
+            self.assertEqual(automatic_target.target, "en")
+            with self.assertRaisesRegex(ValueError, "different"):
+                engine.search("cat", source="en", target="en", pair=("ja", "en"), translate=True)
         finally:
             engine.close()
 

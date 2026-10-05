@@ -400,13 +400,37 @@ class QuickLookupTests(unittest.TestCase):
             self.window.search.setText("Bugün hava çok güzel.")
             self.window.submit(translate=True)
             options = self.window.translation_worker.request.call_args.kwargs
-            self.assertEqual(options["target"], "ru")
+            self.assertIsNone(options["target"])
             self.assertEqual(options["pair"], ("tr", "ru"))
             self.window.show_entries((entry("ev", language="tr"),), "ev", "tr", peek=True)
             self.assertEqual(self.window._result.target, "ru")
         finally:
             self.window.translation_worker = None
             dialog.deleteLater()
+
+    def test_translation_direction_is_manual_or_automatic_without_changing_profile(self):
+        self.window.translation_worker = Mock()
+        try:
+            self.window._load_translation_direction()
+            self.assertEqual(self.window.translation_source.currentData(), "auto")
+            self.assertEqual(self.window.translation_target.currentData(), "auto")
+            self.window.translation_source.setCurrentIndex(self.window.translation_source.findData("en"))
+            self.window.translation_target.setCurrentIndex(self.window.translation_target.findData("ru"))
+            self.window.search.setText("The weather is lovely today.")
+            self.window.submit(translate=True)
+            request = self.window.translation_worker.request.call_args
+            self.assertEqual(request.args[2], "en")
+            self.assertEqual(request.kwargs["target"], "ru")
+            self.assertEqual(self.window.preferred_foreign, "ja")
+            self.window.set_mode("tr")
+            self.window._load_translation_direction()
+            self.assertEqual(self.window.translation_source.currentData(), "auto")
+            self.window.set_mode("ja")
+            self.window._load_translation_direction()
+            self.assertEqual(self.window.translation_source.currentData(), "en")
+            self.assertEqual(self.window.translation_target.currentData(), "ru")
+        finally:
+            self.window.translation_worker = None
 
     def test_typed_results_are_silent_for_all_autoplay_modes(self):
         self.window.audio = Mock()

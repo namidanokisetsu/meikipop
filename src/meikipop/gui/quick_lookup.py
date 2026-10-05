@@ -12,6 +12,7 @@ from PyQt6.QtGui import QCursor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QPushButton, QToolButton, QToolTip, QVBoxLayout, QWidget,
+    QFormLayout, QWidgetAction,
 )
 
 from meikipop.config.config import config
@@ -500,6 +501,24 @@ class QuickLookupWindow(QDialog):
         self.source.setCurrentIndex(max(0, self.source.findData(initial_profile)))
         self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{initial_profile}/target", "en"))))
         self.translate = self._action("translate", "Translate")
+        self.translate.setFixedWidth(36)
+        self.translation_menu = QMenu(self.translate)
+        directions = QWidget()
+        direction_form = QFormLayout(directions)
+        direction_form.setContentsMargins(8, 6, 8, 6)
+        self.translation_source = QComboBox()
+        self.translation_target = QComboBox()
+        for label, control in (("From", self.translation_source), ("To", self.translation_target)):
+            control.setAccessibleName("Translation " + ("source" if label == "From" else "target"))
+            direction_form.addRow(label, control)
+        action = QWidgetAction(self.translation_menu)
+        action.setDefaultWidget(directions)
+        self.translation_menu.addAction(action)
+        self.translation_menu.aboutToShow.connect(self._load_translation_direction)
+        self.translate.setMenu(self.translation_menu)
+        self.translate.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.translation_source.currentIndexChanged.connect(self._save_translation_direction)
+        self.translation_target.currentIndexChanged.connect(self._save_translation_direction)
         self.translate.setEnabled(False)
         self.translate.clicked.connect(lambda: self.submit(translate=True, context=bool(self._peek and self._context)))
         self.translate_sentence = self.translate
@@ -701,6 +720,23 @@ class QuickLookupWindow(QDialog):
             self.translation_worker.cancel()
         self._set_translation_busy(False)
 
+    def _load_translation_direction(self):
+        for key, control in (("source", self.translation_source), ("target", self.translation_target)):
+            selected = self.settings.value(f"profiles/{self.preferred_foreign}/translation_{key}", "auto")
+            with QSignalBlocker(control):
+                control.clear()
+                control.addItem("Automatic", "auto")
+                codes = dict.fromkeys([*LANGUAGE_NAMES, self.preferred_foreign, self.foreign.currentData(), selected])
+                for code in codes:
+                    if code != "auto":
+                        control.addItem(language_name(code), code)
+                control.setCurrentIndex(max(0, control.findData(selected)))
+
+    def _save_translation_direction(self):
+        for key, control in (("source", self.translation_source), ("target", self.translation_target)):
+            self.settings.setValue(f"profiles/{self.preferred_foreign}/translation_{key}", control.currentData())
+        self._invalidate()
+
     def _set_translation_busy(self, busy):
         self._translation_busy = busy
         self.translate.setEnabled(not busy and bool(self.search.text().strip() or self._context))
@@ -743,6 +779,15 @@ class QuickLookupWindow(QDialog):
                 self.translation_worker.start()
             worker = self.translation_worker
         source = self._result.source if context and self._result else "auto"
+        target = None
+        if translate:
+            prefix = f"profiles/{self.preferred_foreign}/translation_"
+            selected_source = self.settings.value(prefix + "source", "auto")
+            selected_target = self.settings.value(prefix + "target", "auto")
+            if selected_source != "auto":
+                source = selected_source
+            if selected_target != "auto":
+                target = selected_target
         from meikipop.dictionary.translation import load_profile_settings
         try:
             translation_settings = load_profile_settings(self.settings, self.preferred_foreign) if translate else None
@@ -752,7 +797,7 @@ class QuickLookupWindow(QDialog):
             return
         worker.request(self.revision, text, source,
                        self.preferred_foreign, translate=bool(translate),
-                       target=self.foreign.currentData() if translate else None,
+                       target=target,
                        pair=(self.preferred_foreign, self.foreign.currentData()),
                        translation_settings=translation_settings)
 

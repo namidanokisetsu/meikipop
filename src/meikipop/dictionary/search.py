@@ -96,14 +96,18 @@ class SearchEngine:
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)
             return self.cache[cache_key]
-        source = self.detect(text, foreign, languages=pair) if source == "auto" else source
+        automatic_source = source == "auto"
+        source = self.detect(text, foreign, languages=None if translate and requested_target else pair) if automatic_source else source
         if pair:
-            source = source if source in pair else pair[0]
-            target = pair[1] if source == pair[0] else pair[0]
+            if not translate or automatic_source and not requested_target:
+                source = source if source in pair else pair[0]
+            target = requested_target if translate and requested_target else pair[0] if source == pair[1] else pair[1]
             foreign = pair[0]
         else:
             target = requested_target if translate and requested_target else foreign if source == "en" else "en"
         if translate and target == source:
+            if requested_target:
+                raise ValueError("Choose different source and target languages.")
             target = foreign if source == "en" and foreign != "en" else "en"
         entries, suggestions, message = (), (), ""
         matched_length = 0
