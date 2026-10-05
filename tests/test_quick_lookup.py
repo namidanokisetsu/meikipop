@@ -87,6 +87,27 @@ class QuickLookupTests(unittest.TestCase):
         self.window.deliver(revision, SearchResult("old", "ja", "en", (entry("OLD"),)))
         self.assertNotIn("OLD", self.window.browser.toPlainText())
 
+    def test_cached_settings_follow_active_profile_and_live_theme(self):
+        from meikipop.config.config import config
+        self.settings.setValue("profiles/ja/theme_name", "Light")
+        self.settings.setValue("profiles/tr/theme_name", "Dusk")
+        self.window.open_settings()
+        dialog = self.window._setup
+        dialog.hide()
+        self.window.set_mode("tr")
+        self.window.open_settings()
+        self.assertEqual(dialog.profile.currentData(), "tr")
+        self.assertEqual(dialog.appearance.theme.currentText(), "Dusk")
+        self.assertEqual(config.color_background, "#28231F")
+        dialog.appearance.theme.setCurrentText("Slate")
+        self.assertEqual(config.color_background, "#1E293B")
+        dialog.profile.setCurrentIndex(dialog.profile.findData("ja"))
+        self.assertEqual(self.window.preferred_foreign, "ja")
+        self.assertEqual(dialog.appearance.theme.currentText(), "Light")
+        self.assertEqual(config.color_background, "#FFFFFF")
+        self.assertEqual(self.settings.value("profiles/tr/theme_name"), "Slate")
+        dialog.hide()
+
     def test_translate_runs_off_main_thread_and_enter_search_is_local(self):
         self.window.search.setText("猫")
         self.window.submit(translate=True)

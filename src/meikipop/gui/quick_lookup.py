@@ -686,6 +686,8 @@ class QuickLookupWindow(QDialog):
         self.settings.setValue(f"profiles/{self.preferred_foreign}/target", self.foreign.currentData())
         self.mode_changed.emit(self.source.currentData())
         self.reload_appearance()
+        if self._setup is not None:
+            self._setup.sync_profile(self.preferred_foreign)
         self.scan_settings_changed.emit()
         self._edited()
 
@@ -1194,6 +1196,7 @@ class QuickLookupWindow(QDialog):
         if self._setup is None:
             self._setup = SetupDialog(self.directory, self.settings, self.apply_shortcut, self)
             self._setup.dictionaries_changed.connect(self.refresh_library)
+        self._setup.sync_profile(self.preferred_foreign)
         self._setup.show()
         self._setup.raise_()
         self._setup.activateWindow()

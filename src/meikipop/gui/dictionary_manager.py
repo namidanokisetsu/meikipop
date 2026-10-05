@@ -482,6 +482,13 @@ class SetupDialog(QDialog):
     def current_ocr_control(self):
         return {"ja": self.ja_ocr_provider, "tr": self.tr_ocr_provider}.get(self.profile.currentData(), self.other_ocr_provider)
 
+    def sync_profile(self, code):
+        with QSignalBlocker(self.profile):
+            if self.profile.findData(code) < 0:
+                self.profile.addItem(language_name(code), code)
+            self.profile.setCurrentIndex(self.profile.findData(code))
+        self.profile_changed()
+
     def apply_appearance(self):
         window = self.parent()
         if window is not None:
