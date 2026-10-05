@@ -57,6 +57,9 @@ When pinned keeps OCR hover previews silent and plays when expanded. Typed looku
 **Settings → Appearance** offers Charcoal, Slate, Dusk and Light, plus Custom. Presets are opaque
 with contrasting text and accents. Changes apply immediately; Custom remembers its own colors
 when switching presets. Appearance remains independent per language profile.
+Japanese definition readings appear above their text. Headwords keep the full word
+and bracketed reading by default; **Appearance → Headword reading → Furigana**
+switches the heading to an above-text reading too.
 
 **Copy sentence**, or **Ctrl+Shift+C** on Windows / **Cmd+Shift+C** on macOS,
 copies the OCR sentence while the popup is active. The copy icon's tooltip
@@ -83,9 +86,12 @@ outside Git. Additional local Yomitan packs can be added through the same UI.
 Set a screen lookup key or mouse shortcut in **Settings → Shortcuts**, then hold it over text; the default
 activation is Shift. The preview follows the pointer. While
 holding the scan key, left-click anywhere to pin the current result and expand
-its dictionaries. Pinning stops following; a click outside or a fresh scan elsewhere dismisses it. Release
+its dictionaries, or press **C**. **Shortcuts → Pin preview** records another key
+or disables keyboard pinning per profile. Pinning stops following; a click outside or a fresh scan elsewhere dismisses it. Release
 hides an unpinned preview after a short grace period. Close or Escape dismisses
 the current scan until the trigger is released.
+A held scan shortcut outside the focused text-search window resumes OCR, including
+after Ctrl+Shift+D. Typing inside Search and automatic hover scanning keep its focus.
 
 Clear both screen lookup shortcuts to disable OCR; there is no additional toggle.
 **Settings → Screen lookup** selects left click, middle click, or popup-only pinning.

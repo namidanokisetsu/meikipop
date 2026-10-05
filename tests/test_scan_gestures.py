@@ -3,13 +3,15 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
 from PyQt6.QtCore import QSettings, pyqtSignal
+from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QApplication, QWidget
-from pynput import mouse
+from pynput import keyboard, mouse
 
 from meikipop.gui.turkish.desktop_input import DesktopInput
 
@@ -82,6 +84,46 @@ class ScanGestureTests(unittest.TestCase):
         clicked.assert_called_once_with()
         self.input.clicks.suppress_event.assert_not_called()
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows native hook")
+    def test_pin_key_consumes_press_repeats_and_release_only_for_ready_preview(self):
+        self.input.set_pin_shortcut("c")
+        event = SimpleNamespace(vkCode=ord("C"))
+        self.input.filter_key(0x100, event)
+        self.input.keys.suppress_event.assert_not_called()
+        self.ready()
+        self.input.filter_key(0x100, event)
+        self.input.filter_key(0x100, event)
+        self.input.activation.update("shift", False)
+        self.input.visible.clear()
+        self.input.set_pin_shortcut("")
+        self.input.filter_key(0x101, event)
+        self.requested.assert_called_once_with()
+        self.assertEqual(self.input.keys.suppress_event.call_count, 3)
+        self.input.filter_key(0x100, event)
+        self.assertEqual(self.input.keys.suppress_event.call_count, 3)
+
+    def test_pin_key_can_be_changed_or_disabled_and_requires_scan_preview(self):
+        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"):
+            self.input.keys.canonical.side_effect = lambda key: key
+            self.input.set_pin_shortcut("x")
+            self.input.key(keyboard.KeyCode.from_char("x"), True)
+            self.input.key(keyboard.KeyCode.from_char("x"), False)
+            self.requested.assert_not_called()
+            self.ready()
+            self.input.key(keyboard.KeyCode.from_char("c"), True)
+            self.requested.assert_not_called()
+            self.input.key(keyboard.KeyCode.from_char("x"), True)
+            self.requested.assert_called_once_with()
+            self.input.set_pin_shortcut("")
+            self.ready()
+            self.input.key(keyboard.KeyCode.from_char("x"), True)
+            self.requested.assert_called_once_with()
+
+    def test_escape_and_modifier_only_cannot_replace_dismiss_or_scan(self):
+        for value in ("<esc>", "<shift>", "<ctrl>+<shift>"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.input.set_pin_shortcut(value)
+
 
 class ScanSettingsTests(unittest.TestCase):
     @classmethod
@@ -131,13 +173,19 @@ class ScanSettingsTests(unittest.TestCase):
                 self.assertFalse(dialog.selected_text.isChecked())
                 self.assertEqual(dialog.scan_key.currentData(), "shift")
                 self.assertEqual(dialog.scan_mouse.currentData(), "")
+                self.assertEqual(dialog.pin_shortcut.text(), "c")
+                dialog.pin_shortcut.recorder.setKeySequence(QKeySequence("X"))
+                dialog.save_shortcut()
+                self.assertEqual(settings.value("profiles/ja/pin_shortcut"), "x")
                 dialog.selected_text.click()
                 self.assertTrue(settings.value("profiles/ja/selected_text", False, bool))
                 dialog.audio_autoplay.setCurrentIndex(dialog.audio_autoplay.findData("pin"))
                 self.assertEqual(settings.value("profiles/ja/audio_autoplay_mode"), "pin")
                 dialog.profile.setCurrentIndex(dialog.profile.findData("tr"))
+                self.assertEqual(dialog.pin_shortcut.text(), "c")
                 self.assertNotEqual(dialog.audio_autoplay.currentData(), "pin")
                 dialog.profile.setCurrentIndex(dialog.profile.findData("ja"))
+                self.assertEqual(dialog.pin_shortcut.text(), "x")
                 self.assertEqual(dialog.audio_autoplay.currentData(), "pin")
                 dialog.profile.setCurrentIndex(dialog.profile.findData("tr"))
                 self.assertFalse(dialog.selected_text.isChecked())

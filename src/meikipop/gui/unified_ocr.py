@@ -201,6 +201,7 @@ class UnifiedOCR(QObject):
             self.pin_gesture = "left"
         if self.input:
             self.input.pin_gesture = self.pin_gesture
+            self.input.set_pin_shortcut(settings.value(f"profiles/{profile}/pin_shortcut", "c") if settings else "c")
         if self.enabled and (self.holding or self.auto_scan):
             self.timer.start()
             self.follow_timer.start()
@@ -223,6 +224,7 @@ class UnifiedOCR(QObject):
     def _sync_pin_ready(self):
         if self.input and hasattr(self.input, "pin_ready"):
             ready = (self.enabled and self.holding and not self._dismissed_hold and
+                     QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None and
                      (self.window.isVisible() or self._capture_hidden) and getattr(self.window, "_peek", False) and
                      not self.window.is_pinned and not self.input.pin_pending.is_set())
             (self.input.pin_ready.set if ready else self.input.pin_ready.clear)()
@@ -231,7 +233,8 @@ class UnifiedOCR(QObject):
         # The native hook already checked the trigger state at mouse-down.
         # A queued key release must not discard that intentional pin.
         if (self.enabled and (self.window.isVisible() or self._capture_hidden) and getattr(self.window, "_peek", False)
-                and not self.window.is_pinned):
+                and not self.window.is_pinned and QApplication.activeModalWidget() is None
+                and QApplication.activePopupWidget() is None):
             if self._capture_hidden:
                 self._capture_hidden = False
                 self.window.show()
@@ -372,7 +375,11 @@ class UnifiedOCR(QObject):
         if QApplication.activeModalWidget():
             return
         if QApplication.activeWindow() is self.window:
-            return
+            if not self.holding:
+                return
+            # An explicit scan outside Search hands focus back to the source app.
+            # Do this here too: the trigger may have been pressed inside Search.
+            self.window.hide()
         now = monotonic()
         if self._dismissed_point is not None:
             if (point - self._dismissed_point).manhattanLength() < 24:

@@ -269,6 +269,31 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.assertFalse(self.window.is_pinned)
             scan.assert_called_once()
 
+    def test_explicit_scan_outside_focused_search_resumes_ocr(self):
+        self.window._peek = False
+        self.window.show()
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
+                patch.object(QApplication, "activeWindow", return_value=self.window), \
+                patch("meikipop.gui.unified_ocr.QTimer.singleShot") as dispatch:
+            self.controller.scan()
+        self.assertFalse(self.window.isVisible())
+        self.assertTrue(self.controller.busy)
+        dispatch.assert_called_once()
+
+    def test_search_keeps_focus_for_inside_trigger_and_automatic_scan(self):
+        self.window._peek = False
+        self.window.show()
+        with patch.object(QApplication, "activeWindow", return_value=self.window), \
+                patch("meikipop.gui.unified_ocr.QTimer.singleShot") as dispatch:
+            with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=self.window.geometry().center()):
+                self.controller.scan()
+            self.controller.holding = False
+            self.controller.auto_scan = True
+            with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)):
+                self.controller.scan()
+        self.assertTrue(self.window.isVisible())
+        dispatch.assert_not_called()
+
     def test_outside_click_dismisses_pinned_popup(self):
         self.window.show()
         self.window.pin.setChecked(True)
@@ -407,6 +432,16 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.controller.capture(generation, QPoint(0, 0))
         capture.assert_not_called()
         self.assertTrue(self.window.isVisible())
+
+    def test_modal_settings_prevent_global_pinning(self):
+        self.controller.input = SimpleNamespace(visible=threading.Event(), pin_ready=threading.Event(),
+                                                pin_pending=threading.Event(), shutdown=Mock())
+        self.window.show()
+        with patch.object(QApplication, "activeModalWidget", return_value=Mock()):
+            self.controller._sync_pin_ready()
+            self.assertFalse(self.controller.input.pin_ready.is_set())
+            self.controller.pin_requested()
+        self.assertFalse(self.window.is_pinned)
 
     def test_close_button_suppresses_reopen_for_current_hold(self):
         self.window.show()

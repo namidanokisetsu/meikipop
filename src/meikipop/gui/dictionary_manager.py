@@ -194,6 +194,9 @@ class SetupDialog(QDialog):
             self.scan_mouse.addItem(label, value)
         shortcut_layout.addRow("Screen lookup key", self.scan_key)
         shortcut_layout.addRow("Screen lookup mouse", self.scan_mouse)
+        self.pin_shortcut = ShortcutEdit("c", "C")
+        self.pin_shortcut.setToolTip("Pin the preview while holding the screen lookup shortcut")
+        shortcut_layout.addRow("Pin preview", self.pin_shortcut)
         default_search = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
         self.shortcut = ShortcutEdit(settings.value("hotkey", default_search),
                                      settings.value("hotkey_preset", shortcut_preset()))
@@ -391,9 +394,13 @@ class SetupDialog(QDialog):
         try:
             from meikipop.gui.text_shortcuts import validate_shortcuts
             validate_shortcuts((self.shortcut.text(),))
+            from meikipop.gui.turkish.desktop_input import validate_pin_shortcut
+            validate_pin_shortcut(self.pin_shortcut.text())
             self._apply_shortcut(self.shortcut.text(), self.shortcut.recorder.keySequence().toString())
             bindings = ",".join(value for value in (self.scan_key.currentData(), self.scan_mouse.currentData()) if value)
             self.settings.setValue(f"profiles/{self.profile.currentData()}/scan_bindings", bindings)
+            self.settings.setValue(f"profiles/{self.profile.currentData()}/pin_shortcut", self.pin_shortcut.text())
+            self.settings.setValue(f"profiles/{self.profile.currentData()}/pin_shortcut_preset", self.pin_shortcut.recorder.keySequence().toString())
             self.settings.setValue(f"profiles/{self.profile.currentData()}/selected_text", self.selected_text.isChecked())
             if self.parent() is not None:
                 self.parent().set_mode(self.profile.currentData())
@@ -432,6 +439,8 @@ class SetupDialog(QDialog):
         code = self.profile.currentData()
         self.status.clear()
         bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
+        self.pin_shortcut.set_value(self.settings.value(f"profiles/{code}/pin_shortcut", "c"),
+                                    self.settings.value(f"profiles/{code}/pin_shortcut_preset", "C"))
         with QSignalBlocker(self.selected_text):
             self.selected_text.setChecked(self.settings.value(f"profiles/{code}/selected_text", False, type=bool))
         self.scan_key.setCurrentIndex(max(0, next((self.scan_key.findData(b) for b in bindings if self.scan_key.findData(b) >= 0), 0)))

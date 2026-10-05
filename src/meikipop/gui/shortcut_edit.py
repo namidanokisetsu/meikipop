@@ -14,13 +14,18 @@ class ShortcutEdit(QWidget):
         self.enabled.setToolTip("Enable shortcut")
         self.enabled.setChecked(bool(value))
         layout.addWidget(self.enabled)
-        aliases = {"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "cmd": "Meta",
-                   "esc": "Esc", "page_up": "PgUp", "page_down": "PgDown"}
-        display = "+".join(aliases.get(k.strip("<>"), k.strip("<>").title()) for k in value.split("+")) if value else preset
-        self.recorder = QKeySequenceEdit(QKeySequence(display))
+        self.recorder = QKeySequenceEdit()
         self.recorder.setMaximumSequenceLength(1)
         self.recorder.setToolTip("Click and press your shortcut")
         layout.addWidget(self.recorder)
+        self.set_value(value, preset)
+
+    def set_value(self, value, preset):
+        aliases = {"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "cmd": "Meta",
+                   "esc": "Esc", "page_up": "PgUp", "page_down": "PgDown"}
+        display = "+".join(aliases.get(k.strip("<>"), k.strip("<>").title()) for k in value.split("+")) if value else preset
+        self.enabled.setChecked(bool(value))
+        self.recorder.setKeySequence(QKeySequence(display))
 
     def binding(self):
         sequence = self.recorder.keySequence()
