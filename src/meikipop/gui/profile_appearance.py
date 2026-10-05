@@ -10,6 +10,7 @@ KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions"
         "color_background", "color_foreground", "color_highlight_word", "color_highlight_reading",
         "background_opacity")
 DEFAULTS = {key: getattr(config, key) for key in KEYS}
+DEFAULTS["furigana_scale"] = 50
 DEFAULTS["font_family"] = DEFAULTS["font_family"] or ("Segoe UI" if sys.platform == "win32" else "Helvetica Neue" if sys.platform == "darwin" else "Noto Sans")
 
 
@@ -45,6 +46,7 @@ class ProfileAppearance(QWidget):
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
                 ("font_size_definitions", "Definition size", 10, 48),
+                ("furigana_scale", "Furigana size (%)", 30, 100),
                 ("scale", "Scale (%)", 70, 200), ("background_opacity", "Opacity", 80, 255)):
             widget = QSpinBox()
             widget.setRange(minimum, maximum)
@@ -73,6 +75,7 @@ class ProfileAppearance(QWidget):
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
         self.form.setRowVisible(self.headword_furigana, self.profile() == "ja")
+        self.form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
             value = THEMES.get(name, {}).get(key, value)
@@ -120,6 +123,8 @@ class ProfileAppearance(QWidget):
         if self.profile() == "ja":
             self.settings.setValue(prefix + "headword_furigana", self.headword_furigana.isChecked())
         for key, widget in self.controls.items():
+            if key == "furigana_scale" and self.profile() != "ja":
+                continue
             value = widget.text() if key.startswith("color") else widget.value()
             self.settings.setValue(prefix + key, value)
             if self.theme.currentText() == "Custom" and (key.startswith("color") or key == "background_opacity"):

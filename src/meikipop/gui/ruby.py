@@ -7,6 +7,7 @@ from PyQt6.QtGui import (QColor, QFont, QFontMetricsF, QTextCharFormat, QTextCur
                          QTextDocument, QTextFormat, QTextObjectInterface)
 
 from meikipop.config.config import config
+from meikipop.gui.popup_style import surface_colors
 from meikipop.gui.turkish.browser import DictionaryBrowser
 
 
@@ -27,6 +28,9 @@ class RubyObject(QObject, QTextObjectInterface):
     @staticmethod
     def metrics(document, fmt):
         font = fmt.toCharFormat().font()
+        # QTextDocument inherits the family without setting QFont's resolve bit.
+        # QPainter otherwise keeps its previous family, even for the base kanji.
+        font.setFamilies(font.families() or document.defaultFont().families())
         # QPainter resolves unset size bits against its previous (reading) font.
         # Make the document's resolved size explicit, including heading scaling.
         if font.pixelSize() > 0:
@@ -34,26 +38,31 @@ class RubyObject(QObject, QTextObjectInterface):
         else:
             font.setPointSizeF(font.pointSizeF())
         small = QFont(font)
+        scale = getattr(config, "furigana_scale", 50) / 100
         if font.pixelSize() > 0:
-            small.setPixelSize(max(6, round(font.pixelSize() * .5)))
+            small.setPixelSize(max(6, round(font.pixelSize() * scale)))
         else:
-            small.setPointSizeF(max(4, font.pointSizeF() * .5))
+            small.setPointSizeF(max(4, font.pointSizeF() * scale))
         return font, small, QFontMetricsF(font), QFontMetricsF(small)
 
     def intrinsicSize(self, document, pos, fmt):
         _, _, base, reading = self.metrics(document, fmt)
         return QSizeF(max(base.horizontalAdvance(fmt.property(BASE)),
                           reading.horizontalAdvance(fmt.property(READING))),
-                      base.ascent() + reading.height() + 1)
+                      -base.tightBoundingRect(fmt.property(BASE)).top()
+                      + reading.tightBoundingRect(fmt.property(READING)).height() + 1)
 
     def drawObject(self, painter, rect, document, pos, fmt):
         font, small, base, reading = self.metrics(document, fmt)
         painter.save()
         painter.setFont(small)
-        painter.setPen(QColor(config.color_highlight_reading))
+        muted = QColor(surface_colors(config.color_background, config.color_foreground)["muted"])
+        gray = round(.299 * muted.red() + .587 * muted.green() + .114 * muted.blue())
+        painter.setPen(QColor(gray, gray, gray))
         text = fmt.property(READING)
         painter.drawText(QPointF(rect.x() + (rect.width() - reading.horizontalAdvance(text)) / 2,
-                                 rect.y() + reading.ascent()), text)
+                                 rect.bottom() + base.tightBoundingRect(fmt.property(BASE)).top()
+                                 - 1 - reading.tightBoundingRect(text).bottom()), text)
         painter.setFont(font)
         painter.setPen(fmt.foreground().color())
         text = fmt.property(BASE)
