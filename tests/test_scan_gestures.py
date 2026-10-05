@@ -149,6 +149,21 @@ class ScanSettingsTests(unittest.TestCase):
                 window.deleteLater()
                 self.app.processEvents()
 
+    def test_invalid_translation_preferences_do_not_prevent_opening_settings(self):
+        from meikipop.gui.dictionary_manager import SetupDialog
+        with tempfile.TemporaryDirectory() as temp:
+            settings = QSettings(str(Path(temp) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/translation", '{"unknown": true}')
+            settings.setValue("profiles/tr/translation", 'invalid json')
+            dialog = SetupDialog(Path(temp) / "library", settings, Mock())
+            try:
+                self.assertIn("Invalid translation settings", dialog.status.text())
+                dialog.profile.setCurrentIndex(dialog.profile.findData("tr"))
+                self.assertIn("Invalid translation settings", dialog.status.text())
+            finally:
+                dialog.deleteLater()
+                self.app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()

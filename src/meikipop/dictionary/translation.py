@@ -128,7 +128,10 @@ def load_profile_settings(preferences, profile):
     value = preferences.value(f"profiles/{profile}/translation", "")
     if not value:
         return load_settings()
-    return TranslationSettings(**json.loads(value)).validated()
+    try:
+        return TranslationSettings(**json.loads(value)).validated()
+    except (TypeError, ValueError) as error:
+        raise ValueError("Invalid translation settings. Save them again in Settings.") from error
 
 
 def save_profile_settings(preferences, profile, settings):

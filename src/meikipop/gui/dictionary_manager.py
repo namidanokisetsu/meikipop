@@ -444,7 +444,11 @@ class SetupDialog(QDialog):
         provider = self.current_ocr_control()
         default = ("vision" if sys.platform == "darwin" else "meikiocr" if code == "ja" else "paddle")
         provider.setCurrentIndex(max(0, provider.findData(self.settings.value(f"profiles/{code}/ocr_provider", self.settings.value(f"{code}_ocr_provider", default)))))
-        translation = load_profile_settings(self.settings, code)
+        try:
+            translation = load_profile_settings(self.settings, code)
+        except ValueError as error:
+            translation = TranslationSettings()
+            self.status.setText(str(error))
         self.translation_partner.setCurrentIndex(max(0, self.translation_partner.findData(self.settings.value(f"profiles/{code}/target", "en"))))
         self.translation_mode.setCurrentIndex(self.translation_mode.findData(translation.profile if translation.provider == "server" else "custom"))
         self.translation_endpoint.setText(translation.endpoint)
