@@ -21,6 +21,9 @@ re-record an older shortcut if it used the wrong modifier. Packaged diagnostics
 are in `~/Library/Caches/meikipop/meikipop.log` and `meikipop-runtime.log`.
 The DMGs are ad-hoc signed, without Apple notarization. Apple Vision replaces the
 Windows OCR engines; global pin clicks also reach the underlying app on macOS.
+After an update, macOS can retain permissions for the old signature. If a switch
+is on but access still fails, remove Meikipop from that list and add the installed
+app again, then reopen it.
 
 For a source checkout:
 

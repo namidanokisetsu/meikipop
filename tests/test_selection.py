@@ -11,6 +11,15 @@ from meikipop.gui.selection import SelectionCapture
 
 
 class SelectionTests(unittest.TestCase):
+    def test_mac_copy_uses_physical_c_even_when_typing_layout_is_not_latin(self):
+        from pynput.keyboard import KeyCode
+        with patch("meikipop.gui.selection.sys.platform", "darwin"), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch("pynput.keyboard.Controller") as controller:
+            self.capture.start()
+        controller.return_value.press.assert_any_call(KeyCode.from_vk(8))
+        controller.return_value.release.assert_any_call(KeyCode.from_vk(8))
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

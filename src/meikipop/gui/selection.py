@@ -68,7 +68,7 @@ class SelectionCapture(QObject):
         from pynput.keyboard import Controller, Key, KeyCode
         keys = Controller()
         modifier = Key.cmd if sys.platform == "darwin" else Key.ctrl
-        copy_key = KeyCode.from_vk(0x43) if sys.platform == "win32" else "c"
+        copy_key = KeyCode.from_vk(0x43 if sys.platform == "win32" else 8)
         try:
             keys.press(modifier)
             try:
