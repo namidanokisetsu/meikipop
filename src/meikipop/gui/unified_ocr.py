@@ -95,13 +95,14 @@ class ScanWorker(threading.Thread):
                                 capture = RegionCapture()
                             if pixels.frozen:
                                 key = (pixels.generation, pixels.screen, pixels.geometry, pixels.scale)
-                                if self._frozen is None or self._frozen[0] != key:
+                                frozen = self._frozen
+                                if frozen is None or frozen[0] != key:
                                     snapshot = capture.capture(replace(pixels, crop=pixels.geometry))
                                     if self._obsolete(generation):
                                         self.frames.emit(generation, None, "")
                                         continue
-                                    self._frozen = (key, snapshot)
-                                pixels = self._frozen[1].cropped(pixels)
+                                    self._frozen = frozen = (key, snapshot)
+                                pixels = frozen[1].cropped(pixels)
                             else:
                                 pixels = capture.capture(pixels)
                             capture_phase = False
@@ -150,6 +151,7 @@ class ScanWorker(threading.Thread):
                     else:
                         self._emit(generation, None, None, detail[:300])
         finally:
+            self._frozen = None
             if engine:
                 engine.close()
             if capture:
@@ -456,6 +458,9 @@ class UnifiedOCR(QObject):
 
     def invalidate(self):
         self.session.invalidate()
+        if self._capture_hidden:
+            self._capture_hidden = False
+            self.window._capture_visibility = False
         for worker in (self.worker, self.hit_worker):
             if worker is not None and callable(getattr(worker, "invalidate", None)):
                 worker.invalidate(self.generation)
@@ -538,6 +543,7 @@ class UnifiedOCR(QObject):
                 self._hide_preview()
             self.leave_timer.stop()
             self.last_point = None
+            self._last_capture_at = 0
             self.timer.start()
             self.scan()
         else:

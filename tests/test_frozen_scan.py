@@ -43,6 +43,7 @@ class FrozenScanTests(unittest.TestCase):
         self.assertEqual(first.captured_at, second.captured_at)
         self.assertEqual(second.physical_crop, (0, 0, 40, 40))
         self.assertEqual(third.request.generation, 2)
+        self.assertIsNone(worker._frozen)
         worker.invalidate(3)
         self.assertIsNone(worker._frozen)
 

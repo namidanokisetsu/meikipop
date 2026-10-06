@@ -207,6 +207,16 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.assertTrue(self.controller.busy)
         self.window.show_message.assert_not_called()
 
+    def test_cancelled_capture_clears_temporary_hide_without_touching_new_work(self):
+        old = self.controller.generation
+        self.controller._capture_hidden = self.window._capture_visibility = True
+        self.controller.invalidate()
+        self.assertFalse(self.controller._capture_hidden)
+        self.assertFalse(self.window._capture_visibility)
+        self.controller.busy = True
+        self.controller.capture(old, QPoint(10, 10))
+        self.assertTrue(self.controller.busy)
+
     def test_fresh_hold_from_pinned_result_is_not_a_user_dismissal(self):
         self.controller.input = SimpleNamespace(visible=threading.Event(), pin_ready=threading.Event(),
                                                pin_pending=threading.Event(), shutdown=Mock())
