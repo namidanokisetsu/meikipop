@@ -55,6 +55,8 @@ clients remain explicit compatibility entrypoints.
    remain specialized. Other installed languages use indexed entries/readings
    and imported forms. Russian additionally tries bounded е/ё variants after
    an exact/form miss, reusing indexed packs without neural analysis.
+   Form labels retain equally short alternatives without cyclic homograph detours;
+   Russian stress-only readings appear once in the headword.
    Small Unicode word/sentence policies share a registry
    design inspired by [Anki Miner's language registry](https://github.com/0xzerolight/anki_miner/blob/a1955f4a/anki_miner/languages/registry.py),
    independently implemented without importing its NLP models. Original text

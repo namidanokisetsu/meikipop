@@ -75,3 +75,12 @@ class GlossRenderingTests(unittest.TestCase):
         self.assertIn('colspan="2" rowspan="3"', html)
         self.assertNotIn("onclick", html)
         self.assertNotIn('rowspan="-1"', html)
+
+    def test_russian_stress_reading_is_shown_once_without_losing_stress(self):
+        entry = Entry("fixture", "большой", "большо\u0301й", "Fixture", "ru", ("big",))
+        html = render_result(SearchResult("больших", "ru", "en", (entry,)))
+        self.assertIn("большо\u0301й</h2>", html)
+        self.assertNotIn("большой", html)
+        entry = Entry("fixture", "word", "different reading", "Fixture", "ru", ("gloss",))
+        html = render_result(SearchResult("word", "ru", "en", (entry,)))
+        self.assertIn("different reading", html)

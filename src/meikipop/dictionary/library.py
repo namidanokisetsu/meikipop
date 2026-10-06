@@ -323,6 +323,7 @@ class Library:
             keys.update({hiragana: "exact", katakana: "exact"})
         # Forms may live in a separate pack. Resolve a bounded graph to avoid cycles.
         form_paths = {}
+        form_depths = dict.fromkeys(keys, 0)
 
         def form_rows(meta, db, candidate, fold=False):
             column = "folded" if fold else "key"
@@ -331,8 +332,14 @@ class Library:
                               (folded(candidate) if fold else candidate,))
 
         def remember_form(candidate, target, raw):
-            if target == term:
+            depth = form_depths[candidate] + 1
+            # Homographic lemmas can redirect back to themselves or each other.
+            # Keep equally short analyses, without appending cyclic detours.
+            if form_depths.get(target, depth) < depth:
                 return
+            if form_depths.get(target, depth) > depth:
+                form_paths.pop(target, None)
+            form_depths[target] = depth
             labels = tuple(json.loads(raw)) or ("inflected form",)
             paths = form_paths.setdefault(target, [])
             for parent in tuple(form_paths.get(candidate, [()])):
@@ -348,7 +355,7 @@ class Library:
         for _ in range(3):
             following = set()
             for _, meta, db in packs:
-                for candidate in frontier:
+                for candidate in sorted(frontier):
                     for row in form_rows(meta, db, candidate):
                         remember_form(candidate, row[0], row[1])
                         if row[0] not in keys and len(keys) < 128:

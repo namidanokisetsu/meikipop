@@ -7,6 +7,7 @@ import re
 import math
 import sys
 import threading
+import unicodedata
 
 from PyQt6.QtCore import QObject, QEvent, QLocale, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QKeySequence, QShortcut, QTextLayout, QTextOption
@@ -443,6 +444,10 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
         if group_index:
             parts.append("<hr>")
+        display_term = term
+        if (result.source == "ru" and reading and unicodedata.normalize("NFC", reading.replace("\u0301", ""))
+                == unicodedata.normalize("NFC", term)):
+            display_term, reading = reading, ""
         display_reading = f"[{reading}]" if result.source == "ja" else reading
         reading_html = (f' <span style="color:{config.color_highlight_reading};font-size:'
                         f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
@@ -450,7 +455,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
         if result.source == "ja" and headword_furigana and reading and reading != term:
             parts.append(f'<h2>{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
         else:
-            parts.append(f'<h2>{escape(term)}{reading_html}</h2>')
+            parts.append(f'<h2>{escape(display_term)}{reading_html}</h2>')
         parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies))
         if preview and result.source == "tr":
             alternatives = tuple(dict.fromkeys(f"{other.term} · {' · '.join(other.inflection)}"

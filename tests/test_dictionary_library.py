@@ -86,6 +86,23 @@ class LibraryTests(unittest.TestCase):
         self.assertFalse(self.library.lookup("пошел", "uk"))
         self.assertFalse(self.library.lookup("е" * 2000, "ru"))
 
+    def test_form_labels_keep_shortest_alternatives_without_homograph_cycles(self):
+        self.pack("Russian", [self.row("большой", ["big"]), self.row("великий", ["great"])], language="ru")
+        self.pack("Forms", [
+            self.row("больших", [["большой", ["accusative plural animate"]],
+                                  ["большой", ["genitive plural"]],
+                                  ["большой", ["prepositional plural"]]]),
+            self.row("большой", [["большой", ["genitive/dative feminine"]],
+                                 ["великий", ["comparative"]]]),
+            self.row("великий", [["большой", ["cycle"]]])], language="ru")
+        self.library = Library(self.directory)
+        entries = {e.term: e for e in self.library.lookup("больших", "ru")}
+        self.assertEqual(entries["большой"].inflection,
+                         ("accusative plural animate OR genitive plural OR prepositional plural",))
+        self.assertEqual(entries["великий"].inflection,
+                         ("accusative plural animate · comparative OR genitive plural · comparative OR "
+                          "prepositional plural · comparative",))
+
     def test_turkish_form_labels_survive_import_and_accent_recovery(self):
         self.pack("Words", [self.row("oğul", ["son"]), self.row("gelmek", ["come"])])
         self.pack("Forms", [self.row("oğlum", [["oğul", ["my (possessive)"]]]),
