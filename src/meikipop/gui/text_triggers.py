@@ -1,6 +1,7 @@
 """Opt-in selection lookup; native callbacks never touch widgets."""
 from time import monotonic
-from PyQt6.QtCore import QObject, QPoint, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import QApplication
 
 
@@ -29,7 +30,11 @@ class TextTriggers(QObject):
             self.listener = None
 
     def click(self, x, y, down):
-        if QApplication.activeWindow() is not None or self.window.geometry().contains(QPoint(x, y)) and self.window.isVisible():
+        # Native hook coordinates are physical pixels; Qt geometry uses logical pixels.
+        if (self.window._scan_hold_active or QApplication.activeWindow() is not None
+                or QApplication.activePopupWidget() is not None or QApplication.activeModalWidget() is not None
+                or self.window.isVisible() and self.window.geometry().contains(QCursor.pos())):
+            self.press = self.last_click = None
             return
         if down:
             self.press = (x, y)
@@ -45,7 +50,8 @@ class TextTriggers(QObject):
             QTimer.singleShot(60, self.capture_selection)
 
     def capture_selection(self):
-        if (not self.window.selection.pending and QApplication.activeWindow() is None
+        if (not self.window._scan_hold_active and not self.window.selection.pending and QApplication.activeWindow() is None
+                and not (self.window.isVisible() and self.window.geometry().contains(QCursor.pos()))
                 and self.window.settings.value(f"profiles/{self.window.preferred_foreign}/selected_text", False, type=bool)):
             self.window._selection_for_search = False
             self.window._selection_passive = True

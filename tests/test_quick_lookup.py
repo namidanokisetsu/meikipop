@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
-from PyQt6.QtCore import QEvent, QSettings, Qt, QUrl
+from PyQt6.QtCore import QEvent, QPoint, QSettings, Qt, QUrl
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
@@ -944,6 +944,43 @@ class QuickLookupTests(unittest.TestCase):
         finally:
             triggers.shutdown()
             triggers.deleteLater()
+
+    def test_selection_listener_does_not_hide_popup_on_scaled_display_or_scan_click(self):
+        from meikipop.gui.text_triggers import TextTriggers
+        triggers = TextTriggers(self.window)
+        self.window.lookup_selected("猫", passive=True)
+        try:
+            with patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch("meikipop.gui.text_triggers.QCursor.pos", return_value=self.window.geometry().center()):
+                triggers.click(2000, 2000, True)
+                self.assertTrue(self.window.isVisible())
+                self.window._passive_text = False
+                self.window._opening_search = False
+                self.window._dismiss_if_inactive()
+                self.assertTrue(self.window.isVisible())
+            self.window.scan_hold_changed(True)
+            with patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch("meikipop.gui.text_triggers.QCursor.pos", return_value=QPoint(-500, -500)), \
+                    patch.object(self.window.selection, "start") as capture:
+                triggers.click(-500, -500, True)
+                triggers.capture_selection()
+                self.assertTrue(self.window.isVisible())
+                capture.assert_not_called()
+        finally:
+            triggers.shutdown()
+            triggers.deleteLater()
+
+    def test_selection_uses_lookup_autoplay_and_shortcut_toggles_visible_popup(self):
+        self.settings.setValue("profiles/ja/audio_autoplay_mode", "lookup")
+        self.window.audio = Mock()
+        self.window.lookup_selected("猫", passive=True)
+        self.wait_until(lambda: self.window._result is not None)
+        self.window.audio.play.assert_called_once()
+        self.window.hotkey_requested.emit()
+        self.assertFalse(self.window.isVisible())
+        with patch.object(self.window, "request_lookup") as request:
+            self.window.hotkey_requested.emit()
+            request.assert_called_once()
 
     def test_latest_worker_coalesces_pending_requests(self):
         started, release = threading.Event(), threading.Event()

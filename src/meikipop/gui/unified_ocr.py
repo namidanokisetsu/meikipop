@@ -381,6 +381,8 @@ class UnifiedOCR(QObject):
         self._sync_pin_ready()
 
     def outside_click(self):
+        if self.input and self.input.pin_pending.is_set():
+            return
         if (self.window.isVisible() and not self.window.geometry().contains(QCursor.pos())
                 and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None):
             self.dismiss()

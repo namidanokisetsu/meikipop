@@ -438,6 +438,8 @@ class QuickLookupWindow(QDialog):
         self._remember_request = False
         self.audio = None
         self._autoplayed = None
+        self._scan_hold_active = False
+        self._selection_lookup = False
         self.tray_geometry = None
         self._manual_at_cursor = False
         self._opening_search = False
@@ -580,7 +582,7 @@ class QuickLookupWindow(QDialog):
         self.worker.failed.connect(self._failed)
         self.worker.languages.connect(self.update_languages)
         self.worker.start()
-        self.hotkey_requested.connect(self.request_lookup)
+        self.hotkey_requested.connect(self.toggle_lookup)
         from meikipop.gui.selection import SelectionCapture
         self.selection = SelectionCapture(self)
         self.selection.completed.connect(self._selected_text_ready)
@@ -822,7 +824,7 @@ class QuickLookupWindow(QDialog):
         self.audio_button.setEnabled(bool(result.entries))
         self.sentence_audio_button.setEnabled(bool(result.text))
         autoplay = audio_autoplay_mode(self.settings, self.preferred_foreign)
-        if self._peek and (result.entries or result.translation) and autoplay == "lookup":
+        if (self._peek or self._selection_lookup) and (result.entries or result.translation) and autoplay == "lookup":
             self._autoplay()
 
     def _render(self):
@@ -996,13 +998,14 @@ class QuickLookupWindow(QDialog):
                 self.header.layout().addWidget(self.audio_actions)
             self.audio_actions.show()
 
-    def open_search(self, text="", *, at_cursor=False, passive=False):
+    def open_search(self, text="", *, at_cursor=False, passive=False, selection=False):
         self.remember_foreground()
         self._history.clear()
         self._new_chain = True
         self.title.clear()
         self.back.hide()
         self._passive_text = passive
+        self._selection_lookup = selection
         self._opening_search = True
         self._manual_at_cursor = at_cursor
         self.pin.setChecked(False)
@@ -1030,7 +1033,17 @@ class QuickLookupWindow(QDialog):
 
     def lookup_selected(self, text, *, passive=False):
         if text.strip():
-            self.open_search(text.strip()[:2000], at_cursor=True, passive=passive)
+            self.open_search(text.strip()[:2000], at_cursor=True, passive=passive, selection=True)
+
+    def toggle_lookup(self):
+        if self.isVisible():
+            self.selection.cancel()
+            self.hide()
+        elif self.selection.pending:
+            self.selection.cancel()
+            self._selection_for_search = False
+        else:
+            self.request_lookup()
 
     def request_selection(self):
         self._selection_for_search = False
@@ -1063,6 +1076,7 @@ class QuickLookupWindow(QDialog):
             self.open_search(self._lookup_clipboard)
 
     def scan_hold_changed(self, active):
+        self._scan_hold_active = active
         self._autoplayed = set() if active else None
 
     def _audio_key(self):
@@ -1189,6 +1203,9 @@ class QuickLookupWindow(QDialog):
             QToolTip.hideText()
             return True
         if event.type() == QEvent.Type.MouseButtonPress:
+            if self._passive_text:
+                self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+                self.activateWindow()
             self._passive_text = False
         if (event.type() == QEvent.Type.MouseButtonPress and self._peek and not self.is_pinned
                 and watched not in (self.dismiss_button, self.pin)):
@@ -1212,6 +1229,8 @@ class QuickLookupWindow(QDialog):
 
     def _dismiss_if_inactive(self):
         if self._opening_search or self._passive_text:
+            return
+        if self.geometry().contains(QCursor.pos()):
             return
         setup_open = self._setup is not None and self._setup.isVisible()
         if (not self._peek or self.is_pinned) and not self.isActiveWindow() and not setup_open \
