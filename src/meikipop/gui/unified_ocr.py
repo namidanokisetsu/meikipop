@@ -272,6 +272,7 @@ class UnifiedOCR(QObject):
         self.capture_screen = None
         self._capture_revision = 0
         self._fallback_capture = False
+        self._crop_retries = 0
         self.timer = QTimer(self)
         self.timer.setInterval(16)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -411,6 +412,7 @@ class UnifiedOCR(QObject):
         self.last_point = None
         self.capture_region = None
         self.capture_screen = None
+        self._crop_retries = 0
 
     def refresh_library(self):
         self.invalidate()
@@ -424,6 +426,7 @@ class UnifiedOCR(QObject):
                 not self.capture_region.adjusted(16, 16, -16, -16).contains(point)):
             self.capture_region = QRect(point.x() - 600, point.y() - 240, 1200, 480).intersected(geometry)
             self.capture_screen = screen_key
+            self._crop_retries = 0
         return QRect(self.capture_region)
 
     def set_enabled(self, enabled):
@@ -543,6 +546,10 @@ class UnifiedOCR(QObject):
         self.hit_latest(point, now)
         if self.busy or now - self._last_capture_at < .25:
             return
+        self._request_capture(point)
+
+    def _request_capture(self, point):
+        now = monotonic()
         self._last_scan_at = now
         self.last_point = QPoint(point)
         self.job_point = QPoint(point)
@@ -648,6 +655,15 @@ class UnifiedOCR(QObject):
             return
         self.frame = frame
         mark("frame_accepted", frame.request.revision)
+        point = QCursor.pos()
+        if self._crop_retries < 2 and self._valid_frame(frame, point, monotonic()):
+            from meikipop.ocr.boundaries import expanded_crop
+            crop = expanded_crop(frame, (point.x(), point.y()))
+            if crop is not None:
+                self._crop_retries += 1
+                self.capture_region = QRect(*crop)
+                self._request_capture(point)
+                return
         self.hit_latest(QCursor.pos(), monotonic())
 
     def hit_latest(self, point, now):

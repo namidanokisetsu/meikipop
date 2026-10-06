@@ -198,6 +198,19 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window.show_entries.assert_not_called()
         self.window.set_context.assert_not_called()
 
+    def test_boundary_recovery_has_two_retries_and_resets_on_invalidation(self):
+        frame = SimpleNamespace(request=SimpleNamespace(revision=1))
+        with patch.object(self.controller, "_valid_frame", return_value=True), \
+                patch("meikipop.ocr.boundaries.expanded_crop", return_value=(0, 0, 1800, 720)), \
+                patch.object(self.controller, "_request_capture") as capture, \
+                patch.object(self.controller, "hit_latest") as hit:
+            for _ in range(4):
+                self.controller.accept_frame(self.controller.generation, frame, "")
+            self.assertEqual(capture.call_count, 2)
+            self.assertEqual(hit.call_count, 2)
+            self.controller.invalidate()
+            self.assertEqual(self.controller._crop_retries, 0)
+
     def test_stale_or_pinned_delivery_preserves_context(self):
         self.controller.deliver(-1, Mock(), Mock(), "")
         self.window.is_pinned = True

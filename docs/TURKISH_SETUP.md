@@ -214,6 +214,9 @@ adapter follows the [Meikikai native bridge](https://github.com/hectahertz/meiki
 The new shared scan path uses local recognition. The legacy Japanese client
 still offers its original providers, including explicitly selected remote OCR.
 
+Screen lookup retries a clipped paragraph with a larger crop, at most twice.
+Growth stays on the current display and retains nearby sentence context.
+
 ## Local translation
 
 Choose a model in **Settings → Translation** and use **Download selected model**
