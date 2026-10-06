@@ -370,11 +370,6 @@ class SetupDialog(QDialog):
         self.audio_volume = QSpinBox()
         self.audio_volume.setRange(0, 100)
         audio_form.addRow("Volume", self.audio_volume)
-        self.audio_mode = QComboBox()
-        for label, mode in (("Online pronunciations", "online"), ("System voice", "tts"), ("Local recordings", "local")):
-            self.audio_mode.addItem(label, mode)
-        self.audio_mode.setToolTip("Online: Wiktionary and Lingua Libre, then system voice. Sends the word and language.")
-        audio_form.addRow("Pronunciation", self.audio_mode)
         self.audio_database = QLineEdit()
         self.audio_database.setPlaceholderText("Local Audio Server android.db")
         audio_form.addRow("Local database", self.audio_database)
@@ -387,7 +382,6 @@ class SetupDialog(QDialog):
         audio_form.addRow("Source priority", self.audio_sources)
         self.audio_form = audio_form
         self.audio_browse = audio_browse
-        self.audio_mode.currentIndexChanged.connect(self.change_audio_mode)
         tabs.addTab(audio, "Audio")
         self.audio_tab = audio
         self.audio_autoplay.currentIndexChanged.connect(self.save_autoplay)
@@ -652,11 +646,9 @@ class SetupDialog(QDialog):
         with QSignalBlocker(self.audio_autoplay):
             self.audio_autoplay.setCurrentIndex(max(0, self.audio_autoplay.findData(audio_autoplay_mode(self.settings, code))))
         self.audio_volume.setValue(self.settings.value(f"profiles/{code}/audio_volume", config.audio_volume, type=int))
-        from meikipop.audio.sources import audio_mode, database_path, local_source_order
+        from meikipop.audio.sources import database_path, source_order
         self.audio_database.setText(database_path(self.settings, code))
-        self.audio_mode.setCurrentIndex(self.audio_mode.findData(audio_mode(self.settings, code)))
-        self.audio_sources.load(local_source_order(self.settings, code),
-                                self.audio_database.text() if self.audio_mode.currentData() == "local" else "")
+        self.audio_sources.load(source_order(self.settings, code), self.audio_database.text())
         self.show_audio_controls()
         self.language.setCurrentIndex(max(0, self.language.findData(code)))
         self._loading = previous_loading
@@ -729,23 +721,19 @@ class SetupDialog(QDialog):
         code = self.profile.currentData()
         self.save_autoplay()
         self.settings.setValue(f"profiles/{code}/audio_volume", self.audio_volume.value())
-        self.settings.setValue(f"profiles/{code}/audio_mode", self.audio_mode.currentData())
         self.settings.setValue(f"profiles/{code}/audio_database", self.audio_database.text().strip())
         order = self.audio_sources.order()
-        self.settings.setValue(f"profiles/{code}/audio_order", order)
-        path = self.audio_database.text().strip() if self.audio_mode.currentData() == "local" else ""
+        self.settings.setValue(f"profiles/{code}/audio_priority", order)
+        path = self.audio_database.text().strip()
         if path != self.audio_sources.path:
             self.audio_sources.load(order, path)
+        self.show_audio_controls()
         self.status.setText("Saved.")
 
     def show_audio_controls(self):
-        local = self.audio_mode.currentData() == "local"
-        for widget in (self.audio_database, self.audio_browse, self.audio_sources):
+        local = any(source == "database" or source.startswith("db:") for source in self.audio_sources.order())
+        for widget in (self.audio_database, self.audio_browse):
             self.audio_form.setRowVisible(widget, local)
-
-    def change_audio_mode(self):
-        self.show_audio_controls()
-        self.autosave(self.save_audio)
 
     def save_autoplay(self):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/audio_autoplay_mode", self.audio_autoplay.currentData())

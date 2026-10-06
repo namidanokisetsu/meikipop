@@ -1,5 +1,5 @@
 """Shared popup pronunciation with online, local and system-voice sources."""
-from PyQt6.QtCore import QByteArray, QBuffer, QIODevice, QLocale, QObject, QUrl, pyqtSignal
+from PyQt6.QtCore import QByteArray, QBuffer, QIODevice, QLocale, QObject, QTimer, QUrl, pyqtSignal
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 
 from meikipop.audio.worker import AudioRequest, AudioWorker
@@ -23,6 +23,7 @@ class LookupAudio(QObject):
         self.current_clip = None
         self._serial = 0
         self._pending = None
+        self._speech_error = ""
         self.clip_ready.connect(self._play_clip)
         self.result_ready.connect(self._audio_result)
         self.worker = AudioWorker(self.clip_ready.emit, self._status, result_callback=self.result_ready.emit)
@@ -48,6 +49,7 @@ class LookupAudio(QObject):
         self._serial += 1
         self.latest = (self._serial, key)
         self._pending = None
+        self._speech_error = ""
         volume = settings.value(f"profiles/{profile}/audio_volume", config.audio_volume, type=int)
         self.output.setVolume(volume / 100)
         return volume
@@ -67,7 +69,6 @@ class LookupAudio(QObject):
             if source == "tts":
                 if self._speak(entry.reading or entry.term, entry.language, volume):
                     self.current_clip = None
-                    self._pending = None
                     return
             elif source == "online":
                 language = {"zh-hant": "zh", "zh-hans": "zh", "zh-tw": "zh", "zh-hk": "zh",
@@ -82,7 +83,7 @@ class LookupAudio(QObject):
                                                 strict_sources=source.startswith("db:")))
                 return
         self._pending = None
-        self.failed.emit("No pronunciation available from the selected sources.")
+        self.failed.emit(self._speech_error or "No pronunciation available from the selected sources.")
 
     def _audio_result(self, request, clip):
         if self.latest != (request.activation_id, request.key):
@@ -96,18 +97,32 @@ class LookupAudio(QObject):
         if not text.strip():
             return False
         volume = self._prepare(revision, ("sentence", language, text), settings, profile or language)
-        self._speak(text, language, volume)
+        if not self._speak(text, language, volume):
+            self.failed.emit(self._speech_error)
+
+    def _speech_failed(self, _, text):
+        serial = self._serial
+        def fallback():
+            if serial != self._serial or self.latest is None:
+                return
+            self._speech_error = text
+            if self._pending is not None:
+                self._next_source()
+            else:
+                self.failed.emit(text)
+        # Some engines emit an error synchronously inside say().
+        QTimer.singleShot(0, fallback)
 
     def _speak(self, text, language, volume):
         from PyQt6.QtTextToSpeech import QTextToSpeech
         if self.speech is None:
             self.speech = QTextToSpeech(self)
-            self.speech.errorOccurred.connect(lambda _, text: self.failed.emit(text))
+            self.speech.errorOccurred.connect(self._speech_failed)
         locale = QLocale(language)
         self.speech.setLocale(locale)
         voices = [v for v in self.speech.availableVoices() if v.locale().language() == locale.language()]
         if not voices:
-            self.failed.emit(f"No {locale.nativeLanguageName()} system voice installed.")
+            self._speech_error = f"No {locale.nativeLanguageName()} system voice installed."
             return
         self.speech.setVoice(voices[0])
         self.speech.setVolume(volume / 100)

@@ -7,6 +7,9 @@ def database_path(settings, language):
 
 
 def source_order(settings, language):
+    saved = settings.value(f"profiles/{language}/audio_priority")
+    if saved is not None:
+        return saved if isinstance(saved, list) else [saved] if saved else []
     mode = audio_mode(settings, language)
     if mode == "online":
         return ["online", "tts"]

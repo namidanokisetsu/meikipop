@@ -17,6 +17,33 @@ class SentenceAudioTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_saved_priority_overrides_legacy_mode_and_can_disable_sources(self):
+        from meikipop.audio.sources import source_order
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/tr/audio_mode", "online")
+            settings.setValue("profiles/tr/audio_priority", ["tts", "online"])
+            audio = LookupAudio()
+            word = Entry("ev", "ev", "", "Fixture", "tr", ("house",))
+            try:
+                with patch.object(audio, "_speak", return_value=True) as speak:
+                    audio.play(word, 1, settings)
+                    speak.assert_called_once_with("ev", "tr", 80)
+                    audio.worker.submit.assert_not_called()
+                    audio._speech_failed(None, "Voice failed")
+                    self.app.processEvents()
+                    self.assertTrue(audio.worker.submit.call_args.args[0].online)
+                    audio.worker.submit.reset_mock()
+                with patch.object(audio, "_speak", return_value=False):
+                    audio.play(word, 2, settings)
+                    self.assertTrue(audio.worker.submit.call_args.args[0].online)
+                settings.setValue("profiles/tr/audio_priority", [])
+                self.assertEqual(source_order(settings, "tr"), [])
+                self.assertEqual(source_order(settings, "ru"), ["online", "tts"])
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
     def test_sentence_bypasses_word_database_and_invalidates_pending_word_clip(self):
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
             settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
