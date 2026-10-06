@@ -215,6 +215,50 @@ class ManagedServerTests(unittest.TestCase):
                 server.ensure_server(directory=self.root)
         spawn.assert_not_called()
 
+    def test_request_cancellation_during_startup_stops_only_its_owned_process(self):
+        cancelled = threading.Event()
+        def ready():
+            if server._process is not None:
+                cancelled.set()
+            return False
+        with patch.object(server, "_ready", side_effect=ready), \
+                patch.object(server.subprocess, "Popen", return_value=self.process), \
+                self.assertRaisesRegex(RuntimeError, "cancelled"):
+            server.ensure_server(directory=self.root, cancelled=cancelled)
+        self.process.terminate.assert_called_once()
+
+    def test_keep_warm_changes_only_at_next_owned_start(self):
+        second = Mock()
+        second.poll.return_value = None
+        with patch.object(server, "_ready", side_effect=[False, True, False, True]), \
+                patch.object(server.subprocess, "Popen", side_effect=[self.process, second]) as spawn:
+            server.ensure_server(directory=self.root)
+            self.process.terminate.assert_not_called()
+            server.ensure_server(directory=self.root, keep_warm=True)
+        self.process.terminate.assert_called_once()
+        args = spawn.call_args.args[0]
+        self.assertEqual(args[args.index("--sleep-idle-seconds") + 1], "-1")
+
+    def test_waiting_model_change_can_cancel_without_touching_current_request(self):
+        cancelled, finished = threading.Event(), threading.Event()
+        errors = []
+        def wait():
+            try:
+                with server.request_lock(cancelled):
+                    self.fail("Cancelled waiter acquired active model")
+            except RuntimeError as error:
+                errors.append(str(error))
+            finally:
+                finished.set()
+        with server.request_lock():
+            worker = threading.Thread(target=wait)
+            worker.start()
+            cancelled.set()
+            self.assertTrue(finished.wait(1))
+            self.process.terminate.assert_not_called()
+        worker.join(1)
+        self.assertIn("cancelled", errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

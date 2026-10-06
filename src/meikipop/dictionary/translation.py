@@ -73,11 +73,12 @@ class TranslationSettings:
     model: str = DEFAULT_MODEL
     auto_start: bool = True
     stream: bool = True
+    keep_warm: bool = False
 
     def validated(self):
         if self.provider not in ("server", "custom") or self.profile not in tuple(MODEL_NAMES):
             raise ValueError("Choose a translation model in Settings.")
-        if not all(isinstance(value, bool) for value in (self.auto_start, self.stream)):
+        if not all(isinstance(value, bool) for value in (self.auto_start, self.stream, self.keep_warm)):
             raise ValueError("Invalid local server startup setting.")
         if self.provider == "server":
             endpoint, model = DEFAULT_ENDPOINT, DEFAULT_MODEL
@@ -88,7 +89,7 @@ class TranslationSettings:
             if any(ord(char) < 32 for char in self.model):
                 raise ValueError("Invalid local server model name.")
             model = self.model.strip()
-        return TranslationSettings(self.provider, self.profile, endpoint, model, self.auto_start, self.stream)
+        return TranslationSettings(self.provider, self.profile, endpoint, model, self.auto_start, self.stream, self.keep_warm)
 
 
 def load_settings(directory=None):
@@ -170,6 +171,7 @@ class LocalTranslator:
         self.last_model = ""
         self.settings_override = None
         self._connection = None
+        self._socket = None
         self._connection_lock = threading.Lock()
         self._cancelled = threading.Event()
 
@@ -178,9 +180,9 @@ class LocalTranslator:
         with self._connection_lock:
             connection = self._connection
             if connection is not None:
-                if connection.sock is not None:
+                if self._socket is not None:
                     try:
-                        connection.sock.shutdown(socket.SHUT_RDWR)
+                        self._socket.shutdown(socket.SHUT_RDWR)
                     except OSError:
                         pass
                 connection.close()
@@ -207,12 +209,20 @@ class LocalTranslator:
                 if code.split("-", 1)[0] not in MANAGED_LANGUAGES:
                     raise ValueError(f"Hy-MT2 does not list support for {code}. Dictionary lookup is still available.")
         if settings.provider == "server" and settings.auto_start:
+            from meikipop.scripts.translation_server import request_lock
+            with request_lock(self._cancelled):
+                return self._request(text, target_name, settings, on_text, on_state, request_id)
+        return self._request(text, target_name, settings, on_text, on_state, request_id)
+
+    def _request(self, text, target_name, settings, on_text, on_state, request_id):
+        if settings.provider == "server" and settings.auto_start:
             mark("model_start_or_wake", request_id)
             if on_state:
                 on_state("Starting " + MODEL_NAMES[settings.profile])
             from meikipop.scripts.translation_server import ensure_server
             ensure_server(endpoint=DEFAULT_ENDPOINT, profile=settings.profile, timeout=120,
-                          directory=self.directory, cancelled=self._cancelled)
+                          directory=self.directory, cancelled=self._cancelled, keep_warm=settings.keep_warm,
+                          request_id=request_id)
             mark("model_ready", request_id)
         prompt = (f"Translate the following text into {target_name}. Note that you should only output "
                   "the translated result without any additional explanation:\n" + text)
@@ -238,6 +248,7 @@ class LocalTranslator:
                 if self._cancelled.is_set():
                     raise RuntimeError("Translation cancelled.")
                 self._connection = connection
+                self._socket = connection.sock
             # http.client bypasses environment proxies and never follows redirects.
             mark("translation_dispatch", request_id)
             if on_state:
@@ -279,6 +290,7 @@ class LocalTranslator:
         finally:
             with self._connection_lock:
                 self._connection = None
+                self._socket = None
                 connection.close()
         self.last_provider = settings.provider
         self.last_model = MODEL_NAMES[settings.profile] if settings.provider == "server" else settings.model

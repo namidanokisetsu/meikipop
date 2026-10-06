@@ -6,6 +6,7 @@ The pinned release supports --sleep-idle-seconds; inference never downloads.
 """
 import argparse
 import atexit
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -23,6 +24,7 @@ from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, Request, build_opener, urlopen
 import zipfile
+from meikipop.utils.timing import mark, logger as timing_logger
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:8766/v1"
 RELEASE = "b11146"
@@ -44,6 +46,7 @@ MODELS = {
                         sha256="5c3fe0b1408a5ceb0143184ef247b11b579c525f4b02b060e6c851bb76fef1a4"),
 }
 _lock = threading.RLock()
+_running_warm = False
 _install_lock = threading.Lock()
 _stop_requested = threading.Event()
 _closed = threading.Event()
@@ -284,10 +287,10 @@ def _installed_paths(profile, directory):
     return executable, model_path
 
 
-def server_command(executable, model):
+def server_command(executable, model, keep_warm=False):
     return [str(executable), "--model", str(model), "--alias", "hy-mt2", "--host", "127.0.0.1",
             "--port", "8766", "-ngl", "99", "--ctx-size", "8192", "--parallel", "1",
-            "--sleep-idle-seconds", "60", "--cache-ram", "0", "--no-context-shift", "--jinja",
+            "--sleep-idle-seconds", "-1" if keep_warm else "60", "--cache-ram", "0", "--no-context-shift", "--jinja",
             "--no-webui", "--no-agent", "--log-disable"]
 
 
@@ -312,9 +315,24 @@ def shutdown_server(permanent=False):
         _terminate_owned()
 
 
-def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, directory=None, cancelled=None):
+@contextmanager
+def request_lock(cancelled=None):
+    """Serialize model changes with complete owned-server requests, cancellably."""
+    while not _lock.acquire(timeout=.1):
+        if cancelled is not None and cancelled.is_set():
+            raise RuntimeError("Translation startup cancelled.")
+    try:
+        if cancelled is not None and cancelled.is_set():
+            raise RuntimeError("Translation startup cancelled.")
+        yield
+    finally:
+        _lock.release()
+
+
+def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, directory=None, cancelled=None, keep_warm=False,
+                  request_id=0):
     """Start an installed model. This function has no download or setup path."""
-    global _process, _running_model
+    global _process, _running_model, _running_warm
     parsed = urlsplit(endpoint.rstrip("/"))
     if (parsed.scheme, parsed.hostname, parsed.port, parsed.path) != ("http", "127.0.0.1", 8766, "/v1") \
             or parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -322,29 +340,36 @@ def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, dir
     if profile not in MODELS:
         raise ValueError("Choose quality or lightweight translation.")
     executable, model = _installed_paths(profile, directory)
-    with _lock:
+    with request_lock(cancelled):
         if cancelled is not None and cancelled.is_set():
             raise RuntimeError("Translation startup cancelled.")
         if _closed.is_set():
             raise RuntimeError("Translation server is shutting down.")
         _stop_requested.clear()
-        if _process is not None and (_process.poll() is not None or _running_model != model):
+        if _process is not None and (_process.poll() is not None or _running_model != model or _running_warm != keep_warm):
             _terminate_owned()
         if _ready():
             if _process is None:
                 props = _local_json("/props")
                 if Path(props.get("model_path", "")).resolve() != model:
                     raise RuntimeError("Port 8766 is used by another model. Stop that server or choose Custom in Settings.")
+            if timing_logger.isEnabledFor(10):
+                try:
+                    mark("model_wake" if _local_json("/props").get("is_sleeping") else "model_warm", request_id)
+                except (OSError, ValueError, URLError):
+                    mark("model_state_unavailable", request_id)
             return
         launched = _process is None
         if launched:
+            mark("model_cold_start", request_id)
             options = dict(cwd=str(executable.parent), stdin=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            env={key: value for key, value in os.environ.items() if not key.startswith("LLAMA_")})
             if sys.platform == "win32":
                 options["creationflags"] = subprocess.CREATE_NO_WINDOW
-            _process = subprocess.Popen(server_command(executable, model), **options)
+            _process = subprocess.Popen(server_command(executable, model, keep_warm), **options)
             _running_model = model
+            _running_warm = keep_warm
         deadline = time.monotonic() + timeout
         try:
             while time.monotonic() < deadline:

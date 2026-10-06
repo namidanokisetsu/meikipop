@@ -213,6 +213,9 @@ class SetupDialog(QDialog):
         translation_form.addRow(self.translation_autostart)
         self.translation_stream = QCheckBox("Stream translation")
         translation_form.addRow(self.translation_stream)
+        self.translation_warm = QCheckBox("Keep model warm")
+        self.translation_warm.setToolTip("Retains model memory after use. Changes apply on the next translation.")
+        translation_form.addRow(self.translation_warm)
         self.translation_routing = {}
         for key, label in (("auto_translate_sentence", "Translate sentences automatically"),
                            ("auto_translate_miss", "Translate after incomplete dictionary matches")):
@@ -243,6 +246,7 @@ class SetupDialog(QDialog):
         self.translation_model.setText(translation_settings.model)
         self.translation_autostart.setChecked(translation_settings.auto_start)
         self.translation_stream.setChecked(translation_settings.stream)
+        self.translation_warm.setChecked(translation_settings.keep_warm)
         self.translation_mode.currentIndexChanged.connect(self.update_translation_controls)
         self.update_translation_controls()
 
@@ -390,6 +394,7 @@ class SetupDialog(QDialog):
             control.editingFinished.connect(lambda: self.autosave(self.save_translation))
         self.translation_autostart.toggled.connect(lambda _: self.autosave(self.save_translation))
         self.translation_stream.toggled.connect(lambda _: self.autosave(self.save_translation))
+        self.translation_warm.toggled.connect(lambda _: self.autosave(lambda: self.save_translation(cancel=False)))
         for control in (self.scan_key, self.scan_mouse):
             control.currentIndexChanged.connect(lambda _: self.autosave(self.save_shortcut))
         for control in (self.shortcut, self.pin_shortcut):
@@ -610,6 +615,7 @@ class SetupDialog(QDialog):
         self.translation_model.setText(translation.model)
         self.translation_autostart.setChecked(translation.auto_start)
         self.translation_stream.setChecked(translation.stream)
+        self.translation_warm.setChecked(translation.keep_warm)
         self.appearance.reload()
         self.show_component_controls()
         self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(self.settings.value(f"profiles/{code}/pin_gesture", self.settings.value("pin_gesture", "left")))))
@@ -709,9 +715,10 @@ class SetupDialog(QDialog):
         self.translation_endpoint.setEnabled(custom)
         self.translation_model.setEnabled(custom)
         self.translation_autostart.setEnabled(not custom)
+        self.translation_warm.setEnabled(not custom)
         self.model_button.setEnabled(not custom)
 
-    def save_translation(self):
+    def save_translation(self, *, cancel=True):
         mode = self.translation_mode.currentData()
         try:
             code = self.profile.currentData()
@@ -723,7 +730,8 @@ class SetupDialog(QDialog):
                 provider="custom" if mode == "custom" else "server",
                 profile=mode if mode != "custom" else "quality",
                 endpoint=self.translation_endpoint.text(), model=self.translation_model.text(),
-                auto_start=self.translation_autostart.isChecked(), stream=self.translation_stream.isChecked()))
+                auto_start=self.translation_autostart.isChecked(), stream=self.translation_stream.isChecked(),
+                keep_warm=self.translation_warm.isChecked()))
             self.settings.setValue(f"profiles/{code}/target", self.translation_partner.currentData())
             for key, control in (("source", self.translation_source), ("target", self.translation_target)):
                 self.settings.setValue(f"profiles/{code}/translation_{key}", control.currentData())
@@ -734,7 +742,8 @@ class SetupDialog(QDialog):
                 with QSignalBlocker(window.source), QSignalBlocker(window.foreign):
                     window.set_mode(code)
                     window.foreign.setCurrentIndex(window.foreign.findData(self.translation_partner.currentData()))
-                window._edited()
+                if cancel:
+                    window._edited()
             self.status.setText("Saved.")
             return True
         except (ValueError, OSError) as error:

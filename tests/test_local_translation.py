@@ -1,4 +1,5 @@
 import json
+from contextlib import nullcontext
 import os
 from pathlib import Path
 import sys
@@ -145,17 +146,19 @@ class TranslationTests(unittest.TestCase):
 
     def test_managed_start_is_lazy_and_uses_explicit_selected_profile(self):
         save_settings(TranslationSettings(profile="lightweight"), self.directory)
-        manager = SimpleNamespace(ensure_server=Mock(), install_model=Mock())
+        manager = SimpleNamespace(ensure_server=Mock(), install_model=Mock(), request_lock=lambda *_: nullcontext())
         with patch.dict(sys.modules, {"meikipop.scripts.translation_server": manager}), self.server():
             manager.ensure_server.assert_not_called()
             self.translator.translate("猫", "ja", "en")
         manager.ensure_server.assert_called_once_with(endpoint=DEFAULT_ENDPOINT, profile="lightweight",
-                                                      timeout=120, directory=self.directory, cancelled=self.translator._cancelled)
+                                                      timeout=120, directory=self.directory, cancelled=self.translator._cancelled,
+                                                      keep_warm=False, request_id=0)
         manager.install_model.assert_not_called()
         self.assertEqual(self.translator.last_model, "Hy-MT2-1.8B Q8_0")
 
     def test_missing_managed_model_does_not_fall_back_or_make_a_request(self):
-        manager = SimpleNamespace(ensure_server=Mock(side_effect=RuntimeError("Install the selected model.")))
+        manager = SimpleNamespace(ensure_server=Mock(side_effect=RuntimeError("Install the selected model.")),
+                                  request_lock=lambda *_: nullcontext())
         with patch.dict(sys.modules, {"meikipop.scripts.translation_server": manager}), self.server():
             with self.assertRaisesRegex(RuntimeError, "Install"):
                 self.translator.translate("猫", "ja", "en")
