@@ -141,6 +141,20 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.settings.value("profiles/tr/theme_name"), "Slate")
         dialog.hide()
 
+    def test_back_restores_profile_appearance_and_saved_identity(self):
+        from meikipop.config.config import config
+        self.settings.setValue("profiles/ja/theme_name", "Light")
+        self.settings.setValue("profiles/tr/theme_name", "Dusk")
+        self.window.set_mode("tr")
+        old = SearchResult("ev", "tr", "en", (entry("ev", language="tr"),))
+        self.window.show_entries((entry(),), "猫")
+        self.window.set_mode("ja")
+        self.window._history = [(old, "ev", "tr", "en", (), 0)]
+        self.window.go_back()
+        self.assertEqual(self.window.preferred_foreign, "tr")
+        self.assertEqual(self.settings.value("profile"), "tr")
+        self.assertEqual(config.color_background, "#28231F")
+
     def test_translate_runs_off_main_thread_and_enter_search_is_local(self):
         self.window.search.setText("猫")
         self.window.submit(translate=True)

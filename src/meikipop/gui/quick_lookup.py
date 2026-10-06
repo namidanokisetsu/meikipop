@@ -940,6 +940,13 @@ class QuickLookupWindow(QDialog):
             self.foreign.setCurrentIndex(self.foreign.findData(target))
         self._update_target_visibility()
         self.mode_changed.emit(self.source.currentData())
+        self.settings.setValue("profile", profile)
+        self.settings.setValue("source", self.source.currentData())
+        self.settings.setValue(f"profiles/{profile}/target", target)
+        self.reload_appearance()
+        if self._setup is not None:
+            self._setup.sync_profile(profile)
+        self.scan_settings_changed.emit()
         self._display(result, remember=False)
         self.set_context(context)
         self._expanded = set(expanded)
