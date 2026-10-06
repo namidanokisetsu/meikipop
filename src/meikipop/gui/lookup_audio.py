@@ -111,10 +111,14 @@ class LookupAudio(QObject):
         self.player.setSourceDevice(self.buffer, QUrl("memory:///" + clip.filename))
         self.player.play()
 
-    def shutdown(self):
+    def cancel(self):
         self.latest = None
+        self._pending = None
         self.player.stop()
         if self.speech:
             self.speech.stop()
+
+    def shutdown(self):
+        self.cancel()
         self.worker.stop()
         self.worker.join(timeout=2)

@@ -21,6 +21,7 @@ from meikipop.gui.action_icons import action_icon
 from meikipop.gui.ruby import RubyBrowser, ruby_html
 from meikipop.language.profiles import configured_profiles, default_partner
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
+from meikipop.utils.timing import mark
 
 
 LANGUAGE_NAMES = {
@@ -69,6 +70,7 @@ class LookupWorker(QObject):
     def request(self, revision, text, source, foreign, translate=False, target=None, pair=None, translation_settings=None,
                 morphology=False):
         self.cancel()
+        mark("dispatch", revision, translation=translate)
         with self._condition:
             self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings, morphology)
             self._condition.notify()
@@ -126,12 +128,14 @@ class LookupWorker(QObject):
                         self._emit(self.languages, codes)
                     if pending is not None:
                         revision, text, source, foreign, translate, target, pair, translation_settings, morphology = pending
+                        mark("dequeue", revision)
                         options = {"target": target} if target else {}
                         if pair:
                             options.update(pair=pair, translation_settings=translation_settings)
                         if morphology:
                             options["morphology"] = True
                         result = engine.search(text, source=source, foreign=foreign, translate=translate, **options)
+                        mark("lookup_done", revision)
                         self._emit(self.completed, revision, result)
                 except Exception as error:
                     self._emit(self.failed, pending[0] if pending else -1, str(error))
@@ -428,6 +432,9 @@ class QuickLookupWindow(QDialog):
         load_appearance(self.settings, self.settings.value("profile", self.settings.value("source", "ja")))
         self.revision = 0
         self._result = None
+        self._display_revision = None
+        self._pending_revision = None
+        self._paint_revision = None
         self._context = ""
         self._peek = False
         self._history = []
@@ -525,7 +532,7 @@ class QuickLookupWindow(QDialog):
         self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{initial_profile}/target", default_partner(initial_profile)))))
         self.translate = self._action("translate", "Translate")
         self.translate.setEnabled(False)
-        self.translate.clicked.connect(lambda: self.submit(translate=True, context=bool(self._peek and self._context)))
+        self.translate.clicked.connect(self._translate_clicked)
         self.translate_sentence = self.translate
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
@@ -587,6 +594,10 @@ class QuickLookupWindow(QDialog):
         self.debounce.setSingleShot(True)
         self.debounce.setInterval(180)
         self.debounce.timeout.connect(self.submit)
+        self.busy_delay = QTimer(self)
+        self.busy_delay.setSingleShot(True)
+        self.busy_delay.setInterval(175)
+        self.busy_delay.timeout.connect(self._show_busy)
         self.source.currentIndexChanged.connect(self._mode_changed)
         self.foreign.currentIndexChanged.connect(self._mode_changed)
         self.worker = LookupWorker(directory, engine_factory)
@@ -729,6 +740,8 @@ class QuickLookupWindow(QDialog):
 
     def _invalidate(self):
         self.revision += 1
+        self._pending_revision = None
+        self.busy_delay.stop()
         self._remember_request = False
         self.debounce.stop()
         self.worker.cancel()
@@ -736,14 +749,46 @@ class QuickLookupWindow(QDialog):
             self.translation_worker.cancel()
         self._set_translation_busy(False)
 
+    def _show_busy(self):
+        if self._pending_revision == self.revision:
+            self.translate.setIcon(action_icon("close", config.color_foreground))
+            self.translate.setToolTip("Cancel translation" if self._translation_busy else "Cancel lookup")
+            self.translate.setAccessibleName(self.translate.toolTip())
+            self.translate.setEnabled(True)
+
+    def _clear_actions(self):
+        self.audio_button.setEnabled(False)
+        self.sentence_audio_button.setEnabled(False)
+        self._clear_context()
+        if self.audio:
+            self.audio.cancel()
+
+    def _translate_clicked(self):
+        if self._pending_revision is not None:
+            self._invalidate()
+            self._restore_actions()
+        else:
+            self.submit(translate=True, context=bool(self._peek and self._context))
+
+    def _restore_actions(self):
+        current = self._result is not None and (self._peek or self._result.text == self.search.text().strip())
+        self._display_revision = self.revision if current else None
+        self.audio_button.setEnabled(bool(current and self._result.entries))
+        self.sentence_audio_button.setEnabled(bool(current and self._result.text))
+        if current:
+            self.set_context(getattr(self, "_result_context", ""))
+
     def _set_translation_busy(self, busy):
         self._translation_busy = busy
-        self.translate.setEnabled(not busy and bool(self.search.text().strip() or self._context))
-        self.translate.setToolTip("Translating…" if busy else "Translate sentence" if self._peek and self._context else "Translate")
+        self.translate.setEnabled(bool(self.search.text().strip() or self._context))
+        self.translate.setIcon(action_icon("translate", config.color_foreground))
+        self.translate.setToolTip("Cancel translation" if busy else "Translate sentence" if self._peek and self._context else "Translate")
+        self.translate.setAccessibleName(self.translate.toolTip())
 
     def _edited(self):
         self._invalidate()
-        self._clear_context()
+        self._display_revision = None
+        self._clear_actions()
         text = self.search.text().strip()
         self.translate.setEnabled(bool(text))
         self.status.setText("Searching…" if text else "")
@@ -751,6 +796,8 @@ class QuickLookupWindow(QDialog):
         if text:
             self.debounce.start()
         else:
+            self._result = None
+            self._result_context = ""
             self.browser.clear()
 
     def submit(self, translate=None, *, context=False, remember=False):
@@ -763,6 +810,8 @@ class QuickLookupWindow(QDialog):
         self._last_request_translate = bool(translate)
         self._remember_request = remember or context
         self.revision += 1
+        self._pending_revision = self.revision
+        self.busy_delay.start()
         self._pending_context_translation = (self.revision, text) if context else None
         self._set_translation_busy(bool(translate))
         self.status.setText("Translating…" if translate else "Searching…")
@@ -804,7 +853,11 @@ class QuickLookupWindow(QDialog):
 
     def deliver(self, revision, result):
         if revision != self.revision or self._shutting_down:
+            mark("discard", revision, reason="obsolete_lookup")
             return
+        mark("accepted", revision)
+        self._pending_revision = None
+        self.busy_delay.stop()
         self._set_translation_busy(False)
         partial_japanese = result.source == "ja" and 0 < result.matched_length < len(result.text)
         if (not self._peek and not self._last_request_translate and not result.translation
@@ -831,6 +884,7 @@ class QuickLookupWindow(QDialog):
             self._history = self._history[-30:]
         self._new_chain = False
         self._result = result
+        self._display_revision = self.revision
         self._result_profile = self.preferred_foreign
         self._result_target = self.foreign.currentData()
         self._result_context = previous_context if same else ""
@@ -898,7 +952,10 @@ class QuickLookupWindow(QDialog):
 
     def _failed(self, revision, message):
         if revision in (-1, self.revision):
+            self._pending_revision = None
+            self.busy_delay.stop()
             self._set_translation_busy(False)
+            self._restore_actions()
             self.show_message(message)
 
     def show_message(self, text):
@@ -935,8 +992,12 @@ class QuickLookupWindow(QDialog):
             self.lookup_word(str(self._result.suggestions[index]))
 
     def lookup_word(self, text):
+        self._invalidate()
+        self._display_revision = None
+        self._clear_actions()
         self._set_peek(False)
-        self.search.setText(text)
+        with QSignalBlocker(self.search):
+            self.search.setText(text)
         self.submit(remember=True)
 
     def go_back(self):
@@ -1151,7 +1212,7 @@ class QuickLookupWindow(QDialog):
         self._setup.show_audio()
 
     def play_audio(self, *, sentence=False, translation=False, source=None):
-        if self._result is None:
+        if self._result is None or self._display_revision != self.revision:
             return
         if not sentence and not translation and self._autoplayed is not None:
             self._autoplayed.add(self._audio_key())
@@ -1254,6 +1315,10 @@ class QuickLookupWindow(QDialog):
             self._autoplay()
 
     def eventFilter(self, watched, event):
+        if (event.type() == QEvent.Type.Paint and hasattr(self, "browser")
+                and watched is self.browser.viewport() and self._paint_revision != self._display_revision):
+            self._paint_revision = self._display_revision
+            mark("paint", self._display_revision)
         if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
             QTimer.singleShot(0, self._place_actions)
         if event.type() == QEvent.Type.ToolTip and watched is not self.copy_button:
