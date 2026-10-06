@@ -67,6 +67,9 @@ def main(argv=None):
     from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QStyle
     from meikipop.gui.quick_lookup import QuickLookupWindow
     from meikipop.utils.paths import paths
+    from meikipop.utils.logger import setup_logging
+
+    setup_logging()
 
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("Meikipop")
@@ -80,6 +83,7 @@ def main(argv=None):
     app.aboutToQuit.connect(instance.shutdown)
     from meikipop.gui.first_run import needs_setup, show_setup
     settings = QSettings("Meikipop", "QuickLookup")
+    settings.setFallbacksEnabled(False)
     first_run = args.setup or needs_setup(settings)
     if first_run:
         settings.setValue("setup/pending", True)

@@ -24,7 +24,7 @@ def setup_logging():
         datefmt='%H:%M:%S'
     )
 
-    if sys.stdout is not None:
+    if sys.stdout is not None and not getattr(sys, "frozen", False):
         handler = logging.StreamHandler(sys.stdout)
     else:
         log_dir = Path(paths.cache_dir)
@@ -41,5 +41,7 @@ def setup_logging():
     logger.setLevel(logging.INFO)  # logging.INFO or TRACE_LEVEL_NUM
 
     if logger.hasHandlers():
-        logger.handlers.clear()
+        for previous in logger.handlers[:]:
+            previous.close()
+            logger.removeHandler(previous)
     logger.addHandler(handler)

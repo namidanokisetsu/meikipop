@@ -1,0 +1,25 @@
+name: Windows input regressions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shortcuts:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install input and settings dependencies
+        run: |
+          pip install PyQt6 pynput mss requests Pillow platformdirs lxml betterproto protobuf websockets numpy
+          pip install --no-deps -e .
+      - name: Check Windows recording, propagation, selection and settings
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "import unittest; loader=unittest.defaultTestLoader; suite=unittest.TestSuite(loader.discover('tests', pattern=p) for p in ('test_macos_input.py','test_text_shortcuts.py','test_selection.py','test_scan_gestures.py','test_first_run.py','test_startup.py')); result=unittest.TextTestRunner(verbosity=1).run(suite); raise SystemExit(not result.wasSuccessful())"

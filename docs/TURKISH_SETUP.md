@@ -13,6 +13,15 @@ menu reopens it. **Settings → OCR → Install OCR model** installs the selecte
 Windows OCR component; macOS includes Apple Vision. Dictionary, translation and
 base-form downloads are available from Settings on both platforms.
 
+On macOS, allow **Input Monitoring** for global shortcuts, **Accessibility** for
+copying selected text from other apps, and **Screen Recording** for OCR in
+System Settings → Privacy & Security, then reopen Meikipop. Shortcuts can be
+recorded and saved before permission is granted. Command and Control are separate;
+re-record an older shortcut if it used the wrong modifier. Packaged diagnostics
+are in `~/Library/Caches/meikipop/meikipop.log` and `meikipop-runtime.log`.
+The DMGs are ad-hoc signed, without Apple notarization. Apple Vision replaces the
+Windows OCR engines; global pin clicks also reach the underlying app on macOS.
+
 For a source checkout:
 
 Use [Start-Meikipop.cmd](../Start-Meikipop.cmd) on Windows or

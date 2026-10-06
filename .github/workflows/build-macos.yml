@@ -43,9 +43,7 @@ jobs:
         run: |
           python -c "import Vision, Quartz; from meikipop.ocr.macos_vision import recognize; from meikipop.scripts.quick_lookup import main"
           python -m meikipop.scripts.quick_lookup --check-runtime
-          python -m unittest discover -s tests -p 'test_macos*.py'
-          python -m unittest discover -s tests -p 'test_translation_server.py'
-          python -m unittest discover -s tests -p 'test_first_run.py'
+          python -m unittest discover -s tests
 
       - name: verify native architecture
         run: |
