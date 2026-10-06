@@ -67,6 +67,22 @@ The copy button previews its sentence on hover; action icons have short tooltips
 Dictionary-internal tooltips remain hidden.
 Kanji always use compact cards with meanings and readings, without a separate label or details toggle.
 
+## Anki
+
+Install [AnkiConnect](https://ankiweb.net/shared/info/2055492159) in Anki and keep Anki open.
+In **Settings → Anki**, enable the integration and press **Reload decks and fields**.
+Choose a deck and note type, then map its fields. Map the first field to **Word**;
+**Definition**, **Reading**, **Sentence**, **Dictionary**, **Frequency**, **Pitch accent**
+and **Language** are available for the others. Set the optional API key only if your
+AnkiConnect configuration requires one. Each language profile keeps its own choices.
+
+Use **Add to Anki** in the popup to choose the entry and review its definition and
+sentence, then press **Add**. Selected popup text becomes the initial definition.
+The optional recorded shortcut works while the popup has focus and defaults off.
+Duplicate checks use the first field, chosen deck and note type, excluding child decks.
+Existing notes are never updated. If Anki does not confirm a save, check Anki before
+retrying; the app does not retry writes automatically. No screenshots or audio are attached.
+
 The top controls are Translate, Read sentence, then Read word. In pinned OCR results they
 sit alongside the heading; language switching stays in the tray and Settings.
 Sentence reading uses system TTS even when a Japanese word-audio database is configured.

@@ -580,6 +580,7 @@ class QuickLookupWindow(QDialog):
         self._translation_model_state = ""
         self._remember_request = False
         self.audio = None
+        self._anki_dialog = None
         self._autoplayed = None
         self._scan_hold_active = False
         self._selection_lookup = False
@@ -682,6 +683,8 @@ class QuickLookupWindow(QDialog):
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(2)
         action_layout.addWidget(self.translate)
+        self.anki_button = self._action("anki", "Add to Anki")
+        self.anki_button.clicked.connect(self.add_to_anki)
         self.sentence_audio_button = self._action("audio_sentence", "Read sentence")
         self.sentence_audio_button.clicked.connect(lambda: self.play_audio(sentence=True))
         self.sentence_audio_button.setEnabled(False)
@@ -692,6 +695,7 @@ class QuickLookupWindow(QDialog):
         self.audio_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.audio_button.customContextMenuRequested.connect(self.audio_source_menu)
         action_layout.addWidget(self.audio_button)
+        action_layout.addWidget(self.anki_button)
         header_layout.addWidget(self.audio_actions)
         layout.addWidget(self.header)
         controls.addWidget(self.source)
@@ -758,6 +762,9 @@ class QuickLookupWindow(QDialog):
         self.copy_shortcut.activated.connect(self.copy_sentence)
         self.back_shortcut = QShortcut(QKeySequence.StandardKey.Back, self)
         self.back_shortcut.activated.connect(self.go_back)
+        self.anki_shortcut = QShortcut(self)
+        self.anki_shortcut.activated.connect(self.add_to_anki)
+        self.update_anki()
         self.apply_style()
         self._update_target_visibility()
         self.browser.clear()
@@ -925,6 +932,7 @@ class QuickLookupWindow(QDialog):
             self.translate.setEnabled(True)
 
     def _clear_actions(self):
+        self.update_anki()
         self.audio_button.setEnabled(False)
         self.sentence_audio_button.setEnabled(False)
         self._clear_context()
@@ -1143,6 +1151,7 @@ class QuickLookupWindow(QDialog):
         self.back.setVisible(bool(self._history))
         self._update_trail()
         self.audio_button.setEnabled(bool(result.entries))
+        self.update_anki()
         self.sentence_audio_button.setEnabled(bool(result.text))
         autoplay = audio_autoplay_mode(self.settings, self.preferred_foreign)
         if (self._peek or self._selection_lookup) and (result.entries or result.translation) and autoplay == "lookup":
@@ -1542,6 +1551,36 @@ class QuickLookupWindow(QDialog):
     def open_audio_settings(self):
         self.open_settings()
         self._setup.show_audio()
+
+    def update_anki(self):
+        enabled = self.settings.value(f"profiles/{self.preferred_foreign}/anki/enabled", False, bool)
+        ready = enabled and self._result is not None and bool(self._result.entries) and self._display_revision == self.revision
+        self.anki_button.setVisible(enabled)
+        self.anki_button.setEnabled(ready)
+        if hasattr(self, "anki_shortcut"):
+            binding = self.settings.value(f"profiles/{self.preferred_foreign}/anki/shortcut", "")
+            self.anki_shortcut.setKey(QKeySequence(binding))
+            self.anki_shortcut.setEnabled(ready and bool(binding))
+
+    def add_to_anki(self):
+        from meikipop.anki import load_settings
+        from meikipop.gui.anki import AnkiExportDialog
+        options = load_settings(self.settings, self.preferred_foreign)
+        if not options.enabled or self._display_revision != self.revision or not self._result or not self._result.entries:
+            return
+        if self._anki_dialog is not None and self._anki_dialog.isVisible():
+            self._anki_dialog.raise_()
+            self._anki_dialog.activateWindow()
+            return
+        if not options.deck or not options.model or not options.fields:
+            self.open_settings()
+            self._setup.show_anki()
+            return
+        if self._anki_dialog is not None:
+            self._anki_dialog.deleteLater()
+        self._anki_dialog = AnkiExportDialog(self._result.entries, self._result_context,
+                                             self.browser.selected_text(), options, self)
+        self._anki_dialog.show()
 
     def play_audio(self, *, sentence=False, translation=False, source=None):
         if self._result is None or self._display_revision != self.revision:

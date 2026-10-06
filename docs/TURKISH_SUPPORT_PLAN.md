@@ -135,6 +135,18 @@ clients remain explicit compatibility entrypoints.
    and HTTP reads, and retains useful dictionary content. Keep model warm is optional,
    defaults off, and changes only the owned server on the next intentional translation.
 
+6. **Optional Anki.** A small AnkiConnect v6 adapter uses explicit loopback HTTP
+   requests on background workers. Per-profile settings store deck, note type,
+   field mappings, tags and an independently recorded popup shortcut. Export snapshots
+   the chosen dictionary entry and original sentence, with editable definition/context
+   and optional frequency/pitch fields. The first Anki field must map to the word;
+   duplicates are refused within the chosen deck and note type. Writes are never
+   retried automatically; timeouts report an uncertain outcome. Settings do not
+   connect until Reload or a note-type change, and stale profile replies are ignored.
+   This adapts [Chibipop's Anki integration](https://github.com/stellarie/chibipop/blob/main/src/anki.rs)
+   to Qt and the existing entry/context model. Screenshots and existing-note updates
+   remain outside this initial adapter to avoid coupling export to capture or review state.
+
 ## Compatibility and remaining acceptance
 
 - Preserve the existing configuration, original Japanese `dictionary.pkl`,

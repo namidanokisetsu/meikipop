@@ -5,6 +5,7 @@ from PyQt6.QtSvg import QSvgRenderer
 
 
 _SHAPES = {
+    "anki": '<rect x="3" y="5" width="15" height="16" rx="2"/><path d="M7 2h14v15M7 13h7M10.5 9.5v7"/>',
     "audio": '<path d="M3 9h4l5-4v14l-5-4H3ZM16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14"/>',
     "audio_sentence": '<path d="M3 4h18M3 8h12M3 12h8M3 16h8M16 12l6 4-6 4Z"/>',
     "back": '<path d="m14 5-7 7 7 7M7 12h13"/>',

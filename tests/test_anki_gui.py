@@ -1,0 +1,124 @@
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from pathlib import Path
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+from PyQt6.QtCore import QCoreApplication, QEvent, QSettings
+from PyQt6.QtWidgets import QApplication
+
+from meikipop.anki import AnkiSettings, load_settings
+from meikipop.dictionary.library import Entry
+from meikipop.gui.anki import AnkiSettingsPanel, AnkiExportDialog
+from meikipop.gui.quick_lookup import QuickLookupWindow
+from test_quick_lookup import FakeEngine
+
+
+class AnkiGuiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
+        self.widgets = []
+
+    def tearDown(self):
+        for widget in reversed(self.widgets):
+            if isinstance(widget, QuickLookupWindow):
+                widget.shutdown()
+                widget.worker._thread.join(2)
+            task = getattr(widget, "_task", None)
+            if task:
+                task.thread.join(2)
+            widget.hide()
+            widget.deleteLater()
+        self.app.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.settings.clear()
+        self.settings.sync()
+        self.temp.cleanup()
+
+    def wait_until(self, predicate):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.005)
+        self.fail("Anki worker timed out")
+
+    def test_settings_offline_load_and_async_mapping_are_profile_specific(self):
+        panel = AnkiSettingsPanel(self.settings)
+        self.widgets.append(panel)
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            panel.load("ja")
+            panel.enabled.setChecked(True)
+            client.assert_not_called()
+            client.return_value.catalog.return_value = (["Japanese"], ["Basic"])
+            client.return_value.names.return_value = ["Front", "Back", "Reading"]
+            panel.refresh()
+            self.wait_until(lambda: panel.status.text() == "Connected.")
+        panel._field_controls["Reading"].setCurrentIndex(panel._field_controls["Reading"].findData("reading"))
+        self.assertEqual(load_settings(self.settings, "ja").fields,
+                         {"Front": "expression", "Back": "glossary", "Reading": "reading"})
+        panel.load("tr")
+        self.assertFalse(panel.enabled.isChecked())
+        self.assertFalse(panel.shortcut.enabled.isChecked())
+        panel.load("ja")
+        self.assertEqual(panel._field_controls["Reading"].currentData(), "reading")
+
+    def test_profile_switch_discards_pending_catalog(self):
+        panel = AnkiSettingsPanel(self.settings)
+        self.widgets.append(panel)
+        gate = threading.Event()
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.catalog.side_effect = lambda: (gate.wait(2), (["Old"], ["Basic"]))[1]
+            panel.load("ja")
+            panel.refresh()
+            panel.load("tr")
+            gate.set()
+            self.wait_until(lambda: panel._task is None)
+        self.assertEqual(panel.deck.count(), 0)
+        self.assertEqual(load_settings(self.settings, "tr").deck, "")
+
+    def test_export_snapshots_context_and_selection_and_prevents_double_submission(self):
+        entry = Entry("1", "猫", "ねこ", "Words", "ja", ("cat",))
+        options = AnkiSettings(True, deck="Japanese", model="Basic", fields={"Front": "expression", "Back": "glossary"})
+        dialog = AnkiExportDialog([entry], "猫がいる。", "chosen sense", options)
+        self.widgets.append(dialog)
+        self.assertEqual(dialog.definition.toPlainText(), "chosen sense")
+        calls, threads = [], []
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            def add(values):
+                calls.append(values)
+                threads.append(threading.get_ident())
+                return 123
+            client.return_value.add.side_effect = add
+            dialog.submit()
+            dialog.submit()
+            self.wait_until(lambda: dialog._saved)
+            dialog.submit()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["sentence"], "猫がいる。")
+        self.assertIn("chosen sense", calls[0]["glossary"])
+        self.assertNotEqual(threads[0], threading.get_ident())
+
+    def test_popup_is_opt_in_and_old_results_cannot_be_exported(self):
+        window = QuickLookupWindow(self.temp.name, FakeEngine, self.settings)
+        self.widgets.append(window)
+        self.assertTrue(window.anki_button.isHidden())
+        window.show_entries([Entry("1", "猫", "ねこ", "Words", "ja", ("cat",))], "猫")
+        self.settings.setValue("profiles/ja/anki/enabled", True)
+        window.update_anki()
+        self.assertTrue(window.anki_button.isEnabled())
+        window.search.setText("another word")
+        window.debounce.stop()
+        self.assertFalse(window.anki_button.isEnabled())
+        window.add_to_anki()
+        self.assertIsNone(window._anki_dialog)

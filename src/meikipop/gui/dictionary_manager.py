@@ -389,6 +389,11 @@ class SetupDialog(QDialog):
         tabs.addTab(audio, "Audio")
         self.audio_tab = audio
         self.audio_autoplay.currentIndexChanged.connect(self.save_autoplay)
+        from meikipop.gui.anki import AnkiSettingsPanel
+        self.anki = AnkiSettingsPanel(settings)
+        tabs.addTab(self.anki, "Anki")
+        if hasattr(parent, "update_anki"):
+            self.anki.changed.connect(parent.update_anki)
 
         self.status = QLabel()
         self.audio_sources.failed.connect(self.status.setText)
@@ -436,6 +441,9 @@ class SetupDialog(QDialog):
 
     def show_audio(self):
         self.tabs.setCurrentWidget(self.audio_tab)
+
+    def show_anki(self):
+        self.tabs.setCurrentWidget(self.anki)
 
     def reload(self, preserve=False):
         selected = self.packs.currentItem().data(Qt.ItemDataRole.UserRole) if self.packs.currentItem() else None
@@ -584,6 +592,7 @@ class SetupDialog(QDialog):
         from meikipop.config.config import config
         previous_loading, self._loading = self._loading, True
         code = self.profile.currentData()
+        self.anki.load(code)
         with QSignalBlocker(self.freeze_while_held):
             self.freeze_while_held.setChecked(self.settings.value(f"profiles/{code}/freeze_while_held", True, bool))
         with QSignalBlocker(self.selection_lookup):
