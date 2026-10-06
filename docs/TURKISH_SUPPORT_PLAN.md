@@ -121,7 +121,9 @@ clients remain explicit compatibility entrypoints.
    Sentence lookups translate automatically; unpunctuated Japanese input falls back
    to translation after a partial dictionary match. Manual word misses always translate,
    including without installed or enabled dictionaries; partial-match routing for explicit
-   word lookups remains optional. Streaming is batched, cancellable through startup
+   word lookups remains optional. English-to-Turkish dictionary lookup requires a
+   direct meaning match; incidental definition/example mentions fall through to translation.
+   Streaming is batched, cancellable through startup
    and HTTP reads, and retains useful dictionary content. Keep model warm is optional,
    defaults off, and changes only the owned server on the next intentional translation.
 

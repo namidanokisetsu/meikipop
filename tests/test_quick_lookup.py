@@ -474,6 +474,33 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual([call[3] for call in self.engine.calls], [False, True])
         self.assertNotIn("No entry", self.window.browser.toPlainText())
 
+    def test_incidental_turkish_gloss_matches_fall_back_to_translation(self):
+        from meikipop.dictionary.library import import_yomitan
+        from meikipop.dictionary.search import SearchEngine
+        archive = Path(self.temp.name) / "fixture.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("index.json", json.dumps(dict(title="Turkish", format=3, sourceLanguage="tr")))
+            zf.writestr("term_bank_1.json", json.dumps([
+                ["ev", "", "", "", 0, ["house", "My house is small."], -1, ""]]))
+        import_yomitan(archive, self.temp.name)
+        translator = Mock(last_model="fixture")
+        translator.translate.return_value = "benim evim"
+        def search(text, **options):
+            self.engine.calls.append((text, options.get("translate")))
+            engine = SearchEngine(self.temp.name, translator=translator)
+            try:
+                return engine.search(text, **options)
+            finally:
+                engine.close()
+        self.engine.search = search
+        self.window.set_mode("tr")
+        self.window.open_search("my house")
+        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+        self.assertEqual(self.engine.calls, [("my house", False), ("my house", True)])
+        translator.translate.assert_called_once_with("my house", "en", "tr")
+        self.assertFalse(self.window._result.entries)
+        self.assertEqual(self.window._result.translation, "benim evim")
+
     def test_short_japanese_sentence_does_not_stop_at_first_dictionary_word(self):
         original = self.engine.search
         self.engine.search = lambda text, **options: replace(original(text, **options), matched_length=1)

@@ -211,6 +211,24 @@ class LibraryTests(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_turkish_reverse_lookup_requires_a_direct_meaning(self):
+        self.pack("Turkish", [self.row("ev", ["house"]),
+                              self.row("burası benim evim", ["this is my house"]),
+                              self.row("gitmek", ["go", "My friend left the house."]),
+                              self.row("hoş geldin", ["welcome home"])])
+        engine = SearchEngine(self.directory)
+        try:
+            for source in ("auto", "en"):
+                with self.subTest(source=source):
+                    result = engine.search("my house", source=source, foreign="tr", pair=("tr", "en"))
+                    self.assertEqual((result.source, result.target), ("en", "tr"))
+                    self.assertFalse(result.entries)
+                    self.assertFalse(result.suggestions)
+            for text, term in (("house", "ev"), ("welcome home", "hoş geldin")):
+                self.assertEqual([e.term for e in engine.search(text, foreign="tr").entries], [term])
+        finally:
+            engine.close()
+
     def test_profile_pair_limits_detection_dictionaries_and_translation_direction(self):
         self.pack("Turkish", [self.row("am", ["Turkish entry"]), self.row("araç", ["vehicle"])])
         self.pack("Japanese", [self.row("猫", ["cat"], "ねこ")], "ja")
