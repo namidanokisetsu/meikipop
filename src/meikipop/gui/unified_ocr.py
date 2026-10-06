@@ -798,7 +798,7 @@ class UnifiedOCR(QObject):
             self.restore_capture_visibility()
             self.window.show_message(error)
             return
-        if result is None:
+        if result is None or not (result.entries or result.kanji):
             self._hide_preview()
             return
         if self.window.show_entries(result.entries, text=result.text, source=result.source,

@@ -12,6 +12,7 @@ from meikipop.gui.unified_ocr import ScanWorker, HitWorker, UnifiedOCR
 from meikipop.ocr.frames import RecognizedFrame
 from meikipop.utils.capture import CaptureRequest, PixelFrame
 from meikipop.dictionary.search import SearchResult
+from meikipop.dictionary.library import Entry
 from test_unified_ocr import recognized, FakeWindow
 
 
@@ -102,9 +103,11 @@ class CachedFrameTests(unittest.TestCase):
                 job = controller.hit_worker.queue.get_nowait()
                 self.assertEqual(job[2].query, "ev")
                 old_hit = hit_paragraphs(frame.paragraphs, (.2, .5), "tr")
-                controller.deliver(controller.generation, SearchResult("kitap", "tr", "en"), (frame, old_hit), "")
+                book = Entry("book", "kitap", "", "Fixture", "tr", ("book",))
+                house = Entry("house", "ev", "", "Fixture", "tr", ("house",))
+                controller.deliver(controller.generation, SearchResult("kitap", "tr", "en", (book,)), (frame, old_hit), "")
                 window.show_entries.assert_not_called()
-                controller.deliver(controller.generation, SearchResult("ev", "tr", "en"), (frame, job[2]), "")
+                controller.deliver(controller.generation, SearchResult("ev", "tr", "en", (house,)), (frame, job[2]), "")
                 window.show_entries.assert_called_once()
             point = QPoint(280, 100)
             for invalid in (replace(frame, captured_at=monotonic()-3), replace(frame, language="ja"),

@@ -256,6 +256,22 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.controller.deliver(self.controller.generation, Mock(), Mock(), "")
         self.window.show_entries.assert_not_called()
 
+    def test_ocr_miss_hides_previous_preview_without_ending_hold(self):
+        from meikipop.dictionary.search import SearchResult
+        self.window.show()
+        with patch.object(QApplication, "activeWindow", return_value=None):
+            self.controller.deliver(self.controller.generation, SearchResult("unknown", "tr", "en"),
+                                    ContextHit("unknown", "unknown text", 0, 7), "")
+        self.assertFalse(self.window.isVisible())
+        self.assertTrue(self.controller.holding)
+        self.assertFalse(self.controller._dismissed_hold)
+        self.window.show_entries.assert_not_called()
+        self.window.set_context.assert_not_called()
+        with patch.object(QApplication, "activeWindow", return_value=None):
+            self.controller.deliver(self.controller.generation, Mock(entries=(Mock(),)),
+                                    ContextHit("kitap", "kitap ev", 0, 5), "")
+        self.window.show_entries.assert_called_once()
+
     def test_rejected_popup_update_does_not_replace_sentence(self):
         self.window.show_entries.return_value = False
         with patch.object(QApplication, "activeWindow", return_value=None):

@@ -22,7 +22,9 @@ clients remain explicit compatibility entrypoints.
 
 2. **One popup.** Debounced typing, Enter, explicit local translation and OCR
    use the shared result surface. A worker retains only the newest pending
-   search; edits invalidate old results immediately. Keep source labels,
+   search. OCR misses hide the preview and scanning continues while held.
+   Manual search still reports misses.
+   Edits invalidate old results immediately. Keep source labels,
    independent expansion, scrolling, pinning, resizing and Back. Show supplied
    frequency, inflection and kanji data without merging distinct source senses
    or inventing missing kanji components. Profile changes also reload cached
