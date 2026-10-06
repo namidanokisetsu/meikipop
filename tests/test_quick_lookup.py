@@ -1272,6 +1272,17 @@ class QuickLookupTests(unittest.TestCase):
             focus.assert_called_once_with(self.window)
             self.assertFalse(self.window._passive_text)
 
+    def test_mac_search_survives_delayed_application_activation(self):
+        with patch("sys.platform", "darwin"), patch.object(QApplication, "platformName", return_value="cocoa"), \
+                patch.object(self.window, "isActiveWindow", return_value=False), \
+                patch("meikipop.utils.window_focus.focus_search"), \
+                patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-5000, -5000)):
+            self.window.open_search()
+            self.app.processEvents()
+            self.window._dismiss_if_inactive()
+            self.assertTrue(self.window._opening_search)
+            self.assertTrue(self.window.isVisible())
+
     def test_automatic_text_lookup_is_opt_in_and_does_not_steal_focus(self):
         from meikipop.gui.text_triggers import TextTriggers
         triggers = TextTriggers(self.window)

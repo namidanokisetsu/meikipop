@@ -1444,11 +1444,19 @@ class QuickLookupWindow(QDialog):
         self._edited()
         self.search.setFocus()
         self.search.selectAll()
+        def finish_opening():
+            self._opening_search = False
         def focus():
             from meikipop.utils.window_focus import focus_search
             if self.isVisible() and not self._passive_text:
                 focus_search(self)
-            self._opening_search = False
+            if (sys.platform == "darwin" and QApplication.platformName() != "offscreen"
+                    and self.isVisible() and not self.isActiveWindow()):
+                # AppKit activation is asynchronous; an earlier focus-loss
+                # event must not dismiss Search before activation arrives.
+                QTimer.singleShot(300, finish_opening)
+            else:
+                finish_opening()
         QTimer.singleShot(0, focus)
         if text:
             self.submit()
