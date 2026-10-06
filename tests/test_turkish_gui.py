@@ -130,7 +130,7 @@ class ClipboardTests(unittest.TestCase):
             dialog.save()
         self.assertEqual(config.__dict__, original)
         self.assertEqual(self.window.search_hotkey, "<ctrl>+<alt>+k")
-        self.assertEqual(self.window.word_color, "#185ABC")
+        self.assertEqual(self.window.word_color, "#202020")
 
     def test_newer_request_and_dismissal_reject_old_delivery(self):
         self.window.submit("kitap")
