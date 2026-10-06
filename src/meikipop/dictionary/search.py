@@ -87,6 +87,7 @@ class SearchEngine:
 
     def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
                morphology=False, context=None):
+        self.refresh_if_changed()
         text = text.strip()
         if len(text) > 2000:
             raise ValueError("Enter at most 2,000 characters.")
@@ -98,7 +99,7 @@ class SearchEngine:
         translator_key = getattr(self.translator, "cache_key", lambda: None)() if translate else None
         requested_target = language_code(target) if target else None
         pair = tuple(language_code(code) for code in pair) if pair else None
-        cache_key = (text, source, foreign, translate, translator_key, requested_target, pair,
+        cache_key = (self.library.revision, text, source, foreign, translate, translator_key, requested_target, pair,
                      morphology, context if morphology else None)
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)

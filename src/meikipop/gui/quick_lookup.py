@@ -1454,6 +1454,7 @@ class QuickLookupWindow(QDialog):
         self._setup.activateWindow()
 
     def refresh_library(self):
+        self._render_identity = None
         self.worker.refresh()
         if self.translation_worker is not None:
             self.translation_worker.refresh()

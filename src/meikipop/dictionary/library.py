@@ -11,6 +11,7 @@ import tempfile
 from time import monotonic, time_ns
 import unicodedata
 import zipfile
+from meikipop.utils.timing import mark
 
 
 def default_library_path():
@@ -206,6 +207,7 @@ class Library:
         self.directory = Path(directory or default_library_path())
         self.packs = []
         self.errors = []
+        self.revision = 0
         self.refresh()
 
     def close(self):
@@ -214,6 +216,7 @@ class Library:
         self.packs = []
 
     def refresh(self):
+        self.revision += 1
         self.close()
         self.errors = []
         selected = {}
@@ -256,8 +259,10 @@ class Library:
                 self.errors.append(f"{path.name}: {error}")
         self.packs.sort(key=lambda p: (order.index(p[0].name) if p[0].name in order else len(order), p[1]["title"]))
         self._signature = self._inventory_signature()
+        self._next_inventory_check = monotonic() + 2
 
     def _inventory_signature(self):
+        mark("inventory", self.revision)
         files = [*self.directory.glob("*.sqlite3"), *self.directory.glob("*.removing")]
         preferences = self.directory / "preferences.json"
         if preferences.exists():
@@ -272,6 +277,9 @@ class Library:
         return tuple(sorted(signature))
 
     def refresh_if_changed(self):
+        if monotonic() < self._next_inventory_check:
+            return False
+        self._next_inventory_check = monotonic() + 2
         if self._inventory_signature() != self._signature:
             self.refresh()
             return True

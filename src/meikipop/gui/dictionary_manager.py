@@ -400,6 +400,7 @@ class SetupDialog(QDialog):
         self.tabs.setCurrentWidget(self.audio_tab)
 
     def reload(self, preserve=False):
+        selected = self.packs.currentItem().data(Qt.ItemDataRole.UserRole) if self.packs.currentItem() else None
         prior = {self.packs.item(i).data(Qt.ItemDataRole.UserRole): self.packs.item(i).checkState()
                  for i in range(self.packs.count())} if preserve else {}
         order = list(prior)
@@ -420,6 +421,8 @@ class SetupDialog(QDialog):
                 item.setCheckState(prior.get(path.name, Qt.CheckState.Checked if metadata["enabled"]
                                             else Qt.CheckState.Unchecked))
                 self.packs.addItem(item)
+                if path.name == selected:
+                    self.packs.setCurrentItem(item)
                 item.setHidden(metadata["language"] != self.profile.currentData())
             if library.errors:
                 self.status.setText("\n".join(library.errors))
