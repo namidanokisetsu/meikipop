@@ -33,6 +33,10 @@ for _locale in QLocale.matchingLocales(QLocale.Language.AnyLanguage, QLocale.Scr
     _code = _locale.name().split("_")[0]
     if re.fullmatch(r"[a-z]{2,3}", _code):
         LANGUAGE_NAMES.setdefault(_code, QLocale.languageToString(_locale.language()))
+from meikipop.language.support import AVAILABLE_LANGUAGES, EXTRA_NAMES
+LANGUAGE_NAMES.update(EXTRA_NAMES)
+LANGUAGE_NAMES = {code: LANGUAGE_NAMES.get(code, code) for code in sorted(AVAILABLE_LANGUAGES)}
+LANGUAGE_NAMES.update({"zh-hant": "中文（繁體）", "zh-tw": "中文（台灣）", "zh-hk": "中文（香港）"})
 
 
 def language_name(code):
@@ -405,6 +409,7 @@ class LocalDictionaryBrowser(RubyBrowser):
 
 
 class QuickLookupWindow(QDialog):
+    dictionaries_changed = pyqtSignal()
     mode_changed = pyqtSignal(str)
     ocr_enabled_changed = pyqtSignal(bool)
     scan_settings_changed = pyqtSignal()
@@ -525,6 +530,7 @@ class QuickLookupWindow(QDialog):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
         self.search.setAccessibleName("Search text")
+        self.search.textEdited.connect(lambda _: setattr(self, "_selection_lookup", False))
         self.search.setClearButtonEnabled(True)
         self.search.setMaxLength(2000)
         self.search.textChanged.connect(self._edited)
@@ -675,6 +681,8 @@ class QuickLookupWindow(QDialog):
                                    self.settings.value("compact_preview", True, type=bool), type=bool)
 
     def update_languages(self, languages):
+        if "en" in languages and not self.settings.contains("profiles/en/target"):
+            self.settings.setValue("profiles/en/target", "ja")
         current_source = self.source.currentData() or self.settings.value("profile", self.settings.value("source", "ja"))
         current_target = self.foreign.currentData() or "en"
         codes = list(dict.fromkeys([*configured_profiles(self.settings), *languages,
@@ -879,7 +887,7 @@ class QuickLookupWindow(QDialog):
                         bottoms.append(bottom)
                 block = block.next()
             if bottoms:
-                desired = max(bottoms) + chrome + 2
+                desired = max(bottoms) + chrome
         self.resize(self.width(), min(maximum, max(self.minimumSizeHint().height(), desired)))
         if self.isVisible():
             self._place()
@@ -1332,6 +1340,7 @@ class QuickLookupWindow(QDialog):
         if self.translation_worker is not None:
             self.translation_worker.refresh()
         self._edited()
+        self.dictionaries_changed.emit()
 
     def apply_shortcut(self, value, preset=None):
         from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
@@ -1365,6 +1374,7 @@ class QuickLookupWindow(QDialog):
             self.translation_worker.shutdown()
         if self._setup is not None:
             self._setup.cancel_operation()
+            self._setup.audio_sources.shutdown()
         if self._keys:
             self._keys.stop()
             self._keys = None

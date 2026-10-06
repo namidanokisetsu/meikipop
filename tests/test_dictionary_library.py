@@ -1,14 +1,36 @@
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 import zipfile
 
-from meikipop.dictionary.library import Library, folded, import_yomitan, save_preferences
+from meikipop.dictionary.library import Library, folded, import_yomitan, remove_dictionary, save_preferences
 from meikipop.dictionary.search import SearchEngine
 
 
 class LibraryTests(unittest.TestCase):
+    def test_english_profile_looks_up_entries_instead_of_reverse_glosses(self):
+        self.pack("English", [self.row("cat", ["a feline animal"])], language="en")
+        engine = SearchEngine(self.directory)
+        try:
+            result = engine.search("cat", source="en", foreign="en", pair=("en", "ja"))
+            self.assertEqual([entry.term for entry in result.entries], ["cat"])
+            self.assertFalse(engine.search("feline", source="en", foreign="en", pair=("en", "ja")).entries)
+        finally:
+            engine.close()
+
+    def test_remove_dictionary_releases_readers_and_does_not_restore_old_revision(self):
+        self.pack("Words", [self.row("eski", ["old"])], revision="1")
+        current = self.pack("Words", [self.row("yeni", ["new"])], revision="2")
+        other = self.pack("Keep", [self.row("ev", ["house"])])
+        self.library = Library(self.directory)
+        remove_dictionary(self.directory, current.name, self.library.refresh, threading.Event())
+        self.assertEqual(list(self.directory.glob("*.sqlite3")), [other])
+        self.assertEqual([meta["title"] for _, meta, _ in self.library.packs], ["Keep"])
+        with self.assertRaises(ValueError):
+            remove_dictionary(self.directory, "../outside.sqlite3", self.library.refresh, threading.Event())
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

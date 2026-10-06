@@ -142,6 +142,7 @@ class ScanWorkerTests(unittest.TestCase):
 
 
 class FakeWindow(QWidget):
+    dictionaries_changed = pyqtSignal()
     ocr_enabled_changed = pyqtSignal(bool)
     mode_changed = pyqtSignal(str)
     scan_settings_changed = pyqtSignal()

@@ -5,10 +5,11 @@ import sys
 import threading
 import zipfile
 
-from PyQt6.QtCore import QObject, QSignalBlocker, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QSignalBlocker, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget,
-    QInputDialog, QLineEdit, QListWidgetItem, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from meikipop.dictionary.library import Library, default_library_path, import_yomitan, language_code, save_preferences
@@ -21,13 +22,16 @@ from meikipop.language.profiles import configured_profiles, default_partner
 class SetupOperation(QObject):
     progress = pyqtSignal(str)
     finished = pyqtSignal(str, bool)
+    refresh = pyqtSignal()
 
-    def __init__(self, paths, directory, language=None, profile=None):
+    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None):
         super().__init__()
         self.paths = paths
         self.directory = directory
         self.language = language
         self.profile = profile
+        self.recommended = recommended
+        self.remove = remove
         self.cancelled = threading.Event()
         self.thread = threading.Thread(target=self._run, name="dictionary-setup", daemon=True)
 
@@ -41,6 +45,21 @@ class SetupOperation(QObject):
             pass
 
     def _run(self):
+        if self.recommended or self.remove:
+            try:
+                if self.recommended:
+                    from meikipop.dictionary.catalog import install_recommended
+                    install_recommended(self.recommended, self.directory,
+                                        lambda text: self._emit(self.progress, text), self.cancelled)
+                    status = "Dictionary installed."
+                else:
+                    from meikipop.dictionary.library import remove_dictionary
+                    remove_dictionary(self.directory, self.remove, lambda: self._emit(self.refresh), self.cancelled)
+                    status = "Dictionary removed."
+                self._emit(self.finished, status, True)
+            except Exception as error:
+                self._emit(self.finished, str(error), False)
+            return
         if self.profile:
             try:
                 from meikipop.scripts.translation_server import install_model
@@ -105,6 +124,11 @@ class SetupDialog(QDialog):
         self.add_profile_button = QPushButton("Add language…")
         self.add_profile_button.clicked.connect(self.choose_profile)
         profile_row.addWidget(self.add_profile_button)
+        support = QPushButton("Support")
+        support.setToolTip("Language coverage")
+        support.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(
+            "https://github.com/namidanokisetsu/meikipop/blob/main/docs/TURKISH_SETUP.md#language-coverage")))
+        profile_row.addWidget(support)
         layout.addLayout(profile_row)
         tabs = QTabWidget()
         self.tabs = tabs
@@ -135,10 +159,21 @@ class SetupDialog(QDialog):
         self.down.setToolTip("Lower priority")
         self.down.clicked.connect(lambda: self.move_pack(1))
         actions.addWidget(self.down)
+        self.remove_button = QPushButton("Remove")
+        self.remove_button.clicked.connect(self.remove_dictionary)
+        actions.addWidget(self.remove_button)
         self.apply = QPushButton("Apply")
         self.apply.clicked.connect(self.save_dictionaries)
         self.apply.hide()
         dictionary_layout.addLayout(actions)
+        recommended_row = QHBoxLayout()
+        self.recommended = QComboBox()
+        self.recommended.setAccessibleName("Recommended dictionaries")
+        recommended_row.addWidget(self.recommended, 1)
+        self.install_button = QPushButton("Install")
+        self.install_button.clicked.connect(self.install_dictionary)
+        recommended_row.addWidget(self.install_button)
+        dictionary_layout.addLayout(recommended_row)
         self.combine_frequencies = QCheckBox("Combine frequency ranks")
         self.combine_frequencies.setToolTip("Harmonic mean across enabled rank dictionaries; best matching rank per dictionary")
         self.combine_frequencies.toggled.connect(self.save_frequency_display)
@@ -388,15 +423,22 @@ class SetupDialog(QDialog):
             library.close()
 
     def choose_profile(self):
-        choices = {name: code for code, name in LANGUAGE_NAMES.items() if self.profile.findData(code) < 0}
+        from meikipop.language.support import support_summary
+        choices = {f"{name} ({code}) · {support_summary(code)}": code for code, name in LANGUAGE_NAMES.items()
+                   if self.profile.findData(code) < 0}
         name, accepted = QInputDialog.getItem(self, "Add language", "Language or code", sorted(choices), editable=True)
         if accepted:
             try:
-                self.add_profile(language_code(choices.get(name, name.strip().lower())))
+                names = {label.casefold(): code for code, label in LANGUAGE_NAMES.items()}
+                code = choices.get(name, names.get(name.strip().casefold(), name.strip().lower()))
+                self.add_profile(language_code(code))
             except ValueError as error:
                 self.status.setText(str(error))
 
     def add_profile(self, code):
+        from meikipop.language.support import AVAILABLE_LANGUAGES
+        if code not in AVAILABLE_LANGUAGES and self.profile.findData(code) < 0:
+            raise ValueError("Import a dictionary for this language first.")
         prefix = f"profiles/{code}/"
         if not self.settings.contains(prefix + "target"):
             self.settings.setValue(prefix + "target", default_partner(code))
@@ -416,6 +458,19 @@ class SetupDialog(QDialog):
             self.packs.insertItem(target, item)
             self.packs.setCurrentRow(target)
             self.save_dictionaries()
+
+    def install_dictionary(self):
+        dictionary = self.recommended.currentData()
+        if dictionary:
+            self.begin_operation([], recommended=dictionary)
+
+    def remove_dictionary(self):
+        item = self.packs.currentItem()
+        if item is None or item.isHidden():
+            return
+        title = item.text().split("  ·  ")[0]
+        if QMessageBox.question(self, "Remove dictionary", f"Remove {title}?") == QMessageBox.StandardButton.Yes:
+            self.begin_operation([], remove=item.data(Qt.ItemDataRole.UserRole))
 
     def save_dictionaries(self):
         items = [self.packs.item(index) for index in range(self.packs.count())]
@@ -482,11 +537,20 @@ class SetupDialog(QDialog):
         previous_loading, self._loading = self._loading, True
         code = self.profile.currentData()
         self.status.clear()
+        from meikipop.dictionary.catalog import recommendations
+        self.recommended.clear()
+        for dictionary in recommendations(code):
+            self.recommended.addItem(dictionary.title, dictionary)
+        if self.recommended.count() == 0:
+            self.recommended.addItem("Import a dictionary ZIP", None)
+        self.install_button.setEnabled(self.recommended.currentData() is not None and self.operation is None)
         with QSignalBlocker(self.combine_frequencies):
             self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
         with QSignalBlocker(self.morphology):
             self.morphology.setChecked(self.settings.value(f"profiles/{code}/morphology", False, bool))
         self.morphology.setVisible(code != "ja")
+        from meikipop.language.support import STANZA_LANGUAGES
+        self.morphology.setEnabled(code in STANZA_LANGUAGES)
         bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
         self.pin_shortcut.set_value(self.settings.value(f"profiles/{code}/pin_shortcut", "c"),
                                     self.settings.value(f"profiles/{code}/pin_shortcut_preset", "C"))
@@ -507,7 +571,10 @@ class SetupDialog(QDialog):
         except ValueError as error:
             translation = TranslationSettings()
             self.status.setText(str(error))
-        self.translation_partner.setCurrentIndex(max(0, self.translation_partner.findData(self.settings.value(f"profiles/{code}/target", default_partner(code)))))
+        partner = self.settings.value(f"profiles/{code}/target", default_partner(code))
+        if self.translation_partner.findData(partner) < 0:
+            self.translation_partner.addItem(language_name(partner), partner)
+        self.translation_partner.setCurrentIndex(self.translation_partner.findData(partner))
         for key, control in (("source", self.translation_source), ("target", self.translation_target)):
             control.set_pair(code, self.translation_partner.currentData())
             selected = self.settings.value(f"profiles/{code}/translation_{key}", "auto")
@@ -640,15 +707,17 @@ class SetupDialog(QDialog):
         if self.translation_mode.currentData() != "custom" and self.save_translation():
             self.begin_operation([], profile=self.translation_mode.currentData())
 
-    def begin_operation(self, paths, language=None, profile=None):
+    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None):
         if self.operation is not None:
             return
-        self.operation = SetupOperation(paths, self.directory, language, profile)
+        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove)
+        self.operation.refresh.connect(self.dictionaries_changed)
         self.operation.progress.connect(self.status.setText)
         self.operation.finished.connect(self._finished)
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
-        for control in (self.import_button, self.model_button, self.packs, self.up, self.down, self.apply, self.language,
+        for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
+                        self.model_button, self.packs, self.up, self.down, self.apply, self.language,
                         self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
                         self.translation_model, self.translation_autostart):
             control.setEnabled(False)
@@ -663,11 +732,13 @@ class SetupDialog(QDialog):
     def _finished(self, status, changed):
         self.operation = None
         self.cancel_button.setVisible(False)
-        for control in (self.import_button, self.model_button, self.packs, self.up, self.down, self.apply, self.language,
+        for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
+                        self.model_button, self.packs, self.up, self.down, self.apply, self.language,
                         self.translation_mode, self.translation_source, self.translation_target):
             control.setEnabled(True)
         self.update_translation_controls()
         self.reload(preserve=True)
+        self.install_button.setEnabled(self.recommended.currentData() is not None)
         self.status.setText(status)
         if changed:
             self.dictionaries_changed.emit()

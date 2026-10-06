@@ -25,6 +25,9 @@ class ScanWorker(threading.Thread):
         self._stopped.set()
         self.queue.put(None)
 
+    def refresh(self):
+        self.queue.put("refresh")
+
     def _emit(self, *args):
         if self._stopped.is_set():
             return
@@ -43,6 +46,10 @@ class ScanWorker(threading.Thread):
                 job = self.queue.get()
                 if job is None or self._stopped.is_set():
                     return
+                if job == "refresh":
+                    if engine:
+                        engine.refresh()
+                    continue
                 generation, pixels, point, language, *options = job
                 try:
                     if engine is None:
@@ -158,6 +165,7 @@ class UnifiedOCR(QObject):
         self.completed.connect(self.deliver)
         window.ocr_enabled_changed.connect(self.set_enabled)
         window.mode_changed.connect(lambda _: self.invalidate())
+        window.dictionaries_changed.connect(self.refresh_library)
         window.search.textChanged.connect(lambda _: self.invalidate())
         if hasattr(window, "scan_settings_changed"):
             window.scan_settings_changed.connect(self.reload_settings)
@@ -269,6 +277,11 @@ class UnifiedOCR(QObject):
         self.last_point = None
         self.capture_region = None
         self.capture_screen = None
+
+    def refresh_library(self):
+        self.invalidate()
+        if self.worker:
+            self.worker.refresh()
 
     def _capture_bounds(self, point, geometry, screen_key):
         # A cursor-centered crop changes pixels on every tiny pointer move,

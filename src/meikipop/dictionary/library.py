@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import sqlite3
 import tempfile
-from time import time_ns
+from time import monotonic, time_ns
 import unicodedata
 import zipfile
 
@@ -228,6 +228,8 @@ class Library:
         disabled = disabled if isinstance(disabled, list) else []
         order = order if isinstance(order, list) else []
         for path in sorted(self.directory.glob("*.sqlite3"), key=lambda p: p.stat().st_mtime_ns, reverse=True):
+            if path.with_suffix(".removing").exists():
+                continue
             db = None
             try:
                 db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
@@ -256,11 +258,18 @@ class Library:
         self._signature = self._inventory_signature()
 
     def _inventory_signature(self):
-        files = list(self.directory.glob("*.sqlite3"))
+        files = [*self.directory.glob("*.sqlite3"), *self.directory.glob("*.removing")]
         preferences = self.directory / "preferences.json"
         if preferences.exists():
             files.append(preferences)
-        return tuple(sorted((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in files))
+        signature = []
+        for path in files:
+            try:
+                stat = path.stat()
+                signature.append((path.name, stat.st_mtime_ns, stat.st_size))
+            except FileNotFoundError:
+                pass
+        return tuple(sorted(signature))
 
     def refresh_if_changed(self):
         if self._inventory_signature() != self._signature:
@@ -432,6 +441,51 @@ class Library:
                 found.update(r[0] for r in db.execute(
                     f"SELECT term FROM terms WHERE {column} IN ({placeholders}) LIMIT 40", batch))
         return tuple(sorted(found, key=lambda w: (abs(len(w) - len(text)), w))[:limit])
+
+
+def remove_dictionary(directory, filename, refresh, cancelled):
+    """Remove all revisions of one pack after readers release Windows file handles."""
+    root = Path(directory).resolve()
+    target = (root / filename).resolve()
+    if target.parent != root or target.suffix != ".sqlite3":
+        raise ValueError("Choose an installed dictionary.")
+    def identity(path):
+        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+            metadata = dict(db.execute("SELECT key,value FROM metadata"))
+            return metadata["language"], metadata["title"]
+    selected = identity(target)
+    paths = []
+    for path in root.glob("*.sqlite3"):
+        if path.resolve().parent != root:
+            continue
+        try:
+            if identity(path) == selected:
+                paths.append(path)
+        except (sqlite3.Error, KeyError):
+            continue
+    markers = [path.with_suffix(".removing") for path in paths]
+    try:
+        for marker in markers:
+            marker.touch()
+        refresh()
+        deadline = monotonic() + 15
+        remaining = list(paths)
+        while remaining:
+            if cancelled.is_set():
+                raise InterruptedError("Removal cancelled.")
+            for path in remaining[:]:
+                try:
+                    path.unlink(missing_ok=True)
+                    remaining.remove(path)
+                except PermissionError:
+                    if monotonic() >= deadline:
+                        raise OSError("Dictionary is still in use. Close other Meikipop windows and try again.")
+            if remaining:
+                cancelled.wait(.05)
+    finally:
+        for marker in markers:
+            marker.unlink(missing_ok=True)
+        refresh()
 
 
 def save_preferences(directory, disabled, order):
