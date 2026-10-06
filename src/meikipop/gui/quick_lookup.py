@@ -1474,6 +1474,9 @@ class QuickLookupWindow(QDialog):
             self.open_search(text.strip()[:2000], at_cursor=True, passive=passive, selection=True)
 
     def toggle_lookup(self):
+        from PyQt6.QtWidgets import QKeySequenceEdit
+        if isinstance(QApplication.focusWidget(), QKeySequenceEdit):
+            return
         if (self.isVisible() and self.search.hasFocus() and self.search.hasSelectedText()
                 and self.search.selectedText().strip() != self.search.text().strip()):
             self.submit(translate=False, selection=True)

@@ -1332,6 +1332,22 @@ class QuickLookupTests(unittest.TestCase):
             focus.assert_called_once_with(self.window)
             self.assertFalse(self.window._passive_text)
 
+    def test_recording_active_shortcut_does_not_open_search(self):
+        import sys
+        self.settings.setValue('hotkey', '<cmd>+<shift>+d' if sys.platform == 'darwin' else '<ctrl>+<shift>+d')
+        self.window.open_settings()
+        dialog = self.window._setup
+        dialog.tabs.setCurrentIndex(2)
+        dialog.shortcut.recorder.setFocus()
+        self.app.processEvents()
+        self.assertIs(self.app.focusWidget(), dialog.shortcut.recorder)
+        with patch.object(self.window, 'request_lookup') as request:
+            self.window.hotkey_requested.emit()
+        request.assert_not_called()
+        self.assertFalse(self.window.isVisible())
+        self.assertTrue(dialog.isVisible())
+        dialog.hide()
+
     def test_mac_search_survives_delayed_application_activation(self):
         with patch("sys.platform", "darwin"), patch.object(QApplication, "platformName", return_value="cocoa"), \
                 patch.object(self.window, "isActiveWindow", return_value=False), \
