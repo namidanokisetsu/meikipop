@@ -9,6 +9,7 @@ import re
 import socket
 import tempfile
 import threading
+from time import monotonic
 from urllib.parse import urlsplit
 
 from .library import language_code
@@ -267,12 +268,16 @@ class LocalTranslator:
             if request["stream"] and str(response.getheader("Content-Type", "")).startswith("text/event-stream"):
                 from .translation_stream import read_translation
                 first = True
+                last_sent = 0
                 def progress(text):
-                    nonlocal first
+                    nonlocal first, last_sent
                     if first and text:
                         mark("translation_first_text", request_id)
                         first = False
-                    on_text(text)
+                    now = monotonic()
+                    if text and now - last_sent >= .04:
+                        last_sent = now
+                        on_text(text)
                 translated = read_translation(response, self._cancelled, progress)
             else:
                 # A server may answer the same request with JSON. Never replay it.

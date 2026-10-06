@@ -452,6 +452,7 @@ class QuickLookupWindow(QDialog):
         self._display_revision = None
         self._pending_revision = None
         self._paint_revision = None
+        self._document_revision = None
         self._render_identity = None
         self._fit_identity = None
         self._needs_place = False
@@ -849,8 +850,10 @@ class QuickLookupWindow(QDialog):
         self._translation_busy = busy
         self.translate.setEnabled(bool(self.search.text().strip() or self._context))
         self.translate.setIcon(action_icon("translate", config.color_foreground))
-        self.translate.setToolTip("Cancel translation" if busy else "Translate sentence" if self._peek and self._context else "Translate")
-        self.translate.setAccessibleName(self.translate.toolTip())
+        name = "Cancel translation" if busy else "Translate sentence" if self._peek and self._context else "Translate"
+        model = self._result.translation_model if not busy and self._result is not None and self._display_revision == self.revision else ""
+        self.translate.setToolTip(name + ("\n" + model if model else ""))
+        self.translate.setAccessibleName(name)
 
     def _edited(self):
         self._invalidate()
@@ -1055,6 +1058,7 @@ class QuickLookupWindow(QDialog):
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
+            self._document_revision = self.revision
             mark("document_ready", self.revision)
             if scroll:
                 block = self.browser.document().begin()
@@ -1483,9 +1487,10 @@ class QuickLookupWindow(QDialog):
 
     def eventFilter(self, watched, event):
         if (event.type() == QEvent.Type.Paint and hasattr(self, "browser")
-                and watched is self.browser.viewport() and self._paint_revision != self._display_revision):
-            self._paint_revision = self._display_revision
-            mark("paint", self._display_revision)
+                and watched is self.browser.viewport() and self._document_revision is not None
+                and self._paint_revision != self._document_revision):
+            self._paint_revision = self._document_revision
+            mark("paint", self._document_revision)
         if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
             self._place_actions()
         if event.type() == QEvent.Type.ToolTip and not isinstance(watched, QToolButton):
