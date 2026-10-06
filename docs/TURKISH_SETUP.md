@@ -123,22 +123,28 @@ outside Git. Additional local Yomitan packs can be added through the same UI.
 
 ### Optional lemma fallback
 
-Exact entries and imported forms remain first. **Settings → Dictionaries → Lemma
-fallback** enables installed Stanza models for the selected non-Japanese profile.
+Exact entries and imported forms remain first. Russian also tries е/ё spelling
+variants after a miss, using the installed dictionary and forms without a model.
+**Settings → Dictionaries → Find base forms** enables optional Stanza models for
+the selected non-Japanese profile. **Install model** installs its dependencies and
+language model in the Python desktop installation; the checkbox alone never downloads.
+The adjacent status distinguishes missing support from missing models.
 Japanese keeps its bundled rules. Models run in lookup workers, with original OCR
 sentence context where available; results are labeled as lemma matches.
 
-Install the optional dependencies and explicitly set up each supported language
-in the environment used to launch Meikipop, for example:
+Models live with app data at `languages/<code>/stanza/1.14.0` (under
+`%LOCALAPPDATA%/meikipop` on Windows), separate from dictionary ZIPs and translation
+models. The status tooltip shows the full path. Equivalent explicit setup:
 
 ```powershell
-.venv-desktop/Scripts/python -m pip install -e ".[morphology]"
-.venv-desktop/Scripts/python -m meikipop.scripts.setup_morphology tr
+.venv-desktop/Scripts/python -m meikipop.scripts.setup_morphology ru --install
 ```
 
-Replace `tr` for another Stanza language. Setup downloads language-specific models;
+Replace `ru` for another Stanza language. Setup downloads only the base-form pipeline;
 runtime never downloads them. Missing models leave exact/form lookup available and
-report a setup error on a lemma miss. Turn the option off and on after setup to retry.
+report a setup error on a lemma miss. UI setup refreshes lookup automatically;
+after command-line setup, toggle the option to retry. Cancellation finishes the
+current installation step before stopping.
 Neural analysis is optional and can add latency on misses; isolated words can be
 ambiguous. The default workflow needs no NLP models.
 
@@ -154,7 +160,9 @@ the current scan until the trigger is released.
 A held scan shortcut outside the focused text-search window resumes OCR, including
 after Ctrl+Shift+D. Typing inside Search keeps its focus.
 
-Clear both screen lookup shortcuts to disable OCR; there is no additional toggle.
+New language profiles inherit the current profile's screen lookup shortcuts,
+including an explicitly disabled shortcut. Clear both screen lookup shortcuts to
+disable OCR; there is no additional toggle.
 **Settings → Shortcuts → Pin with mouse** selects left click, middle click, or popup-only pinning.
 Windows consumes the configured outside pin click while a scan preview is ready;
 on macOS and Linux it also reaches the underlying app. Other clicks are unchanged.
@@ -166,7 +174,9 @@ and retains visible sentence context.
 Each profile shows one OCR selector. Windows defaults remain
 **MeikiOCR (CPU)** for Japanese and **PaddleOCR** for Turkish; macOS defaults to
 **Apple Vision**. PaddleOCR and **Chrome Screen AI (local)** can also be selected
-in other language profiles. Changing the selection invalidates pending scans and
+in other language profiles. Languages outside the installed Paddle model's coverage,
+including Russian, default to Screen AI on Windows; incompatible Paddle choices
+are disabled. Indonesian uses Paddle. Changing the selection invalidates pending scans and
 uses a separate recognition cache. Selecting a provider never downloads a model.
 
 For Chrome Screen AI, use the Google component link in **Settings → OCR**

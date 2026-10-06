@@ -72,7 +72,7 @@ class MorphologyTests(unittest.TestCase):
         self.pack("tr", [("kitap", ["book"], "")])
         with patch("meikipop.language.stanza_analyzer.default_model_dir", return_value=self.root), \
                 patch("meikipop.language.stanza_analyzer.StanzaAnalyzer") as factory:
-            with self.assertRaisesRegex(RuntimeError, "Lemma fallback unavailable"):
+            with self.assertRaisesRegex(RuntimeError, "Base-form model unavailable"):
                 self.engine.search("kitaplarımdan", source="tr", morphology=True)
             factory.assert_not_called()
             self.assertTrue(self.engine.search("kitap", source="tr", morphology=True).entries)
@@ -88,5 +88,57 @@ class MorphologyTests(unittest.TestCase):
             StanzaAnalyzer(self.root, language="de")
         self.assertEqual(stanza.download.call_args.args, ("de",))
         self.assertEqual(stanza.Pipeline.call_args.args, ("de",))
-        self.assertEqual(stanza.Pipeline.call_args.kwargs["processors"], "tokenize,pos,lemma")
+        self.assertEqual(stanza.Pipeline.call_args.kwargs["processors"],
+                         {"tokenize": "default", "pos": "default", "lemma": "default"})
+        self.assertIsNone(stanza.download.call_args.kwargs["package"])
+        self.assertIsNone(stanza.Pipeline.call_args.kwargs["package"])
         self.assertIsNone(stanza.Pipeline.call_args.kwargs["download_method"])
+
+    def test_model_status_checks_dependencies_without_loading_stanza(self):
+        from meikipop.language.stanza_analyzer import model_status
+        resources = {"ru": {"packages": {"default": {"tokenize": "t", "pos": "p", "lemma": "l"}},
+            "tokenize": {"t": {}}, "lemma": {"l": {}},
+            "pos": {"p": {"dependencies": [{"model": "pretrain", "package": "vectors"}]}}}}
+        (self.root / "resources.json").write_text(json.dumps(resources))
+        for name, package in (("tokenize", "t"), ("pos", "p"), ("lemma", "l")):
+            folder = self.root / "ru" / name
+            folder.mkdir(parents=True)
+            (folder / f"{package}.pt").write_bytes(b"fixture")
+        with patch("meikipop.language.stanza_analyzer.version", return_value="1.14.0"):
+            self.assertEqual(model_status("ru", self.root), "Model needed")
+            folder = self.root / "ru/pretrain"
+            folder.mkdir()
+            (folder / "vectors.pt").write_bytes(b"fixture")
+            self.assertEqual(model_status("ru", self.root), "Installed")
+
+    def test_explicit_installer_uses_current_environment_and_only_selected_language(self):
+        from importlib.metadata import PackageNotFoundError
+        from meikipop.scripts.setup_morphology import install
+        with patch("meikipop.scripts.setup_morphology.version", side_effect=PackageNotFoundError), \
+                patch("meikipop.scripts.setup_morphology._run") as run, \
+                patch("meikipop.scripts.setup_morphology.sys.platform", "win32"):
+            install("ru")
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(commands[0], ["-m", "ensurepip"])
+        self.assertIn("https://download.pytorch.org/whl/cpu", commands[1])
+        self.assertIn("stanza==1.14.0", commands[2])
+        self.assertEqual(commands[-1], ["-m", "meikipop.scripts.setup_morphology", "ru"])
+
+    def test_installer_cancellation_finishes_current_step_without_launching_next(self):
+        import threading
+        from importlib.metadata import PackageNotFoundError
+        from meikipop.scripts.setup_morphology import install
+        cancelled = threading.Event()
+        process = Mock(returncode=0)
+        def finish():
+            cancelled.set()
+            return "", None
+        process.communicate.side_effect = finish
+        with patch("meikipop.scripts.setup_morphology.version", side_effect=PackageNotFoundError), \
+                patch("meikipop.scripts.setup_morphology.sys.executable", "C:/env/pythonw.exe"), \
+                patch("meikipop.scripts.setup_morphology.subprocess.Popen", return_value=process) as launch:
+            with self.assertRaisesRegex(InterruptedError, "cancelled"):
+                install("ru", cancelled=cancelled)
+            launch.assert_called_once()
+            self.assertEqual(Path(launch.call_args.args[0][0]).name, "python.exe")
+            process.terminate.assert_not_called()

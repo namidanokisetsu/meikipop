@@ -48,7 +48,9 @@ clients remain explicit compatibility entrypoints.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings
-   and imported forms. Small Unicode word/sentence policies share a registry
+   and imported forms. Russian additionally tries bounded е/ё variants after
+   an exact/form miss, reusing indexed packs without neural analysis.
+   Small Unicode word/sentence policies share a registry
    design inspired by [Anki Miner's language registry](https://github.com/0xzerolight/anki_miner/blob/a1955f4a/anki_miner/languages/registry.py),
    independently implemented without importing its NLP models. Original text
    and offsets are preserved for OCR hit-testing and sentence copying. Optional
@@ -56,11 +58,15 @@ clients remain explicit compatibility entrypoints.
    dictionary forms miss. Stanza has a shared
    [processor API](https://stanfordnlp.github.io/stanza/pipeline.html) with
    [language-specific models](https://stanfordnlp.github.io/stanza/download_models.html),
-   rather than one model for every language. Setup is explicit, imports lazy,
+   rather than one model for every language. Dictionaries exposes **Find base forms**,
+   installation status and explicit **Install model**; enabling it never downloads.
+   Setup installs only the required processors and dependencies. Imports remain lazy,
    runtime offline and worker-bound; Japanese never invokes neural analysis.
 
 4. **Local OCR and context.** Windows defaults to MeikiOCR for Japanese and
-   Paddle for Turkish; every profile can select Paddle or Chrome Screen AI.
+   Paddle for Turkish and Indonesian. Languages outside Paddle's coverage,
+   including Russian, default to Chrome Screen AI; incompatible Paddle choices
+   are disabled. New profiles inherit the current scan shortcuts, including disablement.
    macOS also offers native Vision with runtime language checks.
    The Windows desktop environment uses Python 3.12 and PaddleOCR 3.7
    PP-OCRv6 small models, supporting 50 languages on CPU. Unicode word assembly

@@ -1298,6 +1298,21 @@ class DictionaryManagerTests(unittest.TestCase):
         self.dialog.add_profile("id")
         self.assertEqual(self.settings.value("profiles/id/scan_bindings"), "")
 
+    def test_base_form_setup_is_explicit_and_follows_selected_profile(self):
+        with patch("meikipop.language.stanza_analyzer.model_status", return_value="Not installed"), \
+                patch("meikipop.scripts.setup_morphology.install") as install:
+            self.dialog.sync_profile("ru")
+            self.dialog.morphology.setChecked(True)
+            install.assert_not_called()
+            self.assertEqual(self.dialog.morphology_status.text(), "Not installed")
+            self.assertEqual(self.dialog.morphology_button.text(), "Install model")
+            self.dialog.morphology_button.click()
+            self.wait_for_operation()
+            self.assertEqual(install.call_args.args[0], "ru")
+            self.assertIn("installed", self.dialog.status.text())
+            self.dialog.sync_profile("ja")
+            self.assertTrue(self.dialog.morphology_row.isHidden())
+
     def test_legacy_import_requires_a_language_in_automatic_mode(self):
         self.dialog.begin_operation([self.archive("Legacy")])
         self.wait_for_operation()

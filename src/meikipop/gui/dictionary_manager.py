@@ -24,7 +24,7 @@ class SetupOperation(QObject):
     finished = pyqtSignal(str, bool)
     refresh = pyqtSignal()
 
-    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None):
+    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None, morphology=None):
         super().__init__()
         self.paths = paths
         self.directory = directory
@@ -32,6 +32,7 @@ class SetupOperation(QObject):
         self.profile = profile
         self.recommended = recommended
         self.remove = remove
+        self.morphology = morphology
         self.cancelled = threading.Event()
         self.thread = threading.Thread(target=self._run, name="dictionary-setup", daemon=True)
 
@@ -45,6 +46,14 @@ class SetupOperation(QObject):
             pass
 
     def _run(self):
+        if self.morphology:
+            try:
+                from meikipop.scripts.setup_morphology import install
+                install(self.morphology, lambda text: self._emit(self.progress, text), self.cancelled)
+                self._emit(self.finished, "Base-form model installed.", True)
+            except Exception as error:
+                self._emit(self.finished, str(error), False)
+            return
         if self.recommended or self.remove:
             try:
                 if self.recommended:
@@ -180,10 +189,20 @@ class SetupDialog(QDialog):
         self.combine_frequencies.setToolTip("Harmonic mean across enabled rank dictionaries; best matching rank per dictionary")
         self.combine_frequencies.toggled.connect(self.save_frequency_display)
         dictionary_layout.addWidget(self.combine_frequencies)
-        self.morphology = QCheckBox("Lemma fallback")
-        self.morphology.setToolTip("Try installed Stanza models when dictionary forms do not match")
+        self.morphology_row = QWidget()
+        morphology_layout = QHBoxLayout(self.morphology_row)
+        morphology_layout.setContentsMargins(0, 0, 0, 0)
+        self.morphology = QCheckBox("Find base forms")
+        self.morphology.setToolTip("Try an optional Stanza model after dictionary forms miss. Enabling this does not install a model.")
         self.morphology.toggled.connect(self.save_morphology)
-        dictionary_layout.addWidget(self.morphology)
+        morphology_layout.addWidget(self.morphology)
+        morphology_layout.addStretch()
+        self.morphology_status = QLabel()
+        morphology_layout.addWidget(self.morphology_status)
+        self.morphology_button = QPushButton("Install model")
+        self.morphology_button.clicked.connect(lambda: self.begin_operation([], morphology=self.profile.currentData()))
+        morphology_layout.addWidget(self.morphology_button)
+        dictionary_layout.addWidget(self.morphology_row)
         tabs.addTab(dictionaries, "Dictionaries")
 
         translation = QWidget()
@@ -578,9 +597,7 @@ class SetupDialog(QDialog):
             self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
         with QSignalBlocker(self.morphology):
             self.morphology.setChecked(self.settings.value(f"profiles/{code}/morphology", False, bool))
-        self.morphology.setVisible(code != "ja")
-        from meikipop.language.support import STANZA_LANGUAGES
-        self.morphology.setEnabled(code in STANZA_LANGUAGES)
+        self.update_morphology_controls()
         bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
         self.pin_shortcut.set_value(self.settings.value(f"profiles/{code}/pin_shortcut", "c"),
                                     self.settings.value(f"profiles/{code}/pin_shortcut_preset", "C"))
@@ -661,10 +678,21 @@ class SetupDialog(QDialog):
         if self.parent() is not None:
             self.parent().scan_settings_changed.emit()
         self.status.clear()
-        if enabled:
-            from meikipop.language.stanza_analyzer import default_model_dir
-            if not (default_model_dir(code) / "resources.json").is_file():
-                self.status.setText(f"Install models: python -m meikipop.scripts.setup_morphology {code}")
+        self.update_morphology_controls()
+
+    def update_morphology_controls(self):
+        from meikipop.language.support import STANZA_LANGUAGES
+        from meikipop.language.stanza_analyzer import default_model_dir, model_status
+        code = self.profile.currentData()
+        supported = code in STANZA_LANGUAGES and code != "ja"
+        self.morphology_row.setVisible(code != "ja")
+        self.morphology.setEnabled(supported and self.operation is None)
+        status = model_status(code) if supported else "Unavailable"
+        self.morphology_status.setText(status)
+        self.morphology_status.setToolTip(str(default_model_dir(code)))
+        self.morphology_button.setText("Reinstall model" if status == "Installed" else "Install model")
+        self.morphology_button.setToolTip(f"Download Stanza support and the {language_name(code)} base-form model")
+        self.morphology_button.setEnabled(supported and self.operation is None)
 
     def sync_profile(self, code):
         with QSignalBlocker(self.profile):
@@ -759,15 +787,16 @@ class SetupDialog(QDialog):
         if self.translation_mode.currentData() != "custom" and self.save_translation():
             self.begin_operation([], profile=self.translation_mode.currentData())
 
-    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None):
+    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None):
         if self.operation is not None:
             return
-        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove)
+        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology)
         self.operation.refresh.connect(self.dictionaries_changed)
         self.operation.progress.connect(self.status.setText)
         self.operation.finished.connect(self._finished)
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
+        self.update_morphology_controls()
         for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
                         self.model_button, self.packs, self.up, self.down, self.apply, self.language,
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
@@ -789,6 +818,7 @@ class SetupDialog(QDialog):
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target):
             control.setEnabled(True)
         self.update_translation_controls()
+        self.update_morphology_controls()
         self.reload(preserve=True)
         self.install_button.setEnabled(self.recommended.currentData() is not None)
         self.status.setText(status)

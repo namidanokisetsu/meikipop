@@ -1,4 +1,6 @@
 from collections import OrderedDict
+from importlib.metadata import PackageNotFoundError, version
+import json
 from pathlib import Path
 
 from .analyzer import ExactAnalyzer, Token
@@ -6,6 +8,41 @@ from .analyzer import ExactAnalyzer, Token
 STANZA_VERSION = "1.14.0"
 RESOURCES_VERSION = "1.14.0"
 PROCESSORS = {"tokenize": "imst", "mwt": "imst", "pos": "imst_charlm", "lemma": "imst_charlm"}
+
+
+def processors_for(language):
+    return PROCESSORS if language == "tr" else dict.fromkeys(("tokenize", "pos", "lemma"), "default")
+
+
+def model_status(language, model_dir=None):
+    """Inspect local files without importing Stanza or loading its models."""
+    try:
+        if version("stanza") != STANZA_VERSION:
+            return "Setup needed"
+        version("torch")
+    except PackageNotFoundError:
+        return "Not installed"
+    root = Path(model_dir or default_model_dir(language))
+    try:
+        resources = json.loads((root / "resources.json").read_text(encoding="utf-8"))
+        while "alias" in resources[language]:
+            language = resources[language]["alias"]
+        resource = resources[language]
+        defaults = resource["packages"]["default"]
+        processors = {name: defaults[name] if package == "default" else package
+                      for name, package in processors_for(language).items()}
+        if "mwt" in defaults and "mwt" not in processors:
+            processors["mwt"] = defaults["mwt"]
+        required = set(processors.items())
+        for name, package in processors.items():
+            required.update((item["model"], item["package"])
+                            for item in resource[name][package].get("dependencies", ()))
+        if all((root / language / name / f"{package}.pt").is_file() and
+               (root / language / name / f"{package}.pt").stat().st_size for name, package in required):
+            return "Installed"
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return "Model needed"
 
 
 def default_model_dir(language="tr"):
@@ -18,8 +55,7 @@ def setup_models(model_dir=None, *, language="tr"):
     if stanza.__version__ != STANZA_VERSION:
         raise RuntimeError(f"Install stanza=={STANZA_VERSION} before setting up models")
     stanza.download(language, model_dir=str(model_dir or default_model_dir(language)),
-                    package=None if language == "tr" else "default",
-                    processors=PROCESSORS if language == "tr" else "tokenize,pos,lemma",
+                    package=None, processors=processors_for(language),
                     resources_version=RESOURCES_VERSION)
 
 
@@ -30,11 +66,11 @@ class StanzaAnalyzer:
             raise RuntimeError(f"Expected stanza=={STANZA_VERSION}")
         self.language = language
         model_dir = Path(model_dir or default_model_dir(language)).resolve()
-        processors = PROCESSORS if language == "tr" else "tokenize,pos,lemma"
-        configuration = ",".join(f"{name}={package}" for name, package in PROCESSORS.items()) if language == "tr" else processors
+        processors = processors_for(language)
+        configuration = ",".join(f"{name}={package}" for name, package in processors.items())
         self.identity = f"{language}:stanza:{STANZA_VERSION}:{RESOURCES_VERSION}:{configuration}:{model_dir}"
         self.pipeline = stanza.Pipeline(
-            language, dir=str(model_dir), package=None if language == "tr" else "default", processors=processors,
+            language, dir=str(model_dir), package=None, processors=processors,
             download_method=None, use_gpu=False, verbose=False,
             resources_version=RESOURCES_VERSION,
         )

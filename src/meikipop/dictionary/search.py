@@ -177,7 +177,9 @@ class SearchEngine:
             tokens = [token for token in self._analyzer[1].analyze(original)
                       if start <= token.start < token.end <= end]
         except Exception as error:
-            message = f"Lemma fallback unavailable for {language}. Set up its Stanza models or turn off Lemma fallback in Settings."
+            import logging
+            logging.getLogger(__name__).warning("Base-form lookup failed for %s: %s", language, error)
+            message = f"Base-form model unavailable for {language}. Use Install model in Settings → Dictionaries."
             self._analysis_errors[language] = message
             raise RuntimeError(message) from error
         if not tokens or tokens[0].start != start or tokens[-1].end != end:
