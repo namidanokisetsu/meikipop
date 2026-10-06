@@ -219,6 +219,18 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.controller.finish_peek()
             hide.assert_called_once_with()
 
+    def test_entry_and_exit_rearm_preview_grace(self):
+        from PyQt6.QtCore import QEvent
+        self.controller.holding = False
+        self.controller.leave_timer.start()
+        self.controller.eventFilter(self.window, QEvent(QEvent.Type.Enter))
+        self.assertFalse(self.controller.leave_timer.isActive())
+        self.controller.eventFilter(self.window, QEvent(QEvent.Type.Leave))
+        self.assertTrue(self.controller.leave_timer.isActive())
+        self.window.pin.setChecked(True)
+        self.controller.eventFilter(self.window, QEvent(QEvent.Type.Leave))
+        self.assertFalse(self.controller.leave_timer.isActive())
+
     def test_escape_visibility_follows_show_and_hide(self):
         self.controller.input = SimpleNamespace(visible=threading.Event(), shutdown=Mock())
         self.window.show()

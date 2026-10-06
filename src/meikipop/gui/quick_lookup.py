@@ -451,6 +451,10 @@ class QuickLookupWindow(QDialog):
         self._keys = None
         self._shutting_down = False
         self._drag_position = None
+        self._drag_start = None
+        self._dragging = False
+        self._resize_start = None
+        self._engage_press = None
         self._setup = None
         self._engine_factory = engine_factory
         self.translation_worker = None
@@ -636,6 +640,9 @@ class QuickLookupWindow(QDialog):
         self.browser.clear()
         for widget in self.findChildren(QWidget):
             widget.installEventFilter(self)
+            widget.setMouseTracking(True)
+        self.setMouseTracking(True)
+        self.installEventFilter(self)
 
     def _action(self, name, description):
         button = QToolButton()
@@ -650,6 +657,14 @@ class QuickLookupWindow(QDialog):
     @property
     def is_pinned(self):
         return self.pin.isChecked()
+
+    @property
+    def interaction_state(self):
+        if not self.isVisible():
+            return "hidden"
+        if self._peek:
+            return "reading" if self.is_pinned else "preview"
+        return "passive" if self._passive_text else "search"
 
     @property
     def preferred_foreign(self):
@@ -676,8 +691,8 @@ class QuickLookupWindow(QDialog):
                 border:1px solid {colors['border']};padding:4px;}}
             QMenu::item:selected {{background:{colors['hover']};}}
             QCheckBox {{color:{config.color_foreground};spacing:4px;}}
-            QScrollBar:vertical {{background:transparent;width:3px;margin:0;}}
-            QScrollBar::handle:vertical {{background:{colors['scroll']};min-height:20px;border-radius:1px;}}
+            QScrollBar:vertical {{background:transparent;width:9px;margin:0;}}
+            QScrollBar::handle:vertical {{background:{colors['scroll']};min-height:20px;border-radius:1px;margin:0 3px;}}
             QScrollBar::handle:vertical:hover {{background:{colors['muted']};}}
             QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0;}}
             QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical {{background:transparent;}}
@@ -1104,12 +1119,14 @@ class QuickLookupWindow(QDialog):
     def _place(self):
         mark("place", self.revision)
         point = QCursor.pos()
+        tray = self.tray_geometry() if not self._peek and not self._manual_at_cursor and self.tray_geometry else None
+        if tray and not tray.isNull():
+            point = tray.center()
         screen = QApplication.screenAt(point) or QApplication.primaryScreen()
         if screen is not None:
             area = screen.availableGeometry()
             self.resize(min(self.width(), area.width()), min(self.height(), area.height()))
             if not self._peek and not self._manual_at_cursor:
-                tray = self.tray_geometry() if self.tray_geometry else None
                 x = tray.center().x() if tray and not tray.isNull() else area.right()
                 self.move(max(area.left(), min(x - self.width() // 2, area.right() - self.width())),
                           max(area.top(), area.bottom() - self.height() - 8))
@@ -1123,6 +1140,7 @@ class QuickLookupWindow(QDialog):
             self.setMinimumHeight(190)
             self.resize(self._normal_size)
         self._peek = bool(peek)
+        self.setSizeGripEnabled(self.is_pinned or not self._peek)
         self._place_actions()
         self.search.setVisible(not self._peek)
         self.actions_row.setVisible(self.is_pinned or not self._peek)
@@ -1184,7 +1202,9 @@ class QuickLookupWindow(QDialog):
             self.open_search(text.strip()[:2000], at_cursor=True, passive=passive, selection=True)
 
     def toggle_lookup(self):
-        if self.isVisible():
+        if self.isVisible() and self.browser.selected_text():
+            self.browser.lookup_selection()
+        elif self.isVisible():
             self.selection.cancel()
             self.hide()
         elif self.selection.pending:
@@ -1346,7 +1366,7 @@ class QuickLookupWindow(QDialog):
         if checked:
             self.remember_foreground()
         self.pin.setToolTip("Unpin" if checked else "Pin")
-        self.setSizeGripEnabled(checked)
+        self.setSizeGripEnabled(checked or not self._peek)
         if self._peek:
             if checked:
                 self.setMinimumHeight(190)
@@ -1375,28 +1395,103 @@ class QuickLookupWindow(QDialog):
             mark("paint", self._display_revision)
         if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
             self._place_actions()
-        if event.type() == QEvent.Type.ToolTip and watched is not self.copy_button:
+        if event.type() == QEvent.Type.ToolTip and not isinstance(watched, QToolButton):
             QToolTip.hideText()
             return True
-        if event.type() == QEvent.Type.MouseButtonPress:
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             if self._passive_text:
                 self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
                 self.activateWindow()
             self._passive_text = False
-        if (event.type() == QEvent.Type.MouseButtonPress and self._peek and not self.is_pinned
+        if (event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton
+                and self._peek and not self.is_pinned
                 and watched not in (self.dismiss_button, self.pin)):
-            self._pin_anchor_click = watched is self.browser.viewport()
-            self.pin.setChecked(True)
+            if watched is self.browser.viewport():
+                self._engage_press = event.globalPosition().toPoint()
+            else:
+                self.pin.setChecked(True)
+        elif event.type() == QEvent.Type.MouseButtonRelease and self._engage_press is not None:
+            distance = (event.globalPosition().toPoint() - self._engage_press).manhattanLength()
+            self._engage_press = None
+            if distance < QApplication.startDragDistance() and not self.browser.selected_text():
+                self.browser.selecting = False
+                self._pin_anchor_click = bool(self.browser.anchorAt(event.position().toPoint()))
+                self.pin.setChecked(True)
+                QTimer.singleShot(0, lambda: setattr(self, "_pin_anchor_click", False))
         elif event.type() == QEvent.Type.MouseButtonRelease and self._pin_anchor_click:
             QTimer.singleShot(0, lambda: setattr(self, "_pin_anchor_click", False))
         if watched is self.title:
             if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
                 self._drag_position = event.globalPosition().toPoint() - self.pos()
+                self._drag_start = event.globalPosition().toPoint()
+                self._dragging = False
             elif event.type() == QEvent.Type.MouseMove and self._drag_position is not None:
-                self.move(event.globalPosition().toPoint() - self._drag_position)
+                point = event.globalPosition().toPoint()
+                if not self._dragging and (point - self._drag_start).manhattanLength() >= QApplication.startDragDistance():
+                    self._dragging = True
+                    if self.windowHandle() and self.windowHandle().startSystemMove():
+                        return True
+                if self._dragging:
+                    screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+                    area = screen.availableGeometry()
+                    position = point - self._drag_position
+                    self.move(max(area.left(), min(position.x(), area.right()-self.width()+1)),
+                              max(area.top(), min(position.y(), area.bottom()-self.height()+1)))
+                    return True
             elif event.type() == QEvent.Type.MouseButtonRelease:
                 self._drag_position = None
+                if self._dragging:
+                    self._dragging = False
+                    return True
+        if self._edge_event(event):
+            return True
         return super().eventFilter(watched, event)
+
+    def _edge_event(self, event):
+        if self._peek and not self.is_pinned or event.type() not in (
+                QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
+            return False
+        point = event.globalPosition().toPoint()
+        local = self.mapFromGlobal(point)
+        edges = Qt.Edge(0)
+        if local.x() < 5:
+            edges |= Qt.Edge.LeftEdge
+        elif local.x() >= self.width() - 5:
+            edges |= Qt.Edge.RightEdge
+        if local.y() < 5:
+            edges |= Qt.Edge.TopEdge
+        elif local.y() >= self.height() - 5:
+            edges |= Qt.Edge.BottomEdge
+        horizontal = bool(edges & (Qt.Edge.LeftEdge | Qt.Edge.RightEdge))
+        vertical = bool(edges & (Qt.Edge.TopEdge | Qt.Edge.BottomEdge))
+        diagonal = edges in (Qt.Edge.LeftEdge | Qt.Edge.TopEdge, Qt.Edge.RightEdge | Qt.Edge.BottomEdge)
+        self.setCursor(Qt.CursorShape.SizeFDiagCursor if horizontal and vertical and diagonal else
+                       Qt.CursorShape.SizeBDiagCursor if horizontal and vertical else
+                       Qt.CursorShape.SizeHorCursor if horizontal else Qt.CursorShape.SizeVerCursor if vertical else
+                       Qt.CursorShape.ArrowCursor)
+        if event.type() == QEvent.Type.MouseButtonPress and edges and event.button() == Qt.MouseButton.LeftButton:
+            if not self.windowHandle() or not self.windowHandle().startSystemResize(edges):
+                self._resize_start = (point, self.geometry(), edges)
+            return True
+        if self._resize_start:
+            if event.type() == QEvent.Type.MouseButtonRelease:
+                self._resize_start = None
+            elif event.type() == QEvent.Type.MouseMove:
+                origin, rect, edges = self._resize_start
+                rect = type(rect)(rect)
+                delta = point - origin
+                area = (QApplication.screenAt(point) or QApplication.primaryScreen()).availableGeometry()
+                if edges & Qt.Edge.LeftEdge:
+                    rect.setLeft(max(area.left(), min(rect.right()-self.minimumWidth()+1, rect.left()+delta.x())))
+                if edges & Qt.Edge.RightEdge:
+                    rect.setRight(min(area.right(), max(rect.left()+self.minimumWidth()-1, rect.right()+delta.x())))
+                if edges & Qt.Edge.TopEdge:
+                    rect.setTop(max(area.top(), min(rect.bottom()-self.minimumHeight()+1, rect.top()+delta.y())))
+                if edges & Qt.Edge.BottomEdge:
+                    rect.setBottom(min(area.bottom(), max(rect.top()+self.minimumHeight()-1, rect.bottom()+delta.y())))
+                self.setGeometry(rect)
+            return True
+        return False
 
     def changeEvent(self, event):
         super().changeEvent(event)

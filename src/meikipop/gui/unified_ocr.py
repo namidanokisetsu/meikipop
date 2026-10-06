@@ -272,6 +272,11 @@ class UnifiedOCR(QObject):
         self.reload_settings()
 
     def eventFilter(self, watched, event):
+        if watched is self.window:
+            if event.type() == QEvent.Type.Enter:
+                self.leave_timer.stop()
+            elif event.type() == QEvent.Type.Leave and not self.window.is_pinned and not self.holding:
+                self.leave_timer.start()
         if watched is self.window and event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
             self.dismiss()
             return True
@@ -487,6 +492,9 @@ class UnifiedOCR(QObject):
             self.dismiss()
 
     def finish_peek(self):
+        if QApplication.activeModalWidget() or QApplication.activePopupWidget():
+            self.leave_timer.start()
+            return
         if (getattr(self.window, "_peek", False) and not self.holding and not self.window.is_pinned and
                 not self.window.geometry().contains(QCursor.pos())):
             self.window.hide()

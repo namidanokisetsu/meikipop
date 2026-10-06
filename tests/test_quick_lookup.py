@@ -160,8 +160,8 @@ class QuickLookupTests(unittest.TestCase):
     def test_translate_runs_off_main_thread_and_enter_search_is_local(self):
         self.window.search.setText("猫")
         self.window.submit(translate=True)
-        self.assertFalse(self.window.translate.isEnabled())
-        self.assertEqual(self.window.translate.toolTip(), "Translating…")
+        self.assertTrue(self.window.translate.isEnabled())
+        self.assertEqual(self.window.translate.toolTip(), "Cancel translation")
         self.wait_until(lambda: self.window._result is not None)
         self.assertTrue(self.window.translate.isEnabled())
         self.assertTrue(self.engine.calls[0][3])
@@ -187,7 +187,7 @@ class QuickLookupTests(unittest.TestCase):
             self.window.search.setText("old")
             self.window.submit(translate=True)
             self.wait_until(entered.is_set)
-            self.assertFalse(self.window.translate.isEnabled())
+            self.assertTrue(self.window.translate.isEnabled())
             self.window.search.setText("new")
             self.assertTrue(self.window.translate.isEnabled())
             self.window.submit()
@@ -803,7 +803,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Jiten", self.window.browser.toolTip())
         self.assertNotIn("Hy-MT2", self.window.translate.toolTip())
         self.assertNotIn("Hy-MT2", self.window.browser.toHtml())
-        self.assertTrue(self.window.eventFilter(self.window.translate, QEvent(QEvent.Type.ToolTip)))
+        self.assertFalse(self.window.eventFilter(self.window.translate, QEvent(QEvent.Type.ToolTip)))
         self.assertFalse(self.window.eventFilter(self.window.copy_button, QEvent(QEvent.Type.ToolTip)))
         self.assertIn("猫", self.window.copy_button.toolTip())
 

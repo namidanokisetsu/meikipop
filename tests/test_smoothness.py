@@ -58,6 +58,16 @@ class PendingTests(QuickLookupTests):
         self.assertFalse(enabled(self.settings, "ja", "auto_translate_sentence"))
         self.assertFalse(self.window.browser.selection_lookup)
 
+    def test_right_press_preserves_preview_and_search_is_resizable(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.app.processEvents()
+        with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
+            QTest.mousePress(self.window.browser.viewport(), Qt.MouseButton.RightButton, pos=QPoint(15, 15))
+            self.assertFalse(self.window.is_pinned)
+            render.assert_not_called()
+        self.window.open_search()
+        self.assertTrue(self.window.isSizeGripEnabled())
+
     def test_render_identity_preserves_selection_and_invalidates_metadata(self):
         from dataclasses import replace
         from PyQt6.QtGui import QTextCursor
