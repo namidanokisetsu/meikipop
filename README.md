@@ -1,14 +1,17 @@
 # meikipop - multilingual popup dictionary
 
-instantly look up japanese words anywhere on your screen. meikipop uses optical character recognition (ocr) to read text from websites, games, scanned manga, or even hard-coded video subtitles, giving you effortless dictionary lookups with the press of a key (or even without)!
+look up words on your screen with a held key, or open text search with Ctrl+Shift+D. press the shortcut again to close it. ocr reads text from websites, games, scanned manga, and video subtitles; language coverage depends on the selected provider.
 
 This fork now opens one compact popup for Japanese, Turkish and other installed
 Yomitan languages. Use [Start-Meikipop.cmd](Start-Meikipop.cmd) on Windows,
 [Start-Meikipop.command](Start-Meikipop.command) on macOS, or `meikipop` /
-`meikipop search` after installing this checkout. Setup imports and orders local
-dictionaries; results support pinning, scrolling, source expansion and copying
+`meikipop search` after installing this checkout. Settings can add language profiles,
+install recommended dictionaries, and import, order or remove local packs.
+Results support pinning, scrolling, source expansion and copying
 the visible OCR sentence. Local translation is optional. See the
 [shared setup guide](docs/TURKISH_SETUP.md) for language packs, shortcuts and OCR.
+The [language coverage table](docs/TURKISH_SETUP.md#language-coverage) separates
+dictionary, translation, OCR and optional morphology support.
 
 The original Japanese app remains available as `meikipop legacy-japanese`,
 and the separate Turkish client as `meikipop-turkish`. The shared macOS popup
@@ -21,7 +24,7 @@ https://github.com/user-attachments/assets/a1834197-3059-438c-a2dc-716e8ec9078f
 
 
 
-## features
+## legacy Japanese features
 
 *   **works everywhere:** if you can see it on your screen, you can look it up. no more limitations of browser extensions, hooks or application-specific tools.
 *   **ocr-powered:** reads japanese text directly from images, making it perfect for games, comics, and videos.
@@ -50,12 +53,12 @@ app and upstream releases. For this fork's default shared popup, follow the
 imports are explicit; the legacy Japanese app may download its original assets
 on first launch.
 
-### easiest: prepackaged binaries
+### upstream: prepackaged binaries
 
 just download, unpack and start the executable binary. no python installation required:
 * https://github.com/rtr46/meikipop/releases/latest
 
-### recommended: install via pypi
+### upstream: install via pypi
 
 if you already have python 3.10+ installed, this is the most flexible option that lets you run directly from source, enables you to edit the program and lets you add your own custom ocr providers. 
 
@@ -71,10 +74,10 @@ if you are planning to modify, fork or contribute to meikipop, it is best to che
 
 ```bash
 #... activate your environment if any
-git clone https://github.com/rtr46/meikipop.git
+git clone https://github.com/namidanokisetsu/meikipop.git
 cd meikipop
 pip install -e .
-meikipop  # run the upstream application
+meikipop  # run this fork's shared popup
 ```
 
 ### platform support

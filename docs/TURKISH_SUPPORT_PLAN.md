@@ -3,7 +3,7 @@ Updated: 2026-10-06
 # Shared Japanese, Turkish and Yomitan popup
 
 The requested shared app supersedes the earlier separate-app-only plan. Keep
-the compact Japanese/Nazeka appearance while using one language selector,
+the shared Japanese rendering while using one language selector,
 search surface and dictionary library. The original Japanese and Turkish
 clients remain explicit compatibility entrypoints.
 
@@ -12,6 +12,8 @@ clients remain explicit compatibility entrypoints.
 1. **Indexed library.** Import local Yomitan definition, forms, frequency and
    kanji archives into immutable SQLite packs. Imports are atomic and
    cancellable; per-pack enablement and ordering are separate preferences.
+   Explicit recommended downloads reuse this importer. Removal closes readers
+   and deletes every stored revision of the selected pack.
    Structured Turkdict content and multiple Japanese dictionaries share the
    existing HTML converter. The working local library includes full Turkdict,
    Jitendex, KANJIDIC and Jiten packs; data and models stay outside Git.
@@ -26,6 +28,9 @@ clients remain explicit compatibility entrypoints.
    kanji, uses visible glyph bounds for spacing, and defaults to gray at 50%
    with a Japanese size control. Autoplay remembers all pronunciations in a
    scan-key hold; manual playback remains repeatable.
+   Frequency display defaults to the harmonic mean of positive ranks, with one
+   best rank per dictionary; counts and nonnumeric labels are excluded. Per-source
+   display remains optional. Cyan/Lime use black backgrounds and white text.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings
@@ -53,6 +58,8 @@ clients remain explicit compatibility entrypoints.
    frames between captures. Raw QImages replace UI-thread PNG encoding; Windows
    capture exclusion is held through a scan instead of synchronizing the compositor
    twice per frame. Live smoothness still needs user acceptance.
+   Previews stay anchored until the lookup changes and fit complete text lines.
+   Scanning requires a held trigger; automatic hover scanning is removed.
 
 5. **Optional local translation.** Explicitly installed
    [Hy-MT2](https://huggingface.co/tencent/Hy-MT2-7B-GGUF) GGUF models run through
@@ -61,8 +68,8 @@ clients remain explicit compatibility entrypoints.
    Translate is pressed; downloads occur only in setup. Custom servers must
    use loopback HTTP, without proxies or redirects. Results identify the model;
    model claims do not imply verified accuracy for every passage or language.
-   Translate's dropdown offers automatic or manual source and target languages
-   independently of the dictionary profile.
+   Translation settings offer automatic or manual source and target language
+   strips independently of the dictionary profile. Ordinary settings save immediately.
 
 ## Compatibility and remaining acceptance
 

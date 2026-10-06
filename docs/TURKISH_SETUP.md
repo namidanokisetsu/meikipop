@@ -24,11 +24,15 @@ separate Turkish client and its existing settings.
 Open **Settings → Dictionaries → Import ZIPs** and select local Yomitan archives.
 Definition, forms, frequency and kanji packs are indexed on disk without
 replacing `dictionary.pkl`. Enable packs and move them up or down; changes save immediately.
+Choose a recommended pack and press **Install**, or select an installed pack and press
+**Remove**. Removal deletes all revisions of that dictionary so an older copy cannot reappear.
 Cancellation keeps completed imports and discards the unfinished pack.
 Archive language metadata takes precedence; for a legacy archive without it,
 the selected profile supplies its language.
 
 Choose a language profile from the tray's right-click menu or the top of Settings.
+**Add language…** offers languages with a verified dictionary download or managed
+translation support. Importing a dictionary also makes its source language available.
 Each profile owns its dictionary list, OCR provider, translation pair/model,
 appearance and audio preferences. Lookup detects the input side of that pair
 and uses only that profile's dictionaries. Japanese deconjugation and Turkish accent recovery have
@@ -46,16 +50,26 @@ sit at the top right; Back and a compact nested-lookup trail sit at the bottom l
 with Copy and Close at the right. Back restores the previous result and sentence context.
 Dictionary sections have independent previews and expansion controls. Pin with the scan gesture
 to keep and resize results. Imported frequency, inflection and kanji information uses compact labels.
+Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, taking
+the best matching rank per dictionary. **Dictionaries → Combine frequency ranks**
+switches between the combined number and individual labels. Counts and nonnumeric
+bands are excluded from the mean.
 The copy button previews its sentence on hover; other popup hover labels are hidden.
 Kanji always use compact cards with meanings and readings, without a separate label or details toggle.
 
 The top controls are Translate, Read sentence, then Read word. In pinned OCR results they
 sit alongside the heading; language switching stays in the tray and Settings.
 Sentence reading uses system TTS even when a Japanese word-audio database is configured.
+Right-click Read word to choose a pronunciation source. **Audio → Source priority**
+orders recordings and System voice, including TTS first. Each language can use its
+own local `android.db` recordings database; recordings are not bundled, and Turkish
+recordings require a compatible Turkish database. Missing recordings fall through
+the selected order. Sentence reading always uses an installed system voice.
 **Settings → Audio → Autoplay** saves immediately per profile: Off, On lookup, or When pinned.
 When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
+Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
-**Settings → Appearance** offers Charcoal, Slate, Dusk and Light, plus Custom. Presets are opaque
+**Settings → Appearance** offers black Cyan and Lime, plus Light and Custom. Presets are opaque
 with contrasting text and accents. Changes apply immediately; Custom remembers its own colors
 when switching presets. Appearance remains independent per language profile.
 Japanese definition readings appear above their text. Headwords keep the full word
@@ -64,7 +78,7 @@ switches the heading to an above-text reading too.
 Furigana uses the selected font, sits close to the text and defaults to muted gray
 at 50% size. **Appearance → Furigana size (%)** adjusts Japanese readings.
 
-The arrow beside Translate opens compact **From** and **To** controls. Both default
+**Settings → Translation** contains horizontal **From** and **To** language strips. Both default
 to **Automatic** within the profile's translation pair; manual selections override
 translation direction without changing the OCR/dictionary profile.
 
@@ -80,6 +94,8 @@ Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected
 text, preserving the clipboard, or uses the clipboard if nothing is selected. Sentences
 translate automatically; the prefilled input remains selected for immediate typing.
+Press the shortcut again to close the popup. Ordinary settings save immediately;
+downloads, imports and removals require their action buttons.
 Automatic lookup on double-click or drag selection is disabled by default and configured per profile.
 These previews leave keyboard focus in the original app. Selected-text lookup preserves the clipboard.
 Copy sentence changes the clipboard only when invoked.
@@ -112,24 +128,23 @@ ambiguous. The default workflow needs no NLP models.
 ## Screen lookup
 
 Set a screen lookup key or mouse shortcut in **Settings → Shortcuts**, then hold it over text; the default
-activation is Shift. The preview follows the pointer. While
+activation is Shift. The preview stays beside the word until a different result appears. While
 holding the scan key, left-click anywhere to pin the current result and expand
 its dictionaries, or press **C**. **Shortcuts → Pin preview** records another key
 or disables keyboard pinning per profile. Pinning stops following; a click outside or a fresh scan elsewhere dismisses it. Release
 hides an unpinned preview after a short grace period. Close or Escape dismisses
 the current scan until the trigger is released.
 A held scan shortcut outside the focused text-search window resumes OCR, including
-after Ctrl+Shift+D. Typing inside Search and automatic hover scanning keep its focus.
+after Ctrl+Shift+D. Typing inside Search keeps its focus.
 
 Clear both screen lookup shortcuts to disable OCR; there is no additional toggle.
-**Settings → Screen lookup** selects left click, middle click, or popup-only pinning.
+**Settings → Shortcuts → Pin with mouse** selects left click, middle click, or popup-only pinning.
 Windows consumes the configured outside pin click while a scan preview is ready;
 on macOS and Linux it also reaches the underlying app. Other clicks are unchanged.
-**Compact preview** is on by default; turn it off for full definitions immediately.
-**Scan automatically on hover** is off by default. When enabled, scanning waits
-for a short pause over text and preserves pinned results. After dismissing an
-automatic preview, move the pointer to resume. OCR runs separately from dictionary
-search and retains visible sentence context.
+**Appearance → Compact preview** is on by default; turn it off for full definitions immediately.
+Scanning always requires a held trigger. Automatic hover scanning has been removed;
+old saved hover preferences are ignored. OCR runs separately from dictionary search
+and retains visible sentence context.
 
 Each profile shows one OCR selector. Windows defaults remain
 **MeikiOCR (CPU)** for Japanese and **PaddleOCR** for Turkish; macOS defaults to
@@ -137,7 +152,7 @@ Each profile shows one OCR selector. Windows defaults remain
 either language. Changing the selection invalidates pending scans and uses a
 separate recognition cache. Selecting a provider never downloads a model.
 
-For Chrome Screen AI, use the Google component link in **Setup → Screen lookup**
+For Chrome Screen AI, use the Google component link in **Settings → OCR**
 or the [official Chromium package directory](https://chrome-infra-packages.appspot.com/p/chromium/third_party/screen-ai).
 Download the package matching the operating system and Python CPU architecture,
 extract the complete archive, and choose its folder with **Browse**. Keep the
@@ -274,3 +289,187 @@ Focused tests cover stale-result rejection, input/pinning/history, source
 rendering, import cancellation, offline inference and archive validation.
 Hands-on OCR accuracy, global keys, display scaling and clean-machine packaging
 remain platform acceptance work. See the [support plan](TURKISH_SUPPORT_PLAN.md).
+
+## Language coverage
+
+The profile picker includes only the languages below, plus languages from imported
+dictionaries. Coverage was checked on 2026-10-06 against the
+[Wiktionary release catalogue](https://yomidevs.github.io/wiktionary-to-yomitan/download/),
+[Jitendex](https://jitendex.org/pages/downloads.html),
+[Hy-MT2 publisher language list](https://huggingface.co/tencent/Hy-MT2-7B#supported-languages), and
+[Stanza 1.14 resources](https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main/resources_1.14.0.json).
+The catalogue establishes availability, not equal dictionary depth or measured translation quality.
+
+- **Dictionary** means an explicit recommended download exists; Wiktionary packs use English definitions.
+  Every imported language supports exact entries, readings and supplied forms. Japanese adds bundled
+  deconjugation; Turkish adds accent recovery. Romaji/fuzzy input has not been changed in this update.
+- **Translation** means the managed Hy-MT2 models list the language. Models must be installed.
+  A dash requires a separately configured server whose language support the user verifies.
+- **OCR** lists the established desktop defaults. A dash means text lookup by default;
+  other profiles can opt into Paddle, Screen AI or macOS Vision, but provider/platform coverage
+  and accuracy need separate verification. Adding a profile does not install or validate an OCR model.
+- **Morphology**: Rules are bundled for Japanese. Stanza is optional, off by default,
+  and requires explicit language-specific setup. A dash means no verified compatible package here.
+  Merely having a package does not establish accuracy on isolated words.
+- **Audio** depends on installed system voices or user-provided recordings for that language.
+  TTS and recordings have independent priority; no voice coverage is implied by this table.
+
+| Language | Code | Dictionary | Translation | OCR | Morphology |
+| --- | --- | --- | --- | --- | --- |
+| Afrikaans | `af` | Wiktionary | ? | ? | Stanza |
+| Albanian | `sq` | Wiktionary | ? | ? | Stanza |
+| Ancient Greek | `grc` | Wiktionary | ? | ? | Stanza |
+| Armenian | `hy` | Wiktionary | ? | ? | Stanza |
+| Aromanian | `rup` | Wiktionary | ? | ? | ? |
+| Assamese | `as` | Wiktionary | ? | ? | ? |
+| Assyrian Neo-Aramaic | `aii` | Wiktionary | ? | ? | ? |
+| Asturian | `ast` | Wiktionary | ? | ? | ? |
+| Azerbaijani | `az` | Wiktionary | ? | ? | ? |
+| Bangla | `bn` | Wiktionary | Hy-MT2 | ? | ? |
+| Bashkir | `ba` | Wiktionary | ? | ? | ? |
+| Basque | `eu` | Wiktionary | ? | ? | Stanza |
+| Belarusian | `be` | Wiktionary | ? | ? | Stanza |
+| Bulgarian | `bg` | Wiktionary | ? | ? | Stanza |
+| Burmese | `my` | Wiktionary | Hy-MT2 | ? | ? |
+| Cantonese | `yue` | Wiktionary | Hy-MT2 | ? | ? |
+| Catalan | `ca` | Wiktionary | ? | ? | Stanza |
+| Cebuano | `ceb` | Wiktionary | ? | ? | ? |
+| Central Bikol | `bcl` | Wiktionary | ? | ? | ? |
+| Church Slavic | `cu` | Wiktionary | ? | ? | Stanza |
+| Cimbrian | `cim` | Wiktionary | ? | ? | ? |
+| Classical Syriac | `syc` | Wiktionary | ? | ? | ? |
+| Coptic | `cop` | Wiktionary | ? | ? | Stanza |
+| Cornish | `kw` | Wiktionary | ? | ? | ? |
+| Crimean Tatar | `crh` | Wiktionary | ? | ? | ? |
+| Czech | `cs` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Danish | `da` | Wiktionary | ? | ? | Stanza |
+| Deutsch | `de` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Egyptian | `egy` | Wiktionary | ? | ? | ? |
+| Egyptian Arabic | `arz` | Wiktionary | ? | ? | ? |
+| English | `en` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Español | `es` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Esperanto | `eo` | Wiktionary | ? | ? | ? |
+| Estonian | `et` | Wiktionary | ? | ? | Stanza |
+| Faroese | `fo` | Wiktionary | ? | ? | ? |
+| Filipino | `fil` | ? | Hy-MT2 | ? | ? |
+| Finnish | `fi` | Wiktionary | ? | ? | Stanza |
+| Français | `fr` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Galician | `gl` | Wiktionary | ? | ? | Stanza |
+| Georgian | `ka` | Wiktionary | ? | ? | Stanza |
+| Gothic | `got` | Wiktionary | ? | ? | Stanza |
+| Greek | `el` | Wiktionary | ? | ? | Stanza |
+| Gujarati | `gu` | Wiktionary | Hy-MT2 | ? | ? |
+| Gulf Arabic | `afb` | Wiktionary | ? | ? | ? |
+| Hawaiian | `haw` | Wiktionary | ? | ? | ? |
+| Hebrew | `he` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Hindi | `hi` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Hungarian | `hu` | Wiktionary | ? | ? | Stanza |
+| Icelandic | `is` | Wiktionary | ? | ? | Stanza |
+| Ido | `io` | Wiktionary | ? | ? | ? |
+| Indonesian | `id` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Ingrian | `izh` | Wiktionary | ? | ? | ? |
+| Interlingua | `ia` | Wiktionary | ? | ? | ? |
+| Irish | `ga` | Wiktionary | ? | ? | Stanza |
+| Italiano | `it` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Javanese | `jv` | Wiktionary | ? | ? | ? |
+| Kannada | `kn` | Wiktionary | ? | ? | ? |
+| Kashubian | `csb` | Wiktionary | ? | ? | ? |
+| Kazakh | `kk` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Khiamniungan Naga | `kix` | Wiktionary | ? | ? | ? |
+| Khmer | `km` | Wiktionary | Hy-MT2 | ? | ? |
+| Kyrgyz | `ky` | Wiktionary | ? | ? | Stanza |
+| Ladin | `lld` | Wiktionary | ? | ? | ? |
+| Lao | `lo` | Wiktionary | ? | ? | ? |
+| Latin | `la` | Wiktionary | ? | ? | Stanza |
+| Latvian | `lv` | Wiktionary | ? | ? | Stanza |
+| Laz | `lzz` | Wiktionary | ? | ? | ? |
+| Lithuanian | `lt` | Wiktionary | ? | ? | Stanza |
+| Livonian | `liv` | Wiktionary | ? | ? | ? |
+| Lower Sorbian | `dsb` | Wiktionary | ? | ? | ? |
+| Luxembourgish | `lb` | Wiktionary | ? | ? | ? |
+| Macedonian | `mk` | Wiktionary | ? | ? | ? |
+| Malagasy | `mg` | Wiktionary | ? | ? | ? |
+| Malay | `ms` | Wiktionary | Hy-MT2 | ? | ? |
+| Malayalam | `ml` | Wiktionary | ? | ? | ? |
+| Maltese | `mt` | Wiktionary | ? | ? | ? |
+| Mandarin Chinese | `cmn` | Wiktionary | ? | ? | ? |
+| Manx | `gv` | Wiktionary | ? | ? | Stanza |
+| Marathi | `mr` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Middle Dutch | `dum` | Wiktionary | ? | ? | ? |
+| Middle English | `enm` | Wiktionary | ? | ? | ? |
+| Middle French | `frm` | Wiktionary | ? | ? | ? |
+| Mongolian | `mn` | Wiktionary | Hy-MT2 | ? | ? |
+| Māori | `mi` | Wiktionary | ? | ? | ? |
+| Navajo | `nv` | Wiktionary | ? | ? | ? |
+| Nederlands | `nl` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Norman | `nrf` | Wiktionary | ? | ? | ? |
+| North Levantine Arabic | `apc` | Wiktionary | ? | ? | ? |
+| Northern Kurdish | `kmr` | Wiktionary | ? | ? | Stanza |
+| Northern Sami | `se` | Wiktionary | ? | ? | ? |
+| Norwegian | `no` | Wiktionary | ? | ? | ? |
+| Norwegian Bokmål | `nb` | Wiktionary | ? | ? | Stanza |
+| Norwegian Nynorsk | `nn` | Wiktionary | ? | ? | Stanza |
+| Occitan | `oc` | Wiktionary | ? | ? | ? |
+| Odia | `or` | Wiktionary | ? | ? | Stanza |
+| Old Armenian | `xcl` | Wiktionary | ? | ? | Stanza |
+| Old Czech | `zlw-ocs` | Wiktionary | ? | ? | ? |
+| Old English | `ang` | Wiktionary | ? | ? | Stanza |
+| Old French | `fro` | Wiktionary | ? | ? | Stanza |
+| Old High German | `goh` | Wiktionary | ? | ? | ? |
+| Old Irish | `sga` | Wiktionary | ? | ? | ? |
+| Old Norse | `non` | Wiktionary | ? | ? | ? |
+| Old Polish | `zlw-opl` | Wiktionary | ? | ? | ? |
+| Ottoman Turkish | `ota` | Wiktionary | ? | ? | Stanza |
+| Pali | `pi` | Wiktionary | ? | ? | ? |
+| Pannonian Rusyn | `rsk` | Wiktionary | ? | ? | ? |
+| Persian | `fa` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Plautdietsch | `pdt` | Wiktionary | ? | ? | ? |
+| Polski | `pl` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Português | `pt` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Proto-Finnic | `urj-fin-pro` | Wiktionary | ? | ? | ? |
+| Proto-Germanic | `gem-pro` | Wiktionary | ? | ? | ? |
+| Proto-Slavic | `sla-pro` | Wiktionary | ? | ? | ? |
+| Proto-West Germanic | `gmw-pro` | Wiktionary | ? | ? | ? |
+| Punjabi | `pa` | Wiktionary | ? | ? | ? |
+| Romanian | `ro` | Wiktionary | ? | ? | Stanza |
+| Sanskrit | `sa` | Wiktionary | ? | ? | Stanza |
+| Scots | `sco` | Wiktionary | ? | ? | ? |
+| Scottish Gaelic | `gd` | Wiktionary | ? | ? | Stanza |
+| Serbo-Croatian | `sh` | Wiktionary | ? | ? | ? |
+| Sicilian | `scn` | Wiktionary | ? | ? | ? |
+| Slovak | `sk` | Wiktionary | ? | ? | Stanza |
+| Slovenian | `sl` | Wiktionary | ? | ? | Stanza |
+| South Levantine Arabic | `ajp` | Wiktionary | ? | ? | ? |
+| Sundanese | `su` | Wiktionary | ? | ? | ? |
+| Swahili | `sw` | Wiktionary | ? | ? | ? |
+| Swedish | `sv` | Wiktionary | ? | ? | Stanza |
+| Tagalog | `tl` | Wiktionary | Hy-MT2 | ? | ? |
+| Tajik | `tg` | Wiktionary | ? | ? | ? |
+| Tamil | `ta` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Telugu | `te` | Wiktionary | Hy-MT2 | ? | ? |
+| Thai | `th` | Wiktionary | Hy-MT2 | ? | ? |
+| Tibetan | `bo` | Wiktionary | Hy-MT2 | ? | ? |
+| Türkçe | `tr` | Wiktionary | Hy-MT2 | Paddle / Vision | Stanza |
+| Urdu | `ur` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Uyghur | `ug` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Uzbek | `uz` | Wiktionary | ? | ? | ? |
+| Venetian | `vec` | Wiktionary | ? | ? | ? |
+| Vietnamese | `vi` | Wiktionary | Hy-MT2 | ? | ? |
+| Volapük | `vo` | Wiktionary | ? | ? | ? |
+| Votic | `vot` | Wiktionary | ? | ? | ? |
+| Welsh | `cy` | Wiktionary | ? | ? | Stanza |
+| West Circassian | `ady` | Wiktionary | ? | ? | ? |
+| Western Frisian | `fy` | Wiktionary | ? | ? | ? |
+| Yakut | `sah` | Wiktionary | ? | ? | ? |
+| Yiddish | `yi` | Wiktionary | ? | ? | ? |
+| Yoruba | `yo` | Wiktionary | ? | ? | ? |
+| Zulu | `zu` | Wiktionary | ? | ? | ? |
+| Русский | `ru` | Wiktionary | Hy-MT2 | ? | Stanza |
+| Українська | `uk` | Wiktionary | Hy-MT2 | ? | Stanza |
+| العربية | `ar` | Wiktionary | Hy-MT2 | ? | Stanza |
+| 中文 | `zh` | Wiktionary | Hy-MT2 | ? | ? |
+| 中文（台灣） | `zh-tw` | ? | Hy-MT2 | ? | ? |
+| 中文（繁體） | `zh-hant` | ? | Hy-MT2 | ? | Stanza |
+| 中文（香港） | `zh-hk` | ? | Hy-MT2 | ? | ? |
+| 日本語 | `ja` | Jitendex | Hy-MT2 | MeikiOCR / Vision | Rules |
+| 한국어 | `ko` | Wiktionary | Hy-MT2 | ? | Stanza |
