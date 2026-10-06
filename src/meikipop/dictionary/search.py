@@ -72,7 +72,9 @@ class SearchEngine:
                     return best
             # English headwords such as 'cat' must beat Turkish accent guesses
             # ('çat'). Exact dictionary evidence above still wins ambiguous cases.
-            if self.library.reverse(text, foreign, limit=1):
+            # Turkish example sentences are also indexed; incidental mentions
+            # must not outrank accent recovery as evidence of English input.
+            if self.library.reverse(text, foreign, limit=1, exact_gloss=foreign == "tr"):
                 return "en"
             if "tr" in languages:
                 hits = sum(bool(self.library.lookup(word, "tr", limit=1)) for word in words)

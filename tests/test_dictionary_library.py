@@ -188,6 +188,29 @@ class LibraryTests(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_turkish_examples_do_not_override_accent_recovery(self):
+        example = {"type": "structured-content", "content": [
+            {"tag": "div", "content": "building"},
+            {"tag": "div", "content": "Benim oğlum bina okur."}]}
+        self.pack("Turkish", [self.row("oğul", ["son"]),
+                              self.row("oğlum", [["oğul", ["my (possessive)"]]]),
+                              self.row("bina", [example]), self.row("çat", ["crack"]),
+                              self.row("kedi", ["cat; a domestic animal"])])
+        engine = SearchEngine(self.directory)
+        try:
+            self.assertTrue(engine.library.reverse("oglum", "tr"))
+            for spelling in ("oglum", "OGLUM", "oğlum"):
+                with self.subTest(spelling=spelling):
+                    result = engine.search(spelling, foreign="tr", pair=("tr", "en"))
+                    self.assertEqual(result.source, "tr")
+                    self.assertEqual([e.term for e in result.entries], ["oğul"])
+                    self.assertEqual(result.entries[0].inflection, ("my (possessive)",))
+            result = engine.search("cat", foreign="tr", pair=("tr", "en"))
+            self.assertEqual(result.source, "en")
+            self.assertEqual([e.term for e in result.entries], ["kedi"])
+        finally:
+            engine.close()
+
     def test_profile_pair_limits_detection_dictionaries_and_translation_direction(self):
         self.pack("Turkish", [self.row("am", ["Turkish entry"]), self.row("araç", ["vehicle"])])
         self.pack("Japanese", [self.row("猫", ["cat"], "ねこ")], "ja")

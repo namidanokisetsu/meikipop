@@ -448,20 +448,21 @@ class Library:
                               for row in rows)
         return result
 
-    def reverse(self, text, language="ja", limit=30):
+    def reverse(self, text, language="ja", limit=30, *, exact_gloss=False):
         """English gloss search, with quoted tokens instead of raw FTS syntax."""
         words = re.findall(r"[^\W_]+", text, re.UNICODE)[:12]
         if not words:
             return ()
         query = " AND ".join('"' + word.replace('"', '""') + '"' for word in words)
         result = []
+        meaning_match = """EXISTS(SELECT 1 FROM json_tree(t.definitions) j WHERE j.type='text' AND
+            (lower(j.value) IN (?,?) OR lower(j.value) LIKE ? OR lower(j.value) LIKE ?
+             OR lower(j.value) LIKE ? OR lower(j.value) LIKE ?))"""
         for path, meta, db in self._active(language):
             plain = " ".join(words).lower()
-            rows = db.execute("""SELECT t.* FROM gloss_search g JOIN terms t ON t.id=g.rowid
-                WHERE gloss_search MATCH ? ORDER BY
-                EXISTS(SELECT 1 FROM json_tree(t.definitions) j WHERE j.type='text' AND
-                    (lower(j.value) IN (?,?) OR lower(j.value) LIKE ? OR lower(j.value) LIKE ?
-                     OR lower(j.value) LIKE ? OR lower(j.value) LIKE ?)) DESC,
+            clause = f"AND {meaning_match} ORDER BY" if exact_gloss else f"ORDER BY {meaning_match} DESC,"
+            rows = db.execute(f"""SELECT t.* FROM gloss_search g JOIN terms t ON t.id=g.rowid
+                WHERE gloss_search MATCH ? {clause}
                 t.score DESC, length(t.term), rank LIMIT ?""",
                 (query, plain, 'to ' + plain, plain + ";%", plain + " (%", 'to ' + plain + " (%", plain + ",%", limit))
             result.extend(self._entry(path, meta, row, "English gloss") for row in rows)
