@@ -50,7 +50,7 @@ class RubyObject(QObject, QTextObjectInterface):
         return QSizeF(max(base.horizontalAdvance(fmt.property(BASE)),
                           reading.horizontalAdvance(fmt.property(READING))),
                       -base.tightBoundingRect(fmt.property(BASE)).top()
-                      + reading.tightBoundingRect(fmt.property(READING)).height() + 1)
+                      + reading.tightBoundingRect(fmt.property(READING)).height() + 2)
 
     def drawObject(self, painter, rect, document, pos, fmt):
         font, small, base, reading = self.metrics(document, fmt)
@@ -62,7 +62,7 @@ class RubyObject(QObject, QTextObjectInterface):
         text = fmt.property(READING)
         painter.drawText(QPointF(rect.x() + (rect.width() - reading.horizontalAdvance(text)) / 2,
                                  rect.bottom() + base.tightBoundingRect(fmt.property(BASE)).top()
-                                 - 1 - reading.tightBoundingRect(text).bottom()), text)
+                                 - 2 - reading.tightBoundingRect(text).bottom()), text)
         painter.setFont(font)
         painter.setPen(fmt.foreground().color())
         text = fmt.property(BASE)
