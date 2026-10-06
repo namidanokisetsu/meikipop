@@ -198,6 +198,29 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window.show_entries.assert_not_called()
         self.window.set_context.assert_not_called()
 
+    def test_old_frame_completion_cannot_unlock_new_capture(self):
+        old = self.controller.generation
+        self.controller.busy = True
+        self.controller.invalidate()
+        self.controller.busy = True
+        self.controller.accept_frame(old, None, "obsolete error")
+        self.assertTrue(self.controller.busy)
+        self.window.show_message.assert_not_called()
+
+    def test_fresh_hold_from_pinned_result_is_not_a_user_dismissal(self):
+        self.controller.input = SimpleNamespace(visible=threading.Event(), pin_ready=threading.Event(),
+                                               pin_pending=threading.Event(), shutdown=Mock())
+        self.window.show()
+        self.window.pin.setChecked(True)
+        self.controller.holding = False
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
+                patch.object(self.controller, "scan") as scan:
+            self.controller.hold_changed(True)
+            self.assertFalse(self.window.is_pinned)
+            self.assertTrue(self.controller.holding)
+            self.assertFalse(self.controller._dismissed_hold)
+            scan.assert_called_once()
+
     def test_boundary_recovery_has_two_retries_and_resets_on_invalidation(self):
         frame = SimpleNamespace(request=SimpleNamespace(revision=1))
         with patch.object(self.controller, "_valid_frame", return_value=True), \

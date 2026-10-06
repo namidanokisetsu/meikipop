@@ -47,6 +47,11 @@ clients remain explicit compatibility entrypoints.
    history restores their state.
    Explicit word lookup within typed or pasted input retains the full input as
    sentence context through dictionary analysis, translation, audio, copying and Back.
+   Optional per-profile Sentence view adds clickable words through the same worker;
+   Japanese grouping reuses deconjugation, while other scripts reuse language policies.
+   Original offsets, selected words and sentence input survive history navigation.
+   Windows selection capture first uses a bounded UI Automation read with placement
+   beside available text bounds, retaining copy-and-restore for unsupported controls.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings
@@ -83,7 +88,14 @@ clients remain explicit compatibility entrypoints.
    ownership; unsupported capture uses the guarded Qt fallback. Capture exclusion is held
    through a scan. Stationary capture requests are spaced by 250 ms when the worker is free,
    plus the 16 ms scheduling tick; capture and recognition add their own latency. Cached
-   frames expire after two seconds and cannot cross sessions, screens or profiles.
+   live frames expire after two seconds and cannot cross sessions, screens or profiles.
+   Clipped paragraphs trigger at most two bounded crop expansions. Optional per-profile
+   Freeze while held reuses one full-display screenshot, including expanded crops, until
+   release or invalidation; live scanning remains the default. Scan transitions and
+   capture ownership live in the pure `gui/lookup_session.py` controller so old callbacks
+   cannot unlock a newer capture. These additions adapt interaction ideas from
+   [Chibipop](https://github.com/stellarie/chibipop/blob/main/ARCHITECTURE.md)
+   within the existing Qt pipeline.
    Previews stay anchored until the lookup changes and fit complete text lines.
    Scanning requires a held trigger; automatic hover scanning is removed.
 

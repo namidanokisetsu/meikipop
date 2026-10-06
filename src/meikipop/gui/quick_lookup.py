@@ -759,11 +759,9 @@ class QuickLookupWindow(QDialog):
 
     @property
     def interaction_state(self):
-        if not self.isVisible():
-            return "hidden"
-        if self._peek:
-            return "reading" if self.is_pinned else "preview"
-        return "passive" if self._passive_text else "search"
+        from meikipop.gui.lookup_session import popup_mode
+        return popup_mode(visible=self.isVisible(), preview=self._peek,
+                          pinned=self.is_pinned, passive=self._passive_text)
 
     @property
     def preferred_foreign(self):

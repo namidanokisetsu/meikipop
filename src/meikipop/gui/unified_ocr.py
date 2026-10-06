@@ -14,6 +14,7 @@ from meikipop.ocr.frames import RecognizedFrame
 from meikipop.utils.lastest_queue import LatestValueQueue
 from meikipop.utils.capture import CaptureRequest, PixelFrame, RegionCapture
 from meikipop.utils.timing import mark
+from meikipop.gui.lookup_session import LookupSession
 
 
 class ScanWorker(threading.Thread):
@@ -262,6 +263,7 @@ class UnifiedOCR(QObject):
 
     def __init__(self, window):
         super().__init__(window)
+        self.session = LookupSession()
         self.window = window
         self.input = None
         self.worker = None
@@ -269,16 +271,11 @@ class UnifiedOCR(QObject):
         self.frame = None
         self._hit_key = None
         self._last_dictionary_at = 0
-        self.enabled = False
-        self.holding = False
         self.pin_gesture = "left"
-        self._dismissed_hold = False
         self._last_scan_at = 0
         self._last_capture_at = 0
         self._capture_hidden = False
         self._capture_excluded = False
-        self.busy = False
-        self.generation = 0
         self.last_point = None
         self.job_point = None
         self.capture_region = None
@@ -313,6 +310,42 @@ class UnifiedOCR(QObject):
         QApplication.instance().aboutToQuit.connect(self.shutdown)
         self.reload_settings()
 
+    @property
+    def enabled(self):
+        return self.session.enabled
+
+    @enabled.setter
+    def enabled(self, value):
+        self.session.enabled = value
+
+    @property
+    def holding(self):
+        return self.session.holding
+
+    @holding.setter
+    def holding(self, value):
+        self.session.holding = value
+
+    @property
+    def _dismissed_hold(self):
+        return self.session.dismissed
+
+    @_dismissed_hold.setter
+    def _dismissed_hold(self, value):
+        self.session.dismissed = value
+
+    @property
+    def generation(self):
+        return self.session.generation
+
+    @property
+    def busy(self):
+        return self.session.capture_generation == self.generation
+
+    @busy.setter
+    def busy(self, value):
+        self.session.capture_generation = self.generation if value else None
+
     def eventFilter(self, watched, event):
         if watched is self.window:
             if event.type() == QEvent.Type.Enter:
@@ -334,8 +367,7 @@ class UnifiedOCR(QObject):
                     self.input.pin_ready.clear()
                 if not getattr(self.window, "_capture_visibility", False):
                     self.invalidate()
-                    if self.holding:
-                        self._dismissed_hold = True
+                    self.session.hide()
         return super().eventFilter(watched, event)
 
     def reload_settings(self):
@@ -389,7 +421,7 @@ class UnifiedOCR(QObject):
 
     def _sync_pin_ready(self):
         if self.input and hasattr(self.input, "pin_ready"):
-            ready = (self.enabled and self.holding and not self._dismissed_hold and
+            ready = (self.session.scanning(self.window.is_pinned) and
                      QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None and
                      (self.window.isVisible() or self._capture_hidden) and getattr(self.window, "_peek", False) and
                      not self.window.is_pinned and not self.input.pin_pending.is_set())
@@ -423,7 +455,7 @@ class UnifiedOCR(QObject):
         self._sync_pin_ready()
 
     def invalidate(self):
-        self.generation += 1
+        self.session.invalidate()
         for worker in (self.worker, self.hit_worker):
             if worker is not None and callable(getattr(worker, "invalidate", None)):
                 worker.invalidate(self.generation)
@@ -452,15 +484,13 @@ class UnifiedOCR(QObject):
         return QRect(self.capture_region)
 
     def set_enabled(self, enabled):
-        self.enabled = bool(enabled)
+        self.session.enable(enabled)
         self.invalidate()
         if not enabled:
             self.restore_capture_visibility()
             self.timer.stop()
-            self.holding = False
             if hasattr(self.window, "scan_hold_changed"):
                 self.window.scan_hold_changed(False)
-            self._dismissed_hold = False
             if self.input:
                 self.input.shutdown()
                 self.input = None
@@ -494,21 +524,18 @@ class UnifiedOCR(QObject):
             self.window.show_message(str(error) or "Global scan keys are unavailable. Check input permissions in system settings.")
 
     def hold_changed(self, active):
+        changed = self.session.hold(active)
         if not active:
-            self._dismissed_hold = False
             if hasattr(self.window, "scan_hold_changed"):
                 self.window.scan_hold_changed(False)
-        elif self._dismissed_hold:
+        if not changed:
             return
-        if not self.enabled or active == self.holding:
-            return
-        self.holding = active
         if active and hasattr(self.window, "scan_hold_changed"):
             self.window.scan_hold_changed(True)
         if active:
             if self.window.is_pinned and not self.window.geometry().contains(QCursor.pos()):
                 self.window.pin.setChecked(False)
-                self.window.hide()
+                self._hide_preview()
             self.leave_timer.stop()
             self.last_point = None
             self.timer.start()
@@ -522,8 +549,7 @@ class UnifiedOCR(QObject):
 
     def dismiss(self):
         self.restore_capture_visibility()
-        self._dismissed_hold = self.holding
-        self.holding = False
+        self.session.dismiss()
         self._capture_hidden = False
         self.window._capture_visibility = False
         self.timer.stop()
@@ -549,8 +575,7 @@ class UnifiedOCR(QObject):
             self.window.hide()
 
     def scan(self):
-        if (not self.enabled or not self.holding or self._dismissed_hold or
-                self.window.is_pinned):
+        if not self.session.scanning(self.window.is_pinned):
             return
         self._sync_pin_ready()
         point = QCursor.pos()
@@ -600,8 +625,9 @@ class UnifiedOCR(QObject):
         return (screen.name(), geometry.x(), geometry.y(), geometry.width(), geometry.height(), screen.devicePixelRatio())
 
     def capture(self, generation, point):
-        if (generation != self.generation or not self.enabled or not self.holding
-                or self.window.is_pinned):
+        if generation != self.generation:
+            return
+        if not self.session.accepts(generation, self.window.is_pinned):
             self.restore_capture_visibility()
             self.busy = False
             self._capture_hidden = False
@@ -687,9 +713,8 @@ class UnifiedOCR(QObject):
                 and QRect(*frame.request.crop).contains(point))
 
     def accept_frame(self, generation, frame, error):
-        self.busy = False
-        if (generation != self.generation or not self.enabled or not self.holding or
-                self._dismissed_hold or self.window.is_pinned):
+        self.session.finish_capture(generation)
+        if not self.session.accepts(generation, self.window.is_pinned):
             mark("discard", generation, reason="obsolete_frame")
             return
         if error:
@@ -749,8 +774,7 @@ class UnifiedOCR(QObject):
 
     def deliver(self, generation, result, hit, error):
         frame = None
-        if (generation != self.generation or not self.enabled or not self.holding
-                or self._dismissed_hold or self.window.is_pinned):
+        if not self.session.accepts(generation, self.window.is_pinned):
             mark("discard", generation, reason="obsolete_hit")
             return
         if QApplication.activeWindow() is self.window:
