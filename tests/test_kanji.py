@@ -47,6 +47,21 @@ class KanjiTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;", html)
         self.assertEqual(render_kanji(()), "")
 
+    def test_dictionary_entries_share_one_character_in_all_modes(self):
+        entries = (KanjiEntry("決", "First", meanings=("decide",)),
+                   KanjiEntry("定", "First", meanings=("determine",)),
+                   KanjiEntry("決", "Second", onyomi=("ケツ",), meanings=("agree",)),
+                   KanjiEntry("定", "Second", onyomi=("テイ",), meanings=("establish",)))
+        for options in ({}, {"expanded": True}, {"compact_only": True}):
+            with self.subTest(options=options):
+                html = render_kanji(entries, **options)
+                self.assertEqual(html.count(">決</td>"), 1)
+                self.assertEqual(html.count(">定</td>"), 1)
+                self.assertEqual(html.count('rowspan="2"'), 2)
+                self.assertLess(html.index("agree"), html.index(">定</td>"))
+                for value in ("First", "Second", "decide", "determine", "agree", "establish", "ケツ", "テイ"):
+                    self.assertIn(value, html)
+
 
 if __name__ == "__main__":
     unittest.main()

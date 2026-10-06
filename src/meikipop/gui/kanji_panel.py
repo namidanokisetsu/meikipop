@@ -40,46 +40,55 @@ def render_kanji(entries, expanded=False, *, compact_only=False):
     if compact_only:
         expanded = False
         parts = ['<hr>']
+    groups = {}
     for entry in entries:
-        parts.append('<table width="100%" cellspacing="0" cellpadding="3"><tr>'
-                     f'<td width="48" valign="top" style="font-size:34px;color:{accent}">{_text(entry.character)}</td><td valign="top">')
-        if entry.meanings:
-            parts.append(f'<p style="margin:0 0 3px">{_joined(entry.meanings, None if expanded else 3)}</p>')
-        for label, readings in (("音", entry.onyomi), ("訓", entry.kunyomi)):
-            if readings:
-                parts.append(f'<p style="margin:1px 0"><small>{label}</small> '
-                             f'<span style="color:{reading_color}">{_joined(readings, None if expanded else 4)}</span></p>')
-        if expanded:
-            if entry.source:
-                parts.append(f'<p style="margin:5px 0 2px"><small>{_text(entry.source)}</small></p>')
-            stats = [f'{_text(name)} {_text(value)}' for name, value in _stats_rows(entry.stats)
-                     if value is not None and str(value)]
-            if stats:
-                parts.append(f'<p style="margin:2px 0"><small>{" · ".join(stats)}</small></p>')
-            if entry.tags:
-                parts.append(f'<p style="margin:2px 0"><small>{_joined(entry.tags)}</small></p>')
-            if entry.components:
-                components = []
-                for component in entry.components:
-                    if isinstance(component, dict):
-                        char, meaning = component.get("c", ""), component.get("m", "")
-                        components.append(f'<b>{_text(char)}</b> {_text(meaning)}'.strip())
-                    else:
-                        components.append(_text(component))
-                parts.append('<p style="margin:5px 0 2px"><small>Parts</small> ' + " · ".join(components) + '</p>')
-            if entry.examples:
-                examples = []
-                for example in entry.examples:
-                    if isinstance(example, dict):
-                        word, reading, meaning = example.get("w", ""), example.get("r", ""), example.get("m", "")
-                        row = f'<b>{_text(word)}</b>'
-                        if reading:
-                            row += f' <span style="color:{reading_color}">{_text(reading)}</span>'
-                        if meaning:
-                            row += f' {_text(meaning)}'
-                        examples.append(row)
-                    else:
-                        examples.append(_text(example))
-                parts.append('<p style="margin:5px 0 2px"><small>Examples</small><br>' + '<br>'.join(examples) + '</p>')
-        parts.append('</td></tr></table>')
+        groups.setdefault(entry.character, []).append(entry)
+    for character, group in groups.items():
+        parts.append('<table width="100%" cellspacing="0" cellpadding="3">')
+        for index, entry in enumerate(group):
+            parts.append('<tr>')
+            if index == 0:
+                parts.append(f'<td width="48" rowspan="{len(group)}" valign="top" '
+                             f'style="font-size:34px;color:{accent}">{_text(character)}</td>')
+            parts.append('<td valign="top">')
+            if entry.source and (expanded or len(group) > 1):
+                parts.append(f'<p style="margin:0 0 2px"><small>{_text(entry.source)}</small></p>')
+            if entry.meanings:
+                parts.append(f'<p style="margin:0 0 3px">{_joined(entry.meanings, None if expanded else 3)}</p>')
+            for label, readings in (("音", entry.onyomi), ("訓", entry.kunyomi)):
+                if readings:
+                    parts.append(f'<p style="margin:1px 0"><small>{label}</small> '
+                                 f'<span style="color:{reading_color}">{_joined(readings, None if expanded else 4)}</span></p>')
+            if expanded:
+                stats = [f'{_text(name)} {_text(value)}' for name, value in _stats_rows(entry.stats)
+                         if value is not None and str(value)]
+                if stats:
+                    parts.append(f'<p style="margin:2px 0"><small>{" · ".join(stats)}</small></p>')
+                if entry.tags:
+                    parts.append(f'<p style="margin:2px 0"><small>{_joined(entry.tags)}</small></p>')
+                if entry.components:
+                    components = []
+                    for component in entry.components:
+                        if isinstance(component, dict):
+                            char, meaning = component.get("c", ""), component.get("m", "")
+                            components.append(f'<b>{_text(char)}</b> {_text(meaning)}'.strip())
+                        else:
+                            components.append(_text(component))
+                    parts.append('<p style="margin:5px 0 2px"><small>Parts</small> ' + " · ".join(components) + '</p>')
+                if entry.examples:
+                    examples = []
+                    for example in entry.examples:
+                        if isinstance(example, dict):
+                            word, reading, meaning = example.get("w", ""), example.get("r", ""), example.get("m", "")
+                            row = f'<b>{_text(word)}</b>'
+                            if reading:
+                                row += f' <span style="color:{reading_color}">{_text(reading)}</span>'
+                            if meaning:
+                                row += f' {_text(meaning)}'
+                            examples.append(row)
+                        else:
+                            examples.append(_text(example))
+                    parts.append('<p style="margin:5px 0 2px"><small>Examples</small><br>' + '<br>'.join(examples) + '</p>')
+            parts.append('</td></tr>')
+        parts.append('</table>')
     return "".join(parts)
