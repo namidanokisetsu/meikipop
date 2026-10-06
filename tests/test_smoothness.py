@@ -106,7 +106,7 @@ class PendingTests(QuickLookupTests):
         self.settings.setValue("profiles/ja/auto_translate_miss", True)
         with patch.object(self.window, "submit") as submit:
             self.window.deliver(self.window.revision, partial)
-            submit.assert_called_once_with(translate=True, remember=False)
+            submit.assert_called_once_with(translate=True, context=True, remember=False)
         self.assertIn("cat", self.window.browser.toPlainText())
         self.window._last_request_translate = True
         self.window._translation_base = partial

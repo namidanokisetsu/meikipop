@@ -72,12 +72,12 @@ class LookupWorker(QObject):
         self._thread.start()
 
     def request(self, revision, text, source, foreign, translate=False, target=None, pair=None, translation_settings=None,
-                morphology=False):
+                morphology=False, context=None):
         self.cancel()
         mark("dispatch", revision, translation=translate)
         with self._condition:
             self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings, morphology,
-                             threading.Event())
+                             context, threading.Event())
             self._condition.notify()
 
     def cancel(self):
@@ -137,13 +137,15 @@ class LookupWorker(QObject):
                         codes = sorted({meta["language"] for _, meta, _ in engine.library.packs})
                         self._emit(self.languages, codes)
                     if pending is not None:
-                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology, cancelled = pending
+                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology, context, cancelled = pending
                         mark("dequeue", revision)
                         options = {"target": target} if target else {}
                         if pair:
                             options.update(pair=pair, translation_settings=translation_settings)
                         if morphology:
                             options["morphology"] = True
+                        if context is not None:
+                            options["context"] = context
                         if isinstance(engine, SearchEngine):
                             options.update(cancelled=cancelled, request_id=revision,
                                            translation_progress=lambda result: self._emit(self.progress, revision, result),
@@ -516,7 +518,7 @@ class QuickLookupWindow(QDialog):
         self._setup = None
         self._engine_factory = engine_factory
         self.translation_worker = None
-        self._pending_context_translation = None
+        self._pending_context = None
         self._translation_busy = False
         self._last_request_translate = False
         self._translation_base = None
@@ -615,7 +617,9 @@ class QuickLookupWindow(QDialog):
         self.search.setClearButtonEnabled(True)
         self.search.setMaxLength(2000)
         self.search.textChanged.connect(self._edited)
-        self.search.returnPressed.connect(self.submit)
+        self.search.returnPressed.connect(lambda: self.submit(selection=True))
+        self.search.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.search.customContextMenuRequested.connect(self._input_menu)
         self.header = QWidget()
         header_layout = QHBoxLayout(self.header)
         header_layout.setContentsMargins(0, 0, 0, 0)
@@ -838,6 +842,7 @@ class QuickLookupWindow(QDialog):
 
     def _invalidate(self):
         self.revision += 1
+        self._pending_context = None
         self.stream_timer.stop()
         self._translation_chunk = None
         if self._partial_translation:
@@ -879,11 +884,11 @@ class QuickLookupWindow(QDialog):
             self._invalidate()
             self._restore_actions()
         else:
-            self.submit(translate=True, context=bool(self._peek and self._context))
+            self.submit(translate=True, context=bool(self._context))
 
     def _restore_actions(self):
         current = (self._result is not None and getattr(self, "_result_profile", None) == self.preferred_foreign
-                   and (self._peek or self._result.text == self.search.text().strip()))
+                   and (self._peek or self._result_input == self.search.text().strip()))
         self._display_revision = self.revision if current else None
         self.audio_button.setEnabled(bool(current and self._result.entries))
         self.sentence_audio_button.setEnabled(bool(current and self._result.text))
@@ -916,13 +921,26 @@ class QuickLookupWindow(QDialog):
             self._document_revision = None
             self.browser.clear()
 
-    def submit(self, translate=None, *, context=False, remember=False):
-        text = self._context if context else self.search.text().strip()
+    def submit(self, translate=None, *, context=False, remember=False, selection=False):
+        input_text = self.search.text().strip()
+        selected = self.search.selectedText().strip() if selection else ""
+        selected = selected if selected != input_text else ""
+        sentence = self._context if context else input_text if selected else None
+        text = self._context if context else selected or input_text
+        lookup_context = None
+        if selected:
+            raw = self.search.text()
+            # QLineEdit uses UTF-16 positions; analysis uses Python character offsets.
+            before = raw.encode("utf-16-le")[:self.search.selectionStart() * 2].decode("utf-16-le")
+            start = len(before) - (len(raw) - len(raw.lstrip()))
+            selection_text = self.search.selectedText()
+            start += len(selection_text) - len(selection_text.lstrip())
+            lookup_context = (input_text, start, start + len(selected))
         self.debounce.stop()
         if not text:
             return
         if translate is None:
-            translate = is_sentence(text) and self.settings.value(
+            translate = not selected and is_sentence(text) and self.settings.value(
                 f"profiles/{self.preferred_foreign}/auto_translate_sentence", False, bool)
         self._invalidate()
         self._last_request_translate = bool(translate)
@@ -930,11 +948,11 @@ class QuickLookupWindow(QDialog):
         self._translation_previous = self._result
         self._translation_base = self._result if translate and self._result is not None and (
             self._result.text == text or context) else None
-        self._remember_request = remember or context
+        self._remember_request = remember or context or bool(selected)
         self._restore_actions()
         self._pending_revision = self.revision
         self.busy_delay.start()
-        self._pending_context_translation = (self.revision, text) if context else None
+        self._pending_context = (self.revision, sentence) if sentence else None
         self._set_translation_busy(bool(translate))
         self.status.setText("Translating…" if translate else "Searching…")
         self.status.hide()
@@ -971,6 +989,7 @@ class QuickLookupWindow(QDialog):
                        target=target,
                        pair=(self.preferred_foreign, self.foreign.currentData()),
                        translation_settings=translation_settings,
+                       context=lookup_context if not translate else None,
                        morphology=not translate and self.preferred_foreign != "ja" and
                        self.settings.value(f"profiles/{self.preferred_foreign}/morphology", False, bool))
 
@@ -992,9 +1011,10 @@ class QuickLookupWindow(QDialog):
                 and (not result.entries or partial_japanese) and self.settings.value(
                     f"profiles/{self.preferred_foreign}/auto_translate_miss", False, bool)):
             remember = self._remember_request
+            context = self._pending_context[1] if self._pending_context else result.text
             self._display(result, remember=remember)
-            self.set_context(result.text)
-            self.submit(translate=True, remember=False)
+            self.set_context(context)
+            self.submit(translate=True, context=True, remember=False)
             return
         if self._last_request_translate and self._translation_base is not None:
             base = self._translation_base
@@ -1004,9 +1024,9 @@ class QuickLookupWindow(QDialog):
             else:
                 result = replace(base, message=result.message)
         self._display(result, remember=self._remember_request)
-        if self._pending_context_translation and self._pending_context_translation[0] == revision:
-            self.set_context(self._pending_context_translation[1])
-            self._pending_context_translation = None
+        if self._pending_context and self._pending_context[0] == revision:
+            self.set_context(self._pending_context[1])
+            self._pending_context = None
         elif not self._peek:
             self.set_context(result.text)
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
@@ -1051,7 +1071,8 @@ class QuickLookupWindow(QDialog):
         if remember and not self._new_chain and self._result is not None and not same:
             self._history.append((self._result, getattr(self, "_result_context", ""),
                                   self._result_profile, self._result_target, tuple(self._expanded),
-                                  self.browser.verticalScrollBar().value(), tuple(self._details_expanded)))
+                                  self.browser.verticalScrollBar().value(), tuple(self._details_expanded),
+                                  self._result_input))
             self._history = self._history[-30:]
         if details_expanded is not None:
             self._details_expanded = set(details_expanded)
@@ -1063,6 +1084,7 @@ class QuickLookupWindow(QDialog):
         self._result_profile = self.preferred_foreign
         self._result_target = self.foreign.currentData()
         self._result_context = previous_context if same else ""
+        self._result_input = self.search.text().strip()
         self._expanded = set(expanded)
         self._kanji_expanded = False
         self._render()
@@ -1225,6 +1247,14 @@ class QuickLookupWindow(QDialog):
             self.search.setText(text)
         self.submit(remember=True)
 
+    def _input_menu(self, point):
+        menu = self.search.createStandardContextMenu()
+        if self.search.hasSelectedText():
+            menu.addSeparator()
+            menu.addAction("Look up", lambda: self.submit(translate=False, selection=True))
+        menu.exec(self.search.mapToGlobal(point))
+        menu.deleteLater()
+
     def go_back(self):
         if not self._history:
             return
@@ -1232,7 +1262,7 @@ class QuickLookupWindow(QDialog):
         previous = self._history.pop()
         result, context, profile, target, expanded, scroll = previous[:6]
         with QSignalBlocker(self.search), QSignalBlocker(self.source), QSignalBlocker(self.foreign):
-            self.search.setText(result.text)
+            self.search.setText(previous[7] if len(previous) > 7 else result.text)
             if self.source.findData(profile) < 0:
                 self.source.addItem(language_name(profile), profile)
             self.source.setCurrentIndex(self.source.findData(profile))
@@ -1361,7 +1391,10 @@ class QuickLookupWindow(QDialog):
             self.open_search(text.strip()[:2000], at_cursor=True, passive=passive, selection=True)
 
     def toggle_lookup(self):
-        if self.isVisible() and self.browser.selected_text():
+        if (self.isVisible() and self.search.hasFocus() and self.search.hasSelectedText()
+                and self.search.selectedText().strip() != self.search.text().strip()):
+            self.submit(translate=False, selection=True)
+        elif self.isVisible() and self.browser.selected_text():
             self.browser.lookup_selection()
         elif self.isVisible():
             self.selection.cancel()

@@ -43,6 +43,8 @@ clients remain explicit compatibility entrypoints.
    a per-profile Appearance toggle. Copy and translation retain the complete context.
    Dictionary-provided disclosures remain independently collapsible after pinning,
    including nested Turkdict sections; history restores their state.
+   Explicit word lookup within typed or pasted input retains the full input as
+   sentence context through dictionary analysis, translation, audio, copying and Back.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings

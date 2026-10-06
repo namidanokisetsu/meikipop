@@ -105,6 +105,9 @@ to open or close them independently. Back restores opened sections.
 Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected
 text, preserving the clipboard, or uses the clipboard if nothing is selected. The prefilled
 input remains selected for immediate typing and follows the profile's translation options.
+Select a word within typed or pasted input and press Enter, use the lookup shortcut,
+or choose **Look up** in its context menu. The full input stays in place and supplies
+sentence context for optional lemma lookup, translation, audio, Copy sentence and Back.
 Inside results, select text and choose **Look up** in its context menu or use the existing
 lookup shortcut. Otherwise that shortcut closes the popup. **Look up selection inside results**
 is separate from global selection watching: new profiles default it off, existing profiles

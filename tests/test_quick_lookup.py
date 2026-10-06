@@ -34,10 +34,12 @@ class FakeEngine:
     def __init__(self):
         self.library = SimpleNamespace(packs=[(None, {"language": "de"}, None)])
         self.calls = []
+        self.contexts = []
         self.closed = False
 
-    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None):
+    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None, context=None):
         self.calls.append((text, source, foreign, translate, threading.get_ident()))
+        self.contexts.append(context)
         return SearchResult(text, "ja" if source == "auto" else source, "en",
                             () if translate else (entry(text),), translation="translated" if translate else "")
 
@@ -172,6 +174,81 @@ class QuickLookupTests(unittest.TestCase):
         self.window.search.returnPressed.emit()
         self.wait_until(lambda: len(self.engine.calls) == 2)
         self.assertFalse(self.engine.calls[1][3])
+
+    def test_input_word_lookup_keeps_sentence_for_worker_translation_audio_copy_and_back(self):
+        sentence = "Bu meslek zor."
+        self.window.set_mode("tr")
+        self.window.open_search(sentence)
+        self.wait_until(lambda: self.window._result is not None)
+        self.window.search.setSelection(sentence.index("meslek"), len("meslek"))
+        self.window.search.returnPressed.emit()
+        self.wait_until(lambda: self.window._result.text == "meslek")
+        self.assertEqual(self.engine.calls[-1][0], "meslek")
+        self.assertFalse(self.engine.calls[-1][3])
+        self.assertEqual(self.engine.contexts[-1], (sentence, 3, 9))
+        self.assertEqual(self.window.search.text(), sentence)
+        self.assertEqual(self.window._context, sentence)
+        self.window.audio = Mock()
+        self.window.sentence_audio_button.click()
+        self.assertEqual(self.window.audio.play_text.call_args.args[0], sentence)
+        with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
+            self.window.copy_sentence()
+            clipboard.return_value.setText.assert_called_once_with(sentence)
+        self.window.translate.click()
+        self.wait_until(lambda: bool(self.window._result.translation))
+        self.assertEqual(self.engine.calls[-1][0], sentence)
+        self.assertTrue(self.engine.calls[-1][3])
+        self.assertEqual(self.window._result.entries[0].term, "meslek")
+        self.window.go_back()
+        self.assertEqual(self.window._result.text, "meslek")
+        self.assertEqual(self.window.search.text(), sentence)
+        self.assertEqual(self.window._context, sentence)
+
+    def test_input_selection_shortcut_and_menu_use_japanese_word_and_context(self):
+        sentence = "公園で猫が寝ている。"
+        self.window.open_search(sentence)
+        self.wait_until(lambda: self.window._result is not None)
+        self.window.search.setSelection(sentence.index("猫"), 1)
+        with patch.object(self.window.search, "hasFocus", return_value=True):
+            self.window.toggle_lookup()
+        self.wait_until(lambda: self.window._result.text == "猫")
+        self.assertEqual(self.engine.contexts[-1], (sentence, 3, 4))
+        self.assertTrue(self.window.isVisible())
+        self.window.search.setSelection(sentence.index("公園"), 2)
+        with patch.object(self.window.search, "createStandardContextMenu") as menu:
+            self.window._input_menu(QPoint(1, 1))
+            label, action = menu.return_value.addAction.call_args.args
+            self.assertEqual(label, "Look up")
+            action()
+        self.wait_until(lambda: self.window._result.text == "公園")
+        self.assertEqual(self.window._context, sentence)
+
+    def test_editing_invalidates_pending_input_context_and_cancel_restores_sentence(self):
+        sentence = "Bu meslek zor."
+        self.window.open_search(sentence)
+        self.wait_until(lambda: self.window._result is not None)
+        self.window.search.setSelection(3, 6)
+        self.window.search.returnPressed.emit()
+        self.wait_until(lambda: self.window._result.text == "meslek")
+        with patch.object(self.window.worker, "request"):
+            self.window.submit(selection=True)
+            self.window._invalidate()
+            self.window._restore_actions()
+            self.assertEqual(self.window._context, sentence)
+            self.window.submit(selection=True)
+            revision = self.window.revision
+            self.window.search.setText("new")
+            self.window.deliver(revision, SearchResult("meslek", "tr", "en", (entry("meslek"),)))
+            self.assertEqual(self.window._context, "")
+            self.assertFalse(self.window.copy_button.isEnabled())
+
+    def test_input_context_span_accounts_for_utf16_and_trimmed_whitespace(self):
+        self.window.open_search("  😀 Bu meslek zor.  ")
+        self.wait_until(lambda: self.window._result is not None)
+        self.window.search.setSelection(7, 8)
+        self.window.search.returnPressed.emit()
+        self.wait_until(lambda: self.window._result.text == "meslek")
+        self.assertEqual(self.engine.contexts[-1], ("😀 Bu meslek zor.", 5, 11))
 
     def test_slow_translation_does_not_block_new_lookup_or_overwrite_it(self):
         entered, release = threading.Event(), threading.Event()
@@ -837,7 +914,7 @@ class QuickLookupTests(unittest.TestCase):
             self.assertFalse(button.icon().isNull())
             self.assertEqual(button.text(), "")
 
-    def test_popup_hides_technical_tooltips_and_keeps_copy_preview(self):
+    def test_popup_keeps_model_in_tooltip_and_preserves_copy_preview(self):
         record = replace(entry(source="Jitendex.org [2026-10-03]"),
                          frequencies=(Frequency("Jiten", 186, "186"),))
         self.window.deliver(self.window.revision, SearchResult("猫", "ja", "en", (record,),
@@ -849,7 +926,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("2026-10-03", rendered)
         self.assertNotIn("Hy-MT2", rendered)
         self.assertNotIn("Jiten", self.window.browser.toolTip())
-        self.assertNotIn("Hy-MT2", self.window.translate.toolTip())
+        self.assertIn("Hy-MT2", self.window.translate.toolTip())
         self.assertNotIn("Hy-MT2", self.window.browser.toHtml())
         self.assertFalse(self.window.eventFilter(self.window.translate, QEvent(QEvent.Type.ToolTip)))
         self.assertFalse(self.window.eventFilter(self.window.copy_button, QEvent(QEvent.Type.ToolTip)))
