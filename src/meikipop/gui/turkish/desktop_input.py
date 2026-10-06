@@ -22,6 +22,11 @@ def validate_pin_shortcut(value):
         native = getattr(primary[0], "value", primary[0])
         vk = native.vk
         if vk is None and native.char:
+            # Latin shortcut presets use stable Windows virtual keys even when
+            # the active typing layout cannot produce that character (e.g. RU).
+            if native.char.isascii() and native.char.isalnum():
+                vk = ord(native.char.upper())
+        if vk is None and native.char:
             user32 = ctypes.WinDLL("user32")
             user32.VkKeyScanW.argtypes = [ctypes.c_wchar]
             user32.VkKeyScanW.restype = ctypes.c_short

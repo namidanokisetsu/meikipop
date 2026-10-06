@@ -124,6 +124,16 @@ class ScanGestureTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 self.input.set_pin_shortcut(value)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows virtual keys")
+    def test_latin_pin_presets_work_when_typing_layout_cannot_produce_latin(self):
+        with patch("ctypes.WinDLL") as library:
+            library.return_value.VkKeyScanW.return_value = -1
+            self.input.set_pin_shortcut("c")
+            self.assertEqual(self.input._pin_native[0], 0x43)
+            self.input.set_pin_shortcut("x")
+            self.assertEqual(self.input._pin_native[0], 0x58)
+            library.assert_not_called()
+
 
 class ScanSettingsTests(unittest.TestCase):
     @classmethod
