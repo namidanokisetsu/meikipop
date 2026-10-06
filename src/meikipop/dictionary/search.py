@@ -86,7 +86,9 @@ class SearchEngine:
         return tuple(dict.fromkeys(meta["language"] for _, meta, _ in self.library.packs if meta["enabled"]))
 
     def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
-               morphology=False, context=None):
+               morphology=False, context=None, translation_progress=None, translation_state=None, cancelled=None, request_id=0):
+        if cancelled is not None and cancelled.is_set():
+            raise RuntimeError("Translation cancelled.")
         self.refresh_if_changed()
         text = text.strip()
         if len(text) > 2000:
@@ -142,14 +144,19 @@ class SearchEngine:
         translation = ""
         if translate and text:
             try:
-                translation = self.translator.translate(text, source, target)
+                options = {}
+                if isinstance(self.translator, LocalTranslator):
+                    options = dict(on_text=(lambda value: translation_progress(SearchResult(
+                        text, source, target, translation=value))) if translation_progress else None,
+                                   on_state=translation_state, cancelled=cancelled, request_id=request_id)
+                translation = self.translator.translate(text, source, target, **options)
             except (ImportError, RuntimeError, ValueError) as error:
                 message = str(error)
         kanji = self.library.kanji_info(entries[0].term if entries else text) if not translate and (source == "ja" or target == "ja") else ()
         model = getattr(self.translator, "last_model", "") if translation else ""
         result = SearchResult(text, source, target, entries, suggestions, translation, message, kanji, model, matched_length)
         # A missing or starting local server must be retryable on the same text.
-        if not translate or translation:
+        if (not translate or translation) and not (cancelled is not None and cancelled.is_set()):
             self.cache[cache_key] = result
         if len(self.cache) > 128:
             self.cache.popitem(last=False)

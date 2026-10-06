@@ -150,7 +150,7 @@ class TranslationTests(unittest.TestCase):
             manager.ensure_server.assert_not_called()
             self.translator.translate("猫", "ja", "en")
         manager.ensure_server.assert_called_once_with(endpoint=DEFAULT_ENDPOINT, profile="lightweight",
-                                                      timeout=120, directory=self.directory)
+                                                      timeout=120, directory=self.directory, cancelled=self.translator._cancelled)
         manager.install_model.assert_not_called()
         self.assertEqual(self.translator.last_model, "Hy-MT2-1.8B Q8_0")
 
@@ -263,7 +263,7 @@ class TranslationSetupTests(unittest.TestCase):
         from meikipop.dictionary.translation import load_profile_settings
         self.assertEqual(load_profile_settings(self.dialog.settings, "ja").profile, "lightweight")
         self.assertEqual(load_profile_settings(self.dialog.settings, "tr").profile, "quality")
-        changed.assert_called_once()
+        changed.assert_not_called()
         self.assertFalse(self.dialog.translation_endpoint.isEnabled())
 
     def test_custom_address_is_validated_before_saving_and_has_no_download_action(self):

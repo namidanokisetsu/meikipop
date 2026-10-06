@@ -211,6 +211,8 @@ class SetupDialog(QDialog):
         translation_form.addRow("Server model", self.translation_model)
         self.translation_autostart = QCheckBox("Start installed model when translating")
         translation_form.addRow(self.translation_autostart)
+        self.translation_stream = QCheckBox("Stream translation")
+        translation_form.addRow(self.translation_stream)
         self.translation_routing = {}
         for key, label in (("auto_translate_sentence", "Translate sentences automatically"),
                            ("auto_translate_miss", "Translate after incomplete dictionary matches")):
@@ -240,6 +242,7 @@ class SetupDialog(QDialog):
         self.translation_endpoint.setText(translation_settings.endpoint)
         self.translation_model.setText(translation_settings.model)
         self.translation_autostart.setChecked(translation_settings.auto_start)
+        self.translation_stream.setChecked(translation_settings.stream)
         self.translation_mode.currentIndexChanged.connect(self.update_translation_controls)
         self.update_translation_controls()
 
@@ -386,6 +389,7 @@ class SetupDialog(QDialog):
         for control in (self.translation_endpoint, self.translation_model):
             control.editingFinished.connect(lambda: self.autosave(self.save_translation))
         self.translation_autostart.toggled.connect(lambda _: self.autosave(self.save_translation))
+        self.translation_stream.toggled.connect(lambda _: self.autosave(self.save_translation))
         for control in (self.scan_key, self.scan_mouse):
             control.currentIndexChanged.connect(lambda _: self.autosave(self.save_shortcut))
         for control in (self.shortcut, self.pin_shortcut):
@@ -605,6 +609,7 @@ class SetupDialog(QDialog):
         self.translation_endpoint.setText(translation.endpoint)
         self.translation_model.setText(translation.model)
         self.translation_autostart.setChecked(translation.auto_start)
+        self.translation_stream.setChecked(translation.stream)
         self.appearance.reload()
         self.show_component_controls()
         self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(self.settings.value(f"profiles/{code}/pin_gesture", self.settings.value("pin_gesture", "left")))))
@@ -718,7 +723,7 @@ class SetupDialog(QDialog):
                 provider="custom" if mode == "custom" else "server",
                 profile=mode if mode != "custom" else "quality",
                 endpoint=self.translation_endpoint.text(), model=self.translation_model.text(),
-                auto_start=self.translation_autostart.isChecked()))
+                auto_start=self.translation_autostart.isChecked(), stream=self.translation_stream.isChecked()))
             self.settings.setValue(f"profiles/{code}/target", self.translation_partner.currentData())
             for key, control in (("source", self.translation_source), ("target", self.translation_target)):
                 self.settings.setValue(f"profiles/{code}/translation_{key}", control.currentData())

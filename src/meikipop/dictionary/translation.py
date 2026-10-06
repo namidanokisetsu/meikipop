@@ -12,6 +12,7 @@ import threading
 from urllib.parse import urlsplit
 
 from .library import language_code
+from meikipop.utils.timing import mark
 
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:8766/v1"
@@ -71,11 +72,12 @@ class TranslationSettings:
     endpoint: str = DEFAULT_ENDPOINT
     model: str = DEFAULT_MODEL
     auto_start: bool = True
+    stream: bool = True
 
     def validated(self):
         if self.provider not in ("server", "custom") or self.profile not in tuple(MODEL_NAMES):
             raise ValueError("Choose a translation model in Settings.")
-        if not isinstance(self.auto_start, bool):
+        if not all(isinstance(value, bool) for value in (self.auto_start, self.stream)):
             raise ValueError("Invalid local server startup setting.")
         if self.provider == "server":
             endpoint, model = DEFAULT_ENDPOINT, DEFAULT_MODEL
@@ -86,7 +88,7 @@ class TranslationSettings:
             if any(ord(char) < 32 for char in self.model):
                 raise ValueError("Invalid local server model name.")
             model = self.model.strip()
-        return TranslationSettings(self.provider, self.profile, endpoint, model, self.auto_start)
+        return TranslationSettings(self.provider, self.profile, endpoint, model, self.auto_start, self.stream)
 
 
 def load_settings(directory=None):
@@ -186,8 +188,10 @@ class LocalTranslator:
     def cache_key(self):
         return self.settings_override or load_settings(self.directory)
 
-    def translate(self, text, source, target):
-        self._cancelled.clear()
+    def translate(self, text, source, target, *, on_text=None, cancelled=None, on_state=None, request_id=0):
+        self._cancelled = cancelled if cancelled is not None else threading.Event()
+        if self._cancelled.is_set():
+            raise RuntimeError("Translation cancelled.")
         self.last_provider = self.last_model = ""
         source, target = language_code(source), language_code(target)
         if not text.strip() or source == target:
@@ -203,16 +207,20 @@ class LocalTranslator:
                 if code.split("-", 1)[0] not in MANAGED_LANGUAGES:
                     raise ValueError(f"Hy-MT2 does not list support for {code}. Dictionary lookup is still available.")
         if settings.provider == "server" and settings.auto_start:
+            mark("model_start_or_wake", request_id)
+            if on_state:
+                on_state("Starting " + MODEL_NAMES[settings.profile])
             from meikipop.scripts.translation_server import ensure_server
             ensure_server(endpoint=DEFAULT_ENDPOINT, profile=settings.profile, timeout=120,
-                          directory=self.directory)
+                          directory=self.directory, cancelled=self._cancelled)
+            mark("model_ready", request_id)
         prompt = (f"Translate the following text into {target_name}. Note that you should only output "
                   "the translated result without any additional explanation:\n" + text)
         # Publisher parameters mapped to llama.cpp's repeat_penalty spelling.
         # https://huggingface.co/tencent/Hy-MT2-7B-GGUF
         request = dict(model=settings.model, messages=[dict(role="user", content=prompt)],
                        temperature=0.7, top_p=0.6, top_k=20, repeat_penalty=1.05,
-                       min_p=0.0, max_tokens=4096, stream=False)
+                       min_p=0.0, max_tokens=4096, stream=bool(on_text and settings.stream))
         if settings.provider == "server":
             # Match Transformers' penalty -> temperature -> top-k -> top-p
             # ordering, rather than llama.cpp's extra default sampler filters.
@@ -231,23 +239,42 @@ class LocalTranslator:
                     raise RuntimeError("Translation cancelled.")
                 self._connection = connection
             # http.client bypasses environment proxies and never follows redirects.
+            mark("translation_dispatch", request_id)
+            if on_state:
+                on_state(MODEL_NAMES[settings.profile] if settings.provider == "server" else settings.model)
             connection.request("POST", endpoint.path + "/chat/completions",
                                body=json.dumps(request, ensure_ascii=False).encode("utf-8"),
-                               headers={"Content-Type": "application/json", "Accept": "application/json"})
+                               headers={"Content-Type": "application/json", "Accept": "text/event-stream" if request["stream"] else "application/json"})
             response = connection.getresponse()
             if response.status != 200:
+                if request["stream"] and settings.provider == "custom" and response.status in (400, 422, 501):
+                    raise RuntimeError("Streaming is unavailable. Turn off Stream translation in Settings for this server.")
                 raise RuntimeError(f"Local translation server returned HTTP {response.status}. Check Settings.")
-            payload = response.read(1024 * 1024 + 1)
-            if len(payload) > 1024 * 1024:
-                raise RuntimeError("The local translation response was too large.")
-            try:
-                result = json.loads(payload)
-            except (ValueError, UnicodeError) as error:
-                raise RuntimeError("The local server returned invalid JSON.") from error
-            translated = _translation_content(result)
+            if request["stream"] and str(response.getheader("Content-Type", "")).startswith("text/event-stream"):
+                from .translation_stream import read_translation
+                first = True
+                def progress(text):
+                    nonlocal first
+                    if first and text:
+                        mark("translation_first_text", request_id)
+                        first = False
+                    on_text(text)
+                translated = read_translation(response, self._cancelled, progress)
+            else:
+                # A server may answer the same request with JSON. Never replay it.
+                payload = response.read(1024 * 1024 + 1)
+                if len(payload) > 1024 * 1024:
+                    raise RuntimeError("The local translation response was too large.")
+                try:
+                    result = json.loads(payload)
+                except (ValueError, UnicodeError) as error:
+                    raise RuntimeError("The local server returned invalid JSON.") from error
+                translated = _translation_content(result)
             if self._cancelled.is_set():
                 raise RuntimeError("Translation cancelled.")
         except (OSError, http.client.HTTPException) as error:
+            if self._cancelled.is_set():
+                raise RuntimeError("Translation cancelled.") from error
             raise RuntimeError("Cannot reach the local translation server. Start it or check Setup.") from error
         finally:
             with self._connection_lock:
@@ -255,4 +282,5 @@ class LocalTranslator:
                 connection.close()
         self.last_provider = settings.provider
         self.last_model = MODEL_NAMES[settings.profile] if settings.provider == "server" else settings.model
+        mark("translation_done", request_id)
         return translated

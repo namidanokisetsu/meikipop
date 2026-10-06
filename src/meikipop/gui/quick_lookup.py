@@ -54,12 +54,15 @@ class LookupWorker(QObject):
     completed = pyqtSignal(int, object)
     failed = pyqtSignal(int, str)
     languages = pyqtSignal(object)
+    progress = pyqtSignal(int, object)
+    translation_state = pyqtSignal(int, str)
 
     def __init__(self, directory=None, engine_factory=None):
         super().__init__()
         self._factory = engine_factory or (lambda: SearchEngine(directory))
         self._condition = threading.Condition()
         self._pending = None
+        self._active_cancel = None
         self._refresh = True
         self._stopped = False
         self._engine = None
@@ -73,12 +76,17 @@ class LookupWorker(QObject):
         self.cancel()
         mark("dispatch", revision, translation=translate)
         with self._condition:
-            self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings, morphology)
+            self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings, morphology,
+                             threading.Event())
             self._condition.notify()
 
     def cancel(self):
         with self._condition:
+            if self._pending is not None:
+                self._pending[-1].set()
             self._pending = None
+            if self._active_cancel is not None:
+                self._active_cancel.set()
             translator = getattr(self._engine, "translator", None)
         cancel = getattr(translator, "cancel", None)
         if callable(cancel):
@@ -114,6 +122,7 @@ class LookupWorker(QObject):
                     if self._stopped:
                         return
                     pending, self._pending = self._pending, None
+                    self._active_cancel = pending[-1] if pending else None
                     refresh, self._refresh = self._refresh, False
                 try:
                     if engine is None:
@@ -128,13 +137,17 @@ class LookupWorker(QObject):
                         codes = sorted({meta["language"] for _, meta, _ in engine.library.packs})
                         self._emit(self.languages, codes)
                     if pending is not None:
-                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology = pending
+                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology, cancelled = pending
                         mark("dequeue", revision)
                         options = {"target": target} if target else {}
                         if pair:
                             options.update(pair=pair, translation_settings=translation_settings)
                         if morphology:
                             options["morphology"] = True
+                        if isinstance(engine, SearchEngine):
+                            options.update(cancelled=cancelled, request_id=revision,
+                                           translation_progress=lambda result: self._emit(self.progress, revision, result),
+                                           translation_state=lambda value: self._emit(self.translation_state, revision, value))
                         result = engine.search(text, source=source, foreign=foreign, translate=translate, **options)
                         mark("lookup_done", revision)
                         self._emit(self.completed, revision, result)
@@ -463,6 +476,10 @@ class QuickLookupWindow(QDialog):
         self._translation_busy = False
         self._last_request_translate = False
         self._translation_base = None
+        self._translation_previous = None
+        self._partial_translation = False
+        self._translation_chunk = None
+        self._translation_model_state = ""
         self._remember_request = False
         self.audio = None
         self._autoplayed = None
@@ -618,6 +635,10 @@ class QuickLookupWindow(QDialog):
         self.render_timer = QTimer(self)
         self.render_timer.setSingleShot(True)
         self.render_timer.timeout.connect(self._render)
+        self.stream_timer = QTimer(self)
+        self.stream_timer.setSingleShot(True)
+        self.stream_timer.setInterval(80)
+        self.stream_timer.timeout.connect(self._flush_translation)
         self.source.currentIndexChanged.connect(self._mode_changed)
         self.foreign.currentIndexChanged.connect(self._mode_changed)
         self.worker = LookupWorker(directory, engine_factory)
@@ -773,6 +794,16 @@ class QuickLookupWindow(QDialog):
 
     def _invalidate(self):
         self.revision += 1
+        self.stream_timer.stop()
+        self._translation_chunk = None
+        if self._partial_translation:
+            self._partial_translation = False
+            self._result = self._translation_previous
+            if self._result is not None:
+                self._render()
+            else:
+                self.browser.clear()
+                self._render_identity = None
         self._pending_revision = None
         self.busy_delay.stop()
         self._remember_request = False
@@ -787,6 +818,8 @@ class QuickLookupWindow(QDialog):
             self.translate.setIcon(action_icon("close", config.color_foreground))
             self.translate.setToolTip("Cancel translation" if self._translation_busy else "Cancel lookup")
             self.translate.setAccessibleName(self.translate.toolTip())
+            if self._translation_busy and self._translation_model_state:
+                self.translate.setToolTip(self.translate.toolTip() + "\n" + self._translation_model_state)
             self.translate.setEnabled(True)
 
     def _clear_actions(self):
@@ -844,6 +877,8 @@ class QuickLookupWindow(QDialog):
                 f"profiles/{self.preferred_foreign}/auto_translate_sentence", False, bool)
         self._invalidate()
         self._last_request_translate = bool(translate)
+        self._translation_model_state = ""
+        self._translation_previous = self._result
         self._translation_base = self._result if translate and self._result is not None and (
             self._result.text == text or context) else None
         self._remember_request = remember or context
@@ -862,6 +897,8 @@ class QuickLookupWindow(QDialog):
                 self.translation_worker = LookupWorker(self.directory, self._engine_factory)
                 self.translation_worker.completed.connect(self.deliver)
                 self.translation_worker.failed.connect(self._failed)
+                self.translation_worker.progress.connect(self._translation_progress)
+                self.translation_worker.translation_state.connect(self._translation_state_changed)
                 self.translation_worker.start()
             worker = self.translation_worker
         source = self._result.source if context and self._result else "auto"
@@ -894,6 +931,11 @@ class QuickLookupWindow(QDialog):
             return
         mark("accepted", revision)
         self._pending_revision = None
+        self.stream_timer.stop()
+        self._translation_chunk = None
+        if self._partial_translation:
+            self._result = self._translation_previous
+        self._partial_translation = False
         self.busy_delay.stop()
         self._set_translation_busy(False)
         partial_japanese = result.source == "ja" and 0 < result.matched_length < len(result.text)
@@ -920,6 +962,38 @@ class QuickLookupWindow(QDialog):
             self.set_context(result.text)
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
         self.status.hide()
+
+    def _translation_state_changed(self, revision, state):
+        if revision == self.revision and self._translation_busy:
+            self._translation_model_state = state
+            self.translate.setToolTip("Cancel translation\n" + state)
+
+    def _translation_progress(self, revision, result):
+        if revision != self.revision or self._shutting_down or not self._translation_busy:
+            mark("discard", revision, reason="obsolete_chunk")
+            return
+        self._translation_chunk = result
+        if not self.stream_timer.isActive():
+            self.stream_timer.start()
+
+    def _flush_translation(self):
+        result, self._translation_chunk = self._translation_chunk, None
+        if result is None or not self._translation_busy:
+            return
+        if self.browser.selecting:
+            self._translation_chunk = result
+            self.stream_timer.start()
+            return
+        bar = self.browser.verticalScrollBar()
+        at_end = bar.value() >= bar.maximum() - 2
+        base = self._translation_base
+        if base is not None:
+            result = replace(result, entries=base.entries, suggestions=base.suggestions, kanji=base.kanji)
+        self._result = result
+        self._partial_translation = True
+        self._render()
+        if at_end:
+            bar.setValue(bar.maximum())
 
     def _display(self, result, remember=True, expanded=()):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
@@ -1036,6 +1110,8 @@ class QuickLookupWindow(QDialog):
 
     def _failed(self, revision, message):
         if revision in (-1, self.revision):
+            if self._partial_translation:
+                self._invalidate()
             self._pending_revision = None
             self.busy_delay.stop()
             self._set_translation_busy(False)

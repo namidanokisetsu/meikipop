@@ -312,7 +312,7 @@ def shutdown_server(permanent=False):
         _terminate_owned()
 
 
-def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, directory=None):
+def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, directory=None, cancelled=None):
     """Start an installed model. This function has no download or setup path."""
     global _process, _running_model
     parsed = urlsplit(endpoint.rstrip("/"))
@@ -323,6 +323,8 @@ def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, dir
         raise ValueError("Choose quality or lightweight translation.")
     executable, model = _installed_paths(profile, directory)
     with _lock:
+        if cancelled is not None and cancelled.is_set():
+            raise RuntimeError("Translation startup cancelled.")
         if _closed.is_set():
             raise RuntimeError("Translation server is shutting down.")
         _stop_requested.clear()
@@ -334,7 +336,8 @@ def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, dir
                 if Path(props.get("model_path", "")).resolve() != model:
                     raise RuntimeError("Port 8766 is used by another model. Stop that server or choose Custom in Settings.")
             return
-        if _process is None:
+        launched = _process is None
+        if launched:
             options = dict(cwd=str(executable.parent), stdin=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            env={key: value for key, value in os.environ.items() if not key.startswith("LLAMA_")})
@@ -345,7 +348,7 @@ def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, dir
         deadline = time.monotonic() + timeout
         try:
             while time.monotonic() < deadline:
-                if _stop_requested.wait(0.1):
+                if _stop_requested.wait(0.1) or cancelled is not None and cancelled.is_set():
                     raise RuntimeError("Translation startup cancelled.")
                 if _process.poll() is not None:
                     raise RuntimeError("Local translation could not start. Check GPU drivers and available memory, or select Lightweight.")
@@ -353,7 +356,8 @@ def ensure_server(endpoint=DEFAULT_ENDPOINT, profile="quality", timeout=120, dir
                     return
             raise RuntimeError("Local translation took too long to start. Try Lightweight in Settings.")
         except BaseException:
-            _terminate_owned()
+            if launched:
+                _terminate_owned()
             raise
 
 
