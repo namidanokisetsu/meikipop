@@ -112,7 +112,7 @@ class ProfileAppearance(QWidget):
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
         self.form.setRowVisible(self.headword_furigana, self.profile() == "ja")
-        self.definition_furigana.setChecked(self.settings.value("profiles/ja/definition_furigana", False, bool))
+        self.definition_furigana.setChecked(self.settings.value("profiles/ja/definition_furigana", True, bool))
         self.form.setRowVisible(self.definition_furigana, self.profile() == "ja")
         self.form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
         for key, widget in self.controls.items():

@@ -89,6 +89,22 @@ class QuickLookupTests(unittest.TestCase):
         self.window.deliver(revision, SearchResult("old", "ja", "en", (entry("OLD"),)))
         self.assertNotIn("OLD", self.window.browser.toPlainText())
 
+    def test_dictionary_readings_use_ruby_unless_explicitly_disabled(self):
+        definition = {"type": "structured-content", "content": {"tag": "ruby", "content": [
+            "猫", {"tag": "rt", "content": "ねこ"}]}}
+        result = entry(definitions=(definition,))
+        self.window.show_entries((result,), "猫")
+        self.assertIn('\ufffc', self.window.browser.document().toPlainText())
+        self.settings.setValue("profiles/ja/definition_furigana", False)
+        self.window._render()
+        self.assertIn("猫 [ねこ]", self.window.browser.toPlainText())
+
+    def test_empty_font_setting_uses_application_default_family(self):
+        from PyQt6.QtGui import QFont
+        self.settings.setValue("profiles/ja/font_family", "")
+        self.window.reload_appearance()
+        self.assertEqual(self.window.browser.font().family(), QFont().family())
+
     def test_morphology_option_follows_profile_for_dictionary_lookup_only(self):
         self.settings.setValue("profiles/tr/morphology", True)
         self.window.set_mode("tr")
@@ -1319,6 +1335,7 @@ class QuickLookupTests(unittest.TestCase):
     def test_mac_search_survives_delayed_application_activation(self):
         with patch("sys.platform", "darwin"), patch.object(QApplication, "platformName", return_value="cocoa"), \
                 patch.object(self.window, "isActiveWindow", return_value=False), \
+                patch("meikipop.utils.window_focus.configure_macos_popup"), \
                 patch("meikipop.utils.window_focus.focus_search"), \
                 patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-5000, -5000)):
             self.window.open_search()

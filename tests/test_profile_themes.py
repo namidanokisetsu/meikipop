@@ -58,11 +58,10 @@ class ProfileThemeTests(unittest.TestCase):
             widget = ProfileAppearance(settings, lambda: profile[0], Mock())
             try:
                 self.assertFalse(widget.headword_furigana.isChecked())
-                self.assertFalse(widget.definition_furigana.isChecked())
+                self.assertTrue(widget.definition_furigana.isChecked())
                 self.assertEqual(widget.controls['furigana_scale'].value(), 50)
                 widget.controls['furigana_scale'].setValue(60)
                 widget.headword_furigana.click()
-                widget.definition_furigana.click()
                 self.assertTrue(settings.value('profiles/ja/definition_furigana', False, bool))
                 self.assertTrue(settings.value('profiles/ja/headword_furigana', False, bool))
                 profile[0] = 'tr'
@@ -80,6 +79,18 @@ class ProfileThemeTests(unittest.TestCase):
                 self.assertTrue(widget.definition_furigana.isChecked())
                 self.assertTrue(widget.form.isRowVisible(widget.headword_furigana))
                 self.assertEqual(widget.controls['furigana_scale'].value(), 60)
+            finally:
+                widget.deleteLater()
+
+    def test_explicit_definition_reading_preference_is_preserved(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            settings.setValue('profiles/ja/definition_furigana', False)
+            widget = ProfileAppearance(settings, lambda: 'ja', Mock())
+            try:
+                self.assertFalse(widget.definition_furigana.isChecked())
+                widget.save()
+                self.assertFalse(settings.value('profiles/ja/definition_furigana', True, bool))
             finally:
                 widget.deleteLater()
 

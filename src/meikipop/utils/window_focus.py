@@ -2,6 +2,31 @@
 import sys
 
 
+def configure_macos_popup(window):
+    from PyQt6.QtWidgets import QApplication
+    if sys.platform != "darwin" or QApplication.platformName() == "offscreen":
+        return
+    import ctypes
+    import objc
+    import AppKit
+    view = objc.objc_object(c_void_p=ctypes.c_void_p(int(window.winId())))
+    native = view.window()
+    # A regular Dock app's panel needs this style to join another app's
+    # fullscreen Space without activating Meikipop or leaving the game.
+    native.setStyleMask_(int(native.styleMask()) | AppKit.NSWindowStyleMaskNonactivatingPanel)
+    behavior = int(native.collectionBehavior())
+    behavior &= ~(AppKit.NSWindowCollectionBehaviorMoveToActiveSpace
+                  | AppKit.NSWindowCollectionBehaviorFullScreenPrimary
+                  | AppKit.NSWindowCollectionBehaviorFullScreenNone)
+    behavior |= (AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
+                 | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary)
+    all_apps = getattr(AppKit, "NSWindowCollectionBehaviorCanJoinAllApplications", 0)
+    if all_apps and AppKit.NSProcessInfo.processInfo().operatingSystemVersion()[0] >= 13:
+        behavior &= ~(AppKit.NSWindowCollectionBehaviorPrimary | AppKit.NSWindowCollectionBehaviorAuxiliary)
+        behavior |= all_apps
+    native.setCollectionBehavior_(behavior)
+
+
 def foreground_window():
     if sys.platform != "win32":
         return None

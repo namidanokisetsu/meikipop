@@ -830,7 +830,7 @@ class QuickLookupWindow(QDialog):
             QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal {{width:0;}}
             QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal {{background:transparent;}}
         ''')
-        font = QFont(config.font_family)
+        font = QFont(config.font_family) if config.font_family else QFont()
         font.setPixelSize(config.font_size_definitions)
         self.browser.setFont(font)
         self.search.setFont(font)
@@ -1183,7 +1183,7 @@ class QuickLookupWindow(QDialog):
                         tuple(getattr(config, key) for key in DEFAULTS), self.devicePixelRatioF(),
                         self.audio_actions.sizeHint().width(), show_source, source_text if show_source else None,
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
-                        self.settings.value("profiles/ja/definition_furigana", False, bool),
+                        self.settings.value("profiles/ja/definition_furigana", True, bool),
                         self.settings.value("profiles/ja/show_pitch", True, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool))
             if identity == self._render_identity:
@@ -1200,7 +1200,7 @@ class QuickLookupWindow(QDialog):
                                                show_source=show_source, source_text=source_text,
                                                details_expanded=self._details_expanded,
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
-                                               definition_furigana=self.settings.value("profiles/ja/definition_furigana", False, bool),
+                                               definition_furigana=self.settings.value("profiles/ja/definition_furigana", True, bool),
                                                show_pitch=self.settings.value("profiles/ja/show_pitch", True, bool),
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
@@ -1834,6 +1834,11 @@ class QuickLookupWindow(QDialog):
         if (not self._peek or (self.is_pinned and sys.platform != "darwin")) and not self.isActiveWindow() and not setup_open \
                 and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None:
             self.hide()
+
+    def showEvent(self, event):
+        from meikipop.utils.window_focus import configure_macos_popup
+        configure_macos_popup(self)
+        super().showEvent(event)
 
     def hideEvent(self, event):
         if self._capture_visibility:
