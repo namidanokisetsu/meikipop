@@ -50,8 +50,6 @@ clients remain explicit compatibility entrypoints.
    Optional per-profile Sentence view adds clickable words through the same worker;
    Japanese grouping reuses deconjugation, while other scripts reuse language policies.
    Original offsets, selected words and sentence input survive history navigation.
-   Windows selection capture first uses a bounded UI Automation read with placement
-   beside available text bounds, retaining copy-and-restore for unsupported controls.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings

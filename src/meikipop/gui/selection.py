@@ -18,10 +18,6 @@ class SelectionCapture(QObject):
         self.timer.timeout.connect(self.poll)
         self.original = None
         self.foreground = None
-        self.revision = 0
-        self.native_pending = False
-        self.native_reader = None
-        self.rectangles = ()
         if sys.platform == "win32":
             import ctypes
             from ctypes import wintypes
@@ -43,7 +39,6 @@ class SelectionCapture(QObject):
                 self.unavailable.emit(True)
             return
         self.foreground = self.user32.GetForegroundWindow()
-        self.rectangles = ()
         self.copy_timeout = copy_timeout
         self.timer.setInterval(5 if copy_timeout <= .05 else 15)
         self.waiting = wait_for_modifiers
@@ -53,40 +48,7 @@ class SelectionCapture(QObject):
             self.timer.start()
             self.poll()
             return
-        self.read_native()
-
-    def read_native(self):
-        if sys.platform == "win32":
-            if self.native_reader is None:
-                from meikipop.gui.native_selection import NativeSelectionReader
-                self.native_reader = NativeSelectionReader(self)
-                self.native_reader.completed.connect(self.native_completed)
-            self.pending = self.native_pending = True
-            self.waiting = False
-            self.deadline = monotonic() + .25
-            self.timer.start()
-            if self.native_reader.request(self.revision, self.foreground):
-                return
-            self.native_pending = False
         self.copy()
-
-    def native_completed(self, revision, result):
-        if revision != self.revision or not self.pending or not self.native_pending:
-            return
-        if self.user32.GetForegroundWindow() != self.foreground:
-            self.cancel()
-            self.unavailable.emit(False)
-            return
-        self.native_pending = False
-        if result.status == "unsupported":
-            self.copy()
-            return
-        self.cancel()
-        if result.status == "selected":
-            self.rectangles = result.rectangles
-            self.completed.emit(result.text)
-        else:
-            self.unavailable.emit(result.status == "empty")
 
     def copy(self):
         # Do not release modifiers the reader is holding or copy into a new foreground app.
@@ -130,12 +92,6 @@ class SelectionCapture(QObject):
                 self.cancel()
                 self.unavailable.emit(False)
             elif not any(self.user32.GetAsyncKeyState(key) & 0x8000 for key in (0x10, 0x11, 0x12, 0x5B, 0x5C)):
-                self.read_native()
-            return
-        if self.native_pending:
-            if monotonic() >= self.deadline:
-                self.native_pending = False
-                self.revision += 1
                 self.copy()
             return
         sequence = self.user32.GetClipboardSequenceNumber()
@@ -155,8 +111,6 @@ class SelectionCapture(QObject):
             self.unavailable.emit(True)
 
     def cancel(self):
-        self.revision += 1
-        self.native_pending = False
         self.timer.stop()
         self.pending = False
         if self.original is not None:

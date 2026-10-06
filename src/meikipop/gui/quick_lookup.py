@@ -561,7 +561,6 @@ class QuickLookupWindow(QDialog):
         self._passive_text = False
         self._selection_passive = False
         self._selection_for_search = False
-        self._selection_bounds = None
         self._capture_visibility = False
         self.setWindowTitle("Meikipop")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -1371,17 +1370,6 @@ class QuickLookupWindow(QDialog):
             self.go_back()
 
     def _place(self):
-        bounds = self._selection_bounds
-        if bounds is not None and not self._peek:
-            screen = QApplication.screenAt(bounds.center()) or QApplication.primaryScreen()
-            area = screen.availableGeometry()
-            below, above = area.bottom() - bounds.bottom() - 6, bounds.top() - area.top() - 6
-            available = max(below, above)
-            if available >= self.minimumHeight():
-                self.resize(self.width(), min(self.height(), available))
-                y = bounds.bottom() + 7 if below >= self.height() else bounds.top() - self.height() - 6
-                self.move(max(area.left(), min(bounds.left(), area.right() - self.width() + 1)), y)
-                return
         mark("place", self.revision)
         point = QCursor.pos()
         tray = self.tray_geometry() if not self._peek and not self._manual_at_cursor and self.tray_geometry else None
@@ -1429,8 +1417,7 @@ class QuickLookupWindow(QDialog):
                 self.header.layout().addWidget(self.audio_actions)
             self.audio_actions.show()
 
-    def open_search(self, text="", *, at_cursor=False, passive=False, selection=False, selection_bounds=None):
-        self._selection_bounds = selection_bounds
+    def open_search(self, text="", *, at_cursor=False, passive=False, selection=False):
         self.remember_foreground()
         self._history.clear()
         self._new_chain = True
@@ -1464,10 +1451,9 @@ class QuickLookupWindow(QDialog):
         if text:
             self.submit()
 
-    def lookup_selected(self, text, *, passive=False, selection_bounds=None):
+    def lookup_selected(self, text, *, passive=False):
         if text.strip():
-            self.open_search(text.strip()[:2000], at_cursor=True, passive=passive, selection=True,
-                             selection_bounds=selection_bounds)
+            self.open_search(text.strip()[:2000], at_cursor=True, passive=passive, selection=True)
 
     def toggle_lookup(self):
         if (self.isVisible() and self.search.hasFocus() and self.search.hasSelectedText()
@@ -1503,15 +1489,11 @@ class QuickLookupWindow(QDialog):
         self.selection.start(wait_for_modifiers=True, copy_timeout=.05)
 
     def _selected_text_ready(self, text):
-        bounds = None
-        if sys.platform == "win32" and self.selection.rectangles:
-            from meikipop.gui.native_selection import selection_bounds
-            bounds = selection_bounds(self.selection.rectangles)
         if self._selection_for_search:
             self._selection_for_search = False
-            self.open_search(text, selection_bounds=bounds)
+            self.open_search(text)
         else:
-            self.lookup_selected(text, passive=self._selection_passive, selection_bounds=bounds)
+            self.lookup_selected(text, passive=self._selection_passive)
 
     def _selection_unavailable(self, same_application):
         requested, self._selection_for_search = self._selection_for_search, False

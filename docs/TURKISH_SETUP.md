@@ -114,9 +114,6 @@ is separate from global selection watching: new profiles default it off, existin
 retain automatic lookup. Native selection and copying remain available. Ordinary settings save immediately;
 downloads, imports and removals require their action buttons.
 Automatic lookup on double-click or drag selection is disabled by default and configured per profile.
-On Windows, selection lookup first tries UI Automation with a bounded background read.
-Unsupported controls use the existing copy-and-restore fallback. Available selection
-bounds place the popup beside the text; password controls are excluded.
 These previews leave keyboard focus in the original app. Selected-text lookup preserves the clipboard.
 Copy sentence changes the clipboard only when invoked.
 
