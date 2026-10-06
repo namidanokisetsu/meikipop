@@ -66,11 +66,14 @@ Kanji always use compact cards with meanings and readings, without a separate la
 The top controls are Translate, Read sentence, then Read word. In pinned OCR results they
 sit alongside the heading; language switching stays in the tray and Settings.
 Sentence reading uses system TTS even when a Japanese word-audio database is configured.
-Right-click Read word to choose a pronunciation source. **Audio → Source priority**
-orders recordings and System voice, including TTS first. Each language can use its
-own local `android.db` recordings database; recordings are not bundled, and Turkish
-recordings require a compatible Turkish database. Missing recordings fall through
-the selected order. Sentence reading always uses an installed system voice.
+**Audio → Pronunciation** selects Online pronunciations, System voice, or Local recordings.
+Online uses Wiktionary and Lingua Libre recordings on Wikimedia Commons, then system TTS
+when unavailable. It sends the word and language, caches recordings in memory, and requires
+no account; coverage depends on contributed recordings. Existing database profiles retain
+Local recordings. Its database and priority controls appear only in that mode;
+`android.db` is the supported Local Audio Server format, not an Android requirement.
+Right-click Read word to choose a source or open the current recording's attribution page.
+Sentence reading always uses an installed system voice.
 **Settings → Audio → Autoplay** saves immediately per profile: Off, On lookup, or When pinned.
 When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
 Automatic selection lookups honor On lookup autoplay.
@@ -356,9 +359,10 @@ the table describes available features whether or not their resources are alread
 - **Morphology:** Japanese uses bundled deconjugation rules; **Stanza** enables optional lemma
   fallback after installing its [language model](https://stanfordnlp.github.io/stanza/available_models.html).
   Imported forms work in every profile. Turkish also supports accent recovery.
-- **Audio:** every profile supports system TTS and compatible local recording databases.
-  Available voices and recordings determine language coverage. Users can order sources,
-  put TTS first, and choose a source by right-clicking the audio button.
+- **Audio:** every profile offers online Wikimedia pronunciations, system TTS, and compatible
+  local databases. Available recordings and installed voices determine coverage. The online
+  lookup follows [Yomitan's Wikimedia source approach](https://github.com/yomidevs/yomitan/blob/master/ext/js/media/audio-downloader.js);
+  it is not a live Forvo integration.
 
 `-` means the named model has no entry for that language; it does not restrict other
 providers or imported dictionaries. Script-specific entries apply to the indicated script.

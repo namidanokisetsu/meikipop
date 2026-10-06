@@ -50,6 +50,11 @@ clients remain explicit compatibility entrypoints.
    Dictionary-provided disclosures remain independently collapsible after pinning,
    including nested Turkdict sections; toggles preserve the reading position and
    history restores their state.
+   Audio separates Online pronunciations, System voice and Local recordings. Online
+   retrieves language-matched Wiktionary/Lingua Libre files from Wikimedia Commons on
+   the audio worker, with bounded downloads, an in-memory cache and system TTS fallback.
+   Recording attribution remains accessible from the audio menu. Existing local database
+   profiles keep their priority order; other profiles default to online word audio.
    Explicit word lookup within typed or pasted input retains the full input as
    sentence context through dictionary analysis, translation, audio, copying and Back.
 
@@ -84,7 +89,9 @@ clients remain explicit compatibility entrypoints.
    Model creation and inference remain off the Qt thread. Copy sentence is an
    explicit local clipboard action using visible scanned context, with a local
    Ctrl/Cmd+Shift+C shortcut. History retains that context. No automatic text
-   upload or ChatGPT API connection is added. Pointer hit-testing reuses recognized
+   upload for dictionary/translation lookup or ChatGPT API connection is added.
+   Online pronunciation mode sends only the requested word and language to Wikimedia.
+   Pointer hit-testing reuses recognized
    frames independently of fresh recognition, with dictionary work on a separate worker.
    Windows captures regions through worker-owned MSS with immutable geometry and pixel
    ownership; unsupported capture uses the guarded Qt fallback. Capture exclusion is held

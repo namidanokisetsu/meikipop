@@ -1519,7 +1519,15 @@ class QuickLookupWindow(QDialog):
         menu.addSeparator()
         for source in source_order(self.settings, language):
             action = menu.addAction(source_label(source), lambda checked=False, source=source: self.play_audio(source=source))
-            action.setEnabled(source == "tts" or bool(database_path(self.settings, language)))
+            action.setEnabled(source in ("tts", "online") or bool(database_path(self.settings, language)))
+        clip = getattr(self.audio, "current_clip", None)
+        if clip and clip.page_url.startswith("https://commons.wikimedia.org/"):
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtGui import QDesktopServices
+            menu.addSeparator()
+            credit = menu.addAction("Recording source…", lambda: QDesktopServices.openUrl(QUrl(clip.page_url)))
+            credit.setToolTip(clip.attribution)
+            menu.setToolTipsVisible(True)
         menu.addSeparator()
         menu.addAction("Audio settings…", self.open_audio_settings)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)

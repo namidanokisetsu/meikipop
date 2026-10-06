@@ -18,6 +18,8 @@ class AudioClip:
     filename: str
     source: str
     data: bytes
+    attribution: str = ""
+    page_url: str = ""
 
 
 class AudioRepository:

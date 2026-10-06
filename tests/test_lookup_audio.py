@@ -87,3 +87,26 @@ class SentenceAudioTests(unittest.TestCase):
             finally:
                 audio.shutdown()
                 audio.deleteLater()
+
+    def test_online_defaults_to_entry_language_and_falls_back_to_system_voice(self):
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            audio = LookupAudio()
+            word = Entry("hello", "привет", "приве\u0301т", "Fixture", "ru", ("hello",))
+            try:
+                with patch.object(audio, "_speak", return_value=True) as speak:
+                    audio.play(word, 1, settings)
+                    request = audio.worker.submit.call_args.args[0]
+                    self.assertTrue(request.online)
+                    self.assertEqual((request.language, request.iso3), ("ru", "rus"))
+                    audio._audio_result(request, None)
+                    speak.assert_called_once_with("приве\u0301т", "ru", 80)
+                    settings.setValue("profiles/ru/audio_mode", "tts")
+                    audio.worker.submit.reset_mock()
+                    audio.play(word, 2, settings)
+                    audio.worker.submit.assert_not_called()
+                    audio.cancel()
+                    audio.worker.cancel.assert_called()
+            finally:
+                audio.shutdown()
+                audio.deleteLater()

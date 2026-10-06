@@ -370,10 +370,15 @@ class SetupDialog(QDialog):
         self.audio_volume = QSpinBox()
         self.audio_volume.setRange(0, 100)
         audio_form.addRow("Volume", self.audio_volume)
+        self.audio_mode = QComboBox()
+        for label, mode in (("Online pronunciations", "online"), ("System voice", "tts"), ("Local recordings", "local")):
+            self.audio_mode.addItem(label, mode)
+        self.audio_mode.setToolTip("Online: Wiktionary and Lingua Libre, then system voice. Sends the word and language.")
+        audio_form.addRow("Pronunciation", self.audio_mode)
         self.audio_database = QLineEdit()
-        self.audio_database.setPlaceholderText("System voice when no database is selected")
-        audio_form.addRow("Recordings database", self.audio_database)
-        audio_browse = QPushButton("Choose android.db…")
+        self.audio_database.setPlaceholderText("Local Audio Server android.db")
+        audio_form.addRow("Local database", self.audio_database)
+        audio_browse = QPushButton("Choose database…")
         audio_browse.clicked.connect(self.choose_audio)
         audio_form.addRow(audio_browse)
         from meikipop.gui.audio_sources import AudioSources
@@ -382,6 +387,7 @@ class SetupDialog(QDialog):
         audio_form.addRow("Source priority", self.audio_sources)
         self.audio_form = audio_form
         self.audio_browse = audio_browse
+        self.audio_mode.currentIndexChanged.connect(self.change_audio_mode)
         tabs.addTab(audio, "Audio")
         self.audio_tab = audio
         self.audio_autoplay.currentIndexChanged.connect(self.save_autoplay)
@@ -646,9 +652,12 @@ class SetupDialog(QDialog):
         with QSignalBlocker(self.audio_autoplay):
             self.audio_autoplay.setCurrentIndex(max(0, self.audio_autoplay.findData(audio_autoplay_mode(self.settings, code))))
         self.audio_volume.setValue(self.settings.value(f"profiles/{code}/audio_volume", config.audio_volume, type=int))
-        from meikipop.audio.sources import database_path, source_order
+        from meikipop.audio.sources import audio_mode, database_path, local_source_order
         self.audio_database.setText(database_path(self.settings, code))
-        self.audio_sources.load(source_order(self.settings, code), self.audio_database.text())
+        self.audio_mode.setCurrentIndex(self.audio_mode.findData(audio_mode(self.settings, code)))
+        self.audio_sources.load(local_source_order(self.settings, code),
+                                self.audio_database.text() if self.audio_mode.currentData() == "local" else "")
+        self.show_audio_controls()
         self.language.setCurrentIndex(max(0, self.language.findData(code)))
         self._loading = previous_loading
         if self.parent() is not None:
@@ -720,12 +729,23 @@ class SetupDialog(QDialog):
         code = self.profile.currentData()
         self.save_autoplay()
         self.settings.setValue(f"profiles/{code}/audio_volume", self.audio_volume.value())
+        self.settings.setValue(f"profiles/{code}/audio_mode", self.audio_mode.currentData())
         self.settings.setValue(f"profiles/{code}/audio_database", self.audio_database.text().strip())
         order = self.audio_sources.order()
         self.settings.setValue(f"profiles/{code}/audio_order", order)
-        if self.audio_database.text().strip() != self.audio_sources.path:
-            self.audio_sources.load(order, self.audio_database.text().strip())
+        path = self.audio_database.text().strip() if self.audio_mode.currentData() == "local" else ""
+        if path != self.audio_sources.path:
+            self.audio_sources.load(order, path)
         self.status.setText("Saved.")
+
+    def show_audio_controls(self):
+        local = self.audio_mode.currentData() == "local"
+        for widget in (self.audio_database, self.audio_browse, self.audio_sources):
+            self.audio_form.setRowVisible(widget, local)
+
+    def change_audio_mode(self):
+        self.show_audio_controls()
+        self.autosave(self.save_audio)
 
     def save_autoplay(self):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/audio_autoplay_mode", self.audio_autoplay.currentData())

@@ -1,4 +1,4 @@
-"""Shared popup pronunciation using the existing local audio repository."""
+"""Shared popup pronunciation with online, local and system-voice sources."""
 from PyQt6.QtCore import QByteArray, QBuffer, QIODevice, QLocale, QObject, QUrl, pyqtSignal
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 
@@ -20,19 +20,28 @@ class LookupAudio(QObject):
         self.buffer = None
         self.speech = None
         self.latest = None
+        self.current_clip = None
         self._serial = 0
         self._pending = None
         self.clip_ready.connect(self._play_clip)
         self.result_ready.connect(self._audio_result)
         self.worker = AudioWorker(self.clip_ready.emit, self._status, result_callback=self.result_ready.emit)
         self.worker.start()
-        self.player.errorOccurred.connect(lambda _, text: self.failed.emit(text))
+        self.player.errorOccurred.connect(self._playback_failed)
+
+    def _playback_failed(self, _, text):
+        if self._pending is not None:
+            self._next_source()
+        else:
+            self.failed.emit(text)
 
     def _status(self, text):
         if not text.startswith("Audio database ready"):
             self.failed.emit(text)
 
     def _prepare(self, revision, key, settings, profile):
+        self.worker.cancel()
+        self.current_clip = None
         self.player.stop()
         if self.speech:
             self.speech.stop()
@@ -57,8 +66,16 @@ class LookupAudio(QObject):
             source = sources.pop(0)
             if source == "tts":
                 if self._speak(entry.reading or entry.term, entry.language, volume):
+                    self.current_clip = None
                     self._pending = None
                     return
+            elif source == "online":
+                language = {"zh-hant": "zh", "zh-hans": "zh", "zh-tw": "zh", "zh-hk": "zh",
+                            "cmn": "zh", "fil": "tl"}.get(entry.language, entry.language)
+                iso3 = QLocale.languageToCode(QLocale(language).language(), QLocale.LanguageCodeType.ISO639Part3)
+                self.worker.submit(AudioRequest(self.latest[0], self.latest[1], "", (),
+                                                language=language, iso3=iso3, online=True))
+                return
             elif path:
                 self.worker.submit(AudioRequest(self.latest[0], self.latest[1], path,
                                                 (source[3:],) if source.startswith("db:") else (),
@@ -71,7 +88,6 @@ class LookupAudio(QObject):
         if self.latest != (request.activation_id, request.key):
             return
         if clip:
-            self._pending = None
             self._play_clip(clip)
         else:
             self._next_source()
@@ -91,7 +107,7 @@ class LookupAudio(QObject):
         self.speech.setLocale(locale)
         voices = [v for v in self.speech.availableVoices() if v.locale().language() == locale.language()]
         if not voices:
-            self.failed.emit(f"No {locale.nativeLanguageName()} voice installed. Choose an audio database or install a system voice in Settings.")
+            self.failed.emit(f"No {locale.nativeLanguageName()} system voice installed.")
             return
         self.speech.setVoice(voices[0])
         self.speech.setVolume(volume / 100)
@@ -101,6 +117,7 @@ class LookupAudio(QObject):
     def _play_clip(self, clip):
         if self.latest != (clip.activation_id, clip.key):
             return
+        self.current_clip = clip
         self.player.stop()
         if self.buffer:
             self.buffer.close()
@@ -112,6 +129,8 @@ class LookupAudio(QObject):
         self.player.play()
 
     def cancel(self):
+        self.worker.cancel()
+        self.current_clip = None
         self.latest = None
         self._pending = None
         self.player.stop()

@@ -1,4 +1,4 @@
-"""Coalescing worker that keeps SQLite and BLOB reads off the GUI thread."""
+"""Coalescing worker for local recordings and cancellable online downloads."""
 from __future__ import annotations
 
 import logging
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from meikipop.audio.repository import AudioRepository, AudioRepositoryError
+from meikipop.audio.repository import AudioClip, AudioRepository, AudioRepositoryError
 from meikipop.utils.lastest_queue import LatestValueQueue
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,9 @@ class AudioRequest:
     database_path: str
     preferred_sources: tuple[str, ...]
     strict_sources: bool = False
+    language: str = ""
+    iso3: str = ""
+    online: bool = False
 
 
 class AudioWorker(threading.Thread):
@@ -34,9 +37,15 @@ class AudioWorker(threading.Thread):
         self._repository = AudioRepository()
         self._last_error = None
         self._reported_missing: set[tuple[str, str]] = set()
+        self._latest_request = None
+        self._online = None
 
     def submit(self, request: AudioRequest):
+        self._latest_request = request
         self._requests.put(request)
+
+    def cancel(self):
+        self._latest_request = None
 
     def stop(self):
         self._running = False
@@ -47,6 +56,9 @@ class AudioWorker(threading.Thread):
             request = self._requests.get()
             if request is None or not self._running:
                 break
+            if request.online:
+                self._online_result(request)
+                continue
             try:
                 if self._repository.path != str(Path(request.database_path).expanduser().resolve()):
                     self._repository.open(request.database_path)
@@ -83,3 +95,19 @@ class AudioWorker(threading.Thread):
                 if request.key is not None and self._result_callback:
                     self._result_callback(request, None)
         self._repository.close()
+
+    def _online_result(self, request):
+        from meikipop.audio.online import OnlineAudio
+        if self._online is None:
+            self._online = OnlineAudio()
+        cancelled = lambda: not self._running or self._latest_request is not request
+        clip = None
+        try:
+            result = self._online.lookup(request.key[0], request.language, request.iso3, cancelled)
+            if result:
+                filename, source, data, credit, page_url = result
+                clip = AudioClip(request.activation_id, request.key, filename, source, data, credit, page_url)
+        except Exception:
+            logger.debug("Online pronunciation unavailable", exc_info=True)
+        if not cancelled() and self._result_callback:
+            self._result_callback(request, clip)
