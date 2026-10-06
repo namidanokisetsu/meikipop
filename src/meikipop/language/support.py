@@ -47,6 +47,17 @@ EXTRA_NAMES = {
 }
 
 
+def default_ocr_provider(code, platform=None):
+    if platform is None:
+        import sys
+        platform = sys.platform
+    if platform == "darwin":
+        return "vision"
+    if code == "ja":
+        return "meikiocr"
+    return "paddle" if code in PADDLE_LANGUAGES else "screenai"
+
+
 def support_summary(code):
     parts = []
     if code in DICTIONARY_LANGUAGES:

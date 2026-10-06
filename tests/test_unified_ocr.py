@@ -140,6 +140,15 @@ class ScanWorkerTests(unittest.TestCase):
         self.assertEqual(scan, provider.scan)
         factory.assert_called_once_with(execution_provider="CPUExecutionProvider")
 
+    def test_russian_defaults_to_screenai_and_rejects_incompatible_paddle(self):
+        provider = Mock()
+        with patch("meikipop.gui.unified_ocr.sys.platform", "win32"), \
+                patch("meikipop.ocr.providers.screenai.provider.ScreenAiOcr", return_value=provider) as factory:
+            self.assertEqual(ScanWorker.provider("ru"), provider.scan)
+            factory.assert_called_once_with(None, language="ru")
+            with self.assertRaisesRegex(RuntimeError, "does not support this language"):
+                ScanWorker.provider("ru", "paddle")
+
 
 class FakeWindow(QWidget):
     dictionaries_changed = pyqtSignal()

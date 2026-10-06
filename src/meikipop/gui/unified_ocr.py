@@ -143,10 +143,14 @@ class ScanWorker(threading.Thread):
 
     @staticmethod
     def provider(language, selected=None, component_directory=""):
+        from meikipop.language.support import PADDLE_LANGUAGES, default_ocr_provider
+        selected = selected or default_ocr_provider(language)
         if selected == "screenai":
             from meikipop.ocr.providers.screenai.provider import ScreenAiOcr
             return ScreenAiOcr(component_directory or None, language=language).scan
-        if selected == "paddle" or language != "ja" and selected is None and sys.platform != "darwin":
+        if selected == "paddle":
+            if language not in PADDLE_LANGUAGES:
+                raise RuntimeError("This Paddle model does not support this language. Choose Chrome Screen AI in Settings → OCR.")
             from meikipop.ocr.turkish_paddle import LocalOCR
             import numpy as np
             provider = LocalOCR()
@@ -334,7 +338,8 @@ class UnifiedOCR(QObject):
             self.invalidate()
         self.morphology = morphology
         previous_profile_provider = getattr(self, "profile_ocr_provider", None)
-        default = self.ja_ocr_provider if profile == "ja" else self.tr_ocr_provider if profile == "tr" else "vision" if sys.platform == "darwin" else "paddle"
+        from meikipop.language.support import default_ocr_provider
+        default = self.ja_ocr_provider if profile == "ja" else self.tr_ocr_provider if profile == "tr" else default_ocr_provider(profile)
         self.profile_ocr_provider = settings.value(f"profiles/{profile}/ocr_provider", default) if settings else default
         if previous_profile_provider != self.profile_ocr_provider:
             self.invalidate()

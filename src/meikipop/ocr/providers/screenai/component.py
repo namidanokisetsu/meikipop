@@ -70,4 +70,4 @@ def find_component_directory(directory=None):
         found = find_in_directory(candidate)
         if found:
             return found
-    raise RuntimeError("Chrome Screen AI is not installed. In Setup → Screen lookup, choose its extracted component folder.")
+    raise RuntimeError("Chrome Screen AI is not installed. In Settings → OCR, choose its extracted component folder.")

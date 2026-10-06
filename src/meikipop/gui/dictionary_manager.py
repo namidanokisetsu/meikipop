@@ -466,8 +466,9 @@ class SetupDialog(QDialog):
         prefix = f"profiles/{code}/"
         if not self.settings.contains(prefix + "target"):
             self.settings.setValue(prefix + "target", default_partner(code))
-        if code not in ("ja", "tr") and not self.settings.contains(prefix + "scan_bindings"):
-            self.settings.setValue(prefix + "scan_bindings", "")
+        if not self.settings.contains(prefix + "scan_bindings"):
+            bindings = self.settings.value(f"profiles/{self.profile.currentData()}/scan_bindings", "shift")
+            self.settings.setValue(prefix + "scan_bindings", bindings)
         if self.parent() is not None:
             self.parent().update_languages(())
         self.sync_profile(code)
@@ -593,7 +594,11 @@ class SetupDialog(QDialog):
         self.scan_layout.setRowVisible(self.tr_ocr_provider, code == "tr")
         self.scan_layout.setRowVisible(self.other_ocr_provider, code not in ("ja", "tr"))
         provider = self.current_ocr_control()
-        default = ("vision" if sys.platform == "darwin" else "meikiocr" if code == "ja" else "paddle")
+        from meikipop.language.support import PADDLE_LANGUAGES, default_ocr_provider
+        paddle = provider.model().item(provider.findData("paddle"))
+        paddle.setEnabled(code in PADDLE_LANGUAGES)
+        paddle.setToolTip("" if code in PADDLE_LANGUAGES else "The installed Paddle model does not support this language")
+        default = default_ocr_provider(code)
         provider.setCurrentIndex(max(0, provider.findData(self.settings.value(f"profiles/{code}/ocr_provider", self.settings.value(f"{code}_ocr_provider", default)))))
         try:
             translation = load_profile_settings(self.settings, code)

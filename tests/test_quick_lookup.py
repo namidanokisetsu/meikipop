@@ -543,7 +543,7 @@ class QuickLookupTests(unittest.TestCase):
             self.assertEqual(self.window.preferred_foreign, "de")
             self.window.update_languages(("ja", "tr"))
             self.assertGreaterEqual(self.window.source.findData("de"), 0)
-            self.assertEqual(self.settings.value("profiles/de/scan_bindings"), "")
+            self.assertEqual(self.settings.value("profiles/de/scan_bindings"), "shift")
             dialog.add_profile("en")
             self.assertEqual(self.window.preferred_foreign, "en")
             self.assertEqual(self.window.foreign.currentData(), "ja")
@@ -1275,6 +1275,28 @@ class DictionaryManagerTests(unittest.TestCase):
         finally:
             library.close()
         self.assertEqual(self.dialog.packs.count(), 2)
+
+    def test_russian_ocr_default_and_paddle_availability_follow_profile(self):
+        with patch("meikipop.gui.dictionary_manager.sys.platform", "win32"):
+            self.dialog.sync_profile("ru")
+            provider = self.dialog.other_ocr_provider
+            self.assertEqual(provider.currentData(), "screenai")
+            self.assertFalse(provider.model().item(provider.findData("paddle")).isEnabled())
+            self.dialog.sync_profile("de")
+            self.assertEqual(provider.currentData(), "paddle")
+            self.assertTrue(provider.model().item(provider.findData("paddle")).isEnabled())
+
+    def test_new_profiles_inherit_scan_shortcut_and_preserve_explicit_disable(self):
+        self.dialog.sync_profile("tr")
+        self.settings.setValue("profiles/tr/scan_bindings", "shift,middle")
+        self.dialog.add_profile("id")
+        self.assertEqual(self.settings.value("profiles/id/scan_bindings"), "shift,middle")
+        self.settings.setValue("profiles/id/scan_bindings", "")
+        self.dialog.add_profile("ru")
+        self.assertEqual(self.settings.value("profiles/ru/scan_bindings"), "")
+        self.dialog.sync_profile("tr")
+        self.dialog.add_profile("id")
+        self.assertEqual(self.settings.value("profiles/id/scan_bindings"), "")
 
     def test_legacy_import_requires_a_language_in_automatic_mode(self):
         self.dialog.begin_operation([self.archive("Legacy")])
