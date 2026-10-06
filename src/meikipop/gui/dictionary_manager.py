@@ -284,10 +284,8 @@ class SetupDialog(QDialog):
         scan_layout = QFormLayout(scanning)
         self.scan_layout = scan_layout
         self.freeze_while_held = QCheckBox("Freeze while held")
-        self.freeze_while_held.setToolTip("The video keeps playing; lookups use the captured frame")
-        freeze_note = QLabel("One screenshot per hold. Release to refresh.")
-        freeze_note.setWordWrap(True)
-        scan_layout.addRow(self.freeze_while_held, freeze_note)
+        self.freeze_while_held.setToolTip("One screenshot per hold. Release to refresh; the video keeps playing.")
+        scan_layout.addRow(self.freeze_while_held)
         self.freeze_while_held.toggled.connect(lambda _: self.autosave(self.save_scan_settings))
         self.pin_gesture = QComboBox()
         for label, code in (("Scan key + left click", "left"), ("Scan key + middle click", "middle"),

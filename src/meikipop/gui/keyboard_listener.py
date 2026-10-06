@@ -21,6 +21,9 @@ class MacListenerMixin:
     def canonical(self, key):
         if sys.platform == "darwin":
             from pynput._util.darwin_vks import SYMBOLS
+            typed = getattr(key, "char", "") or ""
+            if len(typed) == 1 and typed.isascii() and typed.isalpha():
+                return super().canonical(key)
             char = SYMBOLS.get(getattr(key, "vk", None), "")
             if len(char) == 1 and char.isascii() and char.isalpha():
                 return keyboard.KeyCode.from_char(char.lower())

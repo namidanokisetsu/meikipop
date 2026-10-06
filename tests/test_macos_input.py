@@ -102,6 +102,13 @@ class MacListenerTests(unittest.TestCase):
             for key in reversed(chord): listener._on_release(key)
         self.assertEqual(activated.call_count, 2)
 
+    def test_unicode_injection_does_not_turn_character_into_dummy_virtual_key(self):
+        activated = Mock()
+        listener = TextHotKeys({"<cmd>+<shift>+k": activated})
+        for key in (keyboard.Key.cmd, keyboard.Key.shift, keyboard.KeyCode.from_char("k", vk=0)):
+            listener._on_press(key, injected=True)
+        activated.assert_called_once_with()
+
     def test_native_listener_can_be_replaced_after_qt_starts(self):
         from Quartz import CGPreflightListenEventAccess
         if not CGPreflightListenEventAccess():

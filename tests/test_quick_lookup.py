@@ -1278,6 +1278,8 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIsNone(triggers.listener)
         try:
             with patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch("meikipop.gui.text_triggers.QCursor.pos", return_value=QPoint(-100, -100)), \
+                    patch("meikipop.utils.macos.require_input_monitoring_permission"), \
                     patch.object(self.window.selection, "start") as capture, patch("pynput.mouse.Listener") as listener:
                 triggers.capture_selection()
                 capture.assert_not_called()
