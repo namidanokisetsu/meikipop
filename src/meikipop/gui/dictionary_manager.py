@@ -146,6 +146,14 @@ class SetupDialog(QDialog):
         for code, name in LANGUAGE_NAMES.items():
             self.translation_partner.addItem(name, code)
         translation_form.addRow("Translate both ways with", self.translation_partner)
+        self.translation_source = QComboBox()
+        self.translation_target = QComboBox()
+        for label, control in (("From", self.translation_source), ("To", self.translation_target)):
+            control.addItem("Automatic", "auto")
+            for code, name in LANGUAGE_NAMES.items():
+                control.addItem(name, code)
+            control.setMinimumContentsLength(12)
+            translation_form.addRow(label, control)
         self.translation_mode = QComboBox()
         self.translation_mode.addItem("Quality · Hy-MT2-7B Q8_0 (8 GB)", "quality")
         self.translation_mode.addItem("Lightweight · Hy-MT2-1.8B Q8_0 (2 GB)", "lightweight")
@@ -172,7 +180,7 @@ class SetupDialog(QDialog):
         self.translation_apply.clicked.connect(self.save_translation)
         translation_layout.addWidget(self.translation_apply)
         translation_layout.addStretch()
-        tabs.addTab(translation, "Translation model")
+        tabs.addTab(translation, "Translation")
         translation_error = ""
         try:
             translation_settings = load_profile_settings(settings, self.profile.currentData())
@@ -466,6 +474,11 @@ class SetupDialog(QDialog):
             translation = TranslationSettings()
             self.status.setText(str(error))
         self.translation_partner.setCurrentIndex(max(0, self.translation_partner.findData(self.settings.value(f"profiles/{code}/target", "en"))))
+        for key, control in (("source", self.translation_source), ("target", self.translation_target)):
+            selected = self.settings.value(f"profiles/{code}/translation_{key}", "auto")
+            if control.findData(selected) < 0:
+                control.addItem(language_name(selected), selected)
+            control.setCurrentIndex(control.findData(selected))
         self.translation_mode.setCurrentIndex(self.translation_mode.findData(translation.profile if translation.provider == "server" else "custom"))
         self.translation_endpoint.setText(translation.endpoint)
         self.translation_model.setText(translation.model)
@@ -559,15 +572,20 @@ class SetupDialog(QDialog):
             code = self.profile.currentData()
             if self.translation_partner.currentData() == code:
                 raise ValueError("Choose two different languages for the translation pair.")
+            if self.translation_source.currentData() == self.translation_target.currentData() != "auto":
+                raise ValueError("Choose different source and target languages.")
             save_profile_settings(self.settings, code, TranslationSettings(
                 provider="custom" if mode == "custom" else "server",
                 profile=mode if mode != "custom" else "quality",
                 endpoint=self.translation_endpoint.text(), model=self.translation_model.text(),
                 auto_start=self.translation_autostart.isChecked()))
             self.settings.setValue(f"profiles/{code}/target", self.translation_partner.currentData())
+            for key, control in (("source", self.translation_source), ("target", self.translation_target)):
+                self.settings.setValue(f"profiles/{code}/translation_{key}", control.currentData())
             if self.parent() is not None:
                 self.parent().set_mode(code)
                 self.parent().foreign.setCurrentIndex(self.parent().foreign.findData(self.translation_partner.currentData()))
+                self.parent()._invalidate()
             self.dictionaries_changed.emit()
             self.status.setText("Saved.")
             return True
