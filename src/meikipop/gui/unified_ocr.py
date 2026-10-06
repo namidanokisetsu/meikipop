@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import QApplication
 from meikipop.ocr.context import hit_paragraphs, paddle_paragraphs
 from meikipop.ocr.scan_cache import ScanCache
 from meikipop.utils.lastest_queue import LatestValueQueue
+from meikipop.utils.capture import CaptureRequest, PixelFrame, RegionCapture
+from meikipop.utils.timing import mark
 
 
 class ScanWorker(threading.Thread):
@@ -40,6 +42,7 @@ class ScanWorker(threading.Thread):
         from PIL import Image
         from meikipop.dictionary.search import SearchEngine
         engine = None
+        capture = None
         providers, caches = {}, {}
         try:
             while True:
@@ -62,11 +65,22 @@ class ScanWorker(threading.Thread):
                     if pixels is None:
                         paragraphs = caches[provider_key].result
                     else:
-                        pixels = pixels.convertToFormat(QImage.Format.Format_RGB888)
-                        image = Image.frombytes("RGB", (pixels.width(), pixels.height()),
-                                                pixels.constBits().asstring(pixels.sizeInBytes()),
-                                                "raw", "RGB", pixels.bytesPerLine())
+                        if isinstance(pixels, CaptureRequest):
+                            mark("capture_begin", pixels.revision)
+                            if capture is None:
+                                capture = RegionCapture()
+                            pixels = capture.capture(pixels)
+                            mark("capture_done", pixels.request.revision)
+                        if isinstance(pixels, PixelFrame):
+                            image = pixels.image()
+                        else:
+                            pixels = pixels.convertToFormat(QImage.Format.Format_RGB888)
+                            image = Image.frombytes("RGB", (pixels.width(), pixels.height()),
+                                                    pixels.constBits().asstring(pixels.sizeInBytes()),
+                                                    "raw", "RGB", pixels.bytesPerLine())
+                        mark("pixels_ready", generation)
                         paragraphs = caches[provider_key].scan(image, providers[provider_key])
+                        mark("ocr_done", generation)
                     if self._stopped.is_set():
                         return
                     hit = hit_paragraphs(paragraphs, point, language)
@@ -89,6 +103,8 @@ class ScanWorker(threading.Thread):
         finally:
             if engine:
                 engine.close()
+            if capture:
+                capture.close()
 
     @staticmethod
     def provider(language, selected=None, component_directory=""):
@@ -150,6 +166,8 @@ class UnifiedOCR(QObject):
         self.job_point = None
         self.capture_region = None
         self.capture_screen = None
+        self._capture_revision = 0
+        self._fallback_capture = False
         self.timer = QTimer(self)
         self.timer.setInterval(16)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -423,6 +441,7 @@ class UnifiedOCR(QObject):
             self._capture_excluded = exclude_from_capture(self.window, True)
         if visible and not self._capture_excluded:
             self._capture_hidden = True
+            self.window._capture_visibility = True
             self.window.hide()
         QTimer.singleShot(60 if self._capture_hidden else 0, lambda: self.capture(generation, point))
 
@@ -442,6 +461,17 @@ class UnifiedOCR(QObject):
                 require_screen_capture_permission()
             screen = QApplication.screenAt(point) or QApplication.primaryScreen()
             geometry = screen.geometry()
+            scale = screen.devicePixelRatio()
+            screen_key = (screen.name(), geometry.x(), geometry.y(), geometry.width(), geometry.height(), scale)
+            region = self._capture_bounds(point, geometry, screen_key)
+            self._capture_revision += 1
+            request = CaptureRequest(self._capture_revision, screen.name(),
+                                     (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
+                                     (region.x(), region.y(), region.width(), region.height()), scale, generation)
+            if sys.platform == "win32" and not self._fallback_capture and not self._capture_hidden:
+                self._queue_scan(generation, point, request, region)
+                self._last_capture_at = monotonic()
+                return
             pixmap = screen.grabWindow(0)
             if pixmap.isNull():
                 raise RuntimeError("Screen capture unavailable. Allow screen recording in system settings.")
@@ -451,7 +481,7 @@ class UnifiedOCR(QObject):
             pixels = pixmap.toImage().copy(round((region.x() - geometry.x()) * scale_x),
                                            round((region.y() - geometry.y()) * scale_y),
                                            round(region.width() * scale_x), round(region.height() * scale_y))
-            self._queue_scan(generation, point, pixels)
+            self._queue_scan(generation, point, pixels, region)
             self._last_capture_at = monotonic()
         except Exception as error:
             self.busy = False
@@ -461,14 +491,15 @@ class UnifiedOCR(QObject):
         finally:
             if self._capture_hidden:
                 self._capture_hidden = False
+                self.window._capture_visibility = False
                 # Keep the prior peek usable while native recognition runs.
                 # The capture itself never contains our dictionary window.
-                if generation == self.generation and (self.holding or self.auto_scan):
+                if generation == self.generation and self.holding and not self._dismissed_hold:
                     self.window.show()
                     self.follow_cursor()
 
-    def _queue_scan(self, generation, point, pixels=None):
-        region = self.capture_region
+    def _queue_scan(self, generation, point, pixels=None, region=None):
+        region = region if region is not None else self.capture_region
         language = self.window.preferred_foreign
         self.worker.queue.put((generation, pixels,
                                ((point.x() - region.x()) / region.width(),
@@ -491,6 +522,8 @@ class UnifiedOCR(QObject):
         if self.job_point is not None and (QCursor.pos() - self.job_point).manhattanLength() > 12:
             return
         if error:
+            self.restore_capture_visibility()
+            self._fallback_capture = True
             self.window.show_message(error)
             return
         if result is None:

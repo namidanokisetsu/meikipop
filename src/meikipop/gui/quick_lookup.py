@@ -469,6 +469,7 @@ class QuickLookupWindow(QDialog):
         self._passive_text = False
         self._selection_passive = False
         self._selection_for_search = False
+        self._capture_visibility = False
         self.setWindowTitle("Meikipop")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(340, 190)
@@ -1413,6 +1414,9 @@ class QuickLookupWindow(QDialog):
             self.hide()
 
     def hideEvent(self, event):
+        if self._capture_visibility:
+            super().hideEvent(event)
+            return
         if hasattr(self, "worker"):
             self._invalidate()
         self.pin.setChecked(False)
@@ -1426,7 +1430,7 @@ class QuickLookupWindow(QDialog):
                 self._previous_foreground = handle
 
     def hide(self):
-        if QApplication.platformName() != "offscreen":
+        if not self._capture_visibility and QApplication.platformName() != "offscreen":
             from meikipop.utils.window_focus import foreground_window, restore_foreground
             if foreground_window() == int(self.winId()):
                 restore_foreground(self._previous_foreground)
