@@ -113,6 +113,14 @@ class TranslationTests(unittest.TestCase):
         with self.server("Greek translation"):
             self.assertEqual(self.translator.translate("text", "en", "el"), "Greek translation")
 
+    def test_mandarin_profile_can_translate_in_both_directions(self):
+        self.manual()
+        for source, target, name in (("en", "cmn", "Chinese"), ("cmn", "en", "English")):
+            with self.subTest(source=source, target=target), self.server("translation"):
+                self.assertEqual(self.translator.translate("text", source, target), "translation")
+                request = json.loads(self.connection.request.call_args.kwargs["body"])
+                self.assertIn(f"into {name}.", request["messages"][0]["content"])
+
     def test_cancel_interrupts_active_response_and_disallows_late_result(self):
         self.manual()
         with self.server():

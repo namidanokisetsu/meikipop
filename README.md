@@ -8,15 +8,15 @@ Yomitan languages. Use [Start-Meikipop.cmd](Start-Meikipop.cmd) on Windows,
 `meikipop search` after installing this checkout. Settings can add language profiles,
 install recommended dictionaries, and import, order or remove local packs.
 Results support pinning, scrolling, source expansion and copying
-the visible OCR sentence. Local translation is optional. See the
+the visible OCR sentence. PaddleOCR supports 50 languages; optional local Hy-MT2
+translation supports 33 languages plus five regional and minority varieties. See the
 [shared setup guide](docs/TURKISH_SETUP.md) for language packs, shortcuts and OCR.
 The [language coverage table](docs/TURKISH_SETUP.md#language-coverage) separates
 dictionary, translation, OCR and optional morphology support.
 
 The original Japanese app remains available as `meikipop legacy-japanese`,
 and the separate Turkish client as `meikipop-turkish`. The shared macOS popup
-uses native Vision OCR; macOS packaging/CI is prepared but has not been run in
-this Windows workspace. The remaining upstream guide below describes the
+uses native Vision OCR. The remaining upstream guide below describes the
 legacy Japanese workflow; [the original guide](https://github.com/rtr46/meikipop#readme)
 and its provider options remain available.
 

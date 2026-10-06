@@ -1,8 +1,10 @@
-"""Verified download/model coverage, separate from installed resources.
+"""Provider language coverage, independent of installed resources.
 
 Checked 2026-10-06 against:
 https://yomidevs.github.io/wiktionary-to-yomitan/release_metadata_yomitan.json
 https://huggingface.co/tencent/Hy-MT2-7B#supported-languages
+https://www.paddleocr.ai/latest/en/version3.x/algorithm/PP-OCRv6/PP-OCRv6.html
+https://github.com/PaddlePaddle/PaddleOCR/blob/release/3.7/paddleocr/_utils/langs.py
 https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main/resources_1.14.0.json
 """
 from meikipop.dictionary.translation import MANAGED_LANGUAGES
@@ -16,11 +18,18 @@ sco se sga sh sk sl sla-pro sq su sv sw syc ta te tg th tl tr ug uk ur urj-fin-p
 xcl yi yo yue zh zlw-ocs zlw-opl zu
 """.split())
 TRANSLATION_LANGUAGES = MANAGED_LANGUAGES | {"zh-hant", "zh-tw", "zh-hk"}
+# PP-OCRv6 small: Chinese, English, Japanese and 46 Latin-script languages.
+# Pali belongs to the separate v5 Latin model, not the installed v6 model.
+PADDLE_LANGUAGES = frozenset("""
+af az bs ca cs cy da de en es et eu fi fr ga gl hr hu id is it ja ku la lb lt lv mi ms mt nl no oc
+pl pt qu rm ro sk sl sq sr-latn sv sw tl tr uz vi zh zh-hant
+""".split()) | {"cmn", "fil", "kmr", "nb", "nn", "zh-hans", "zh-tw", "zh-hk"}
 STANZA_LANGUAGES = frozenset("""
 ab af ang ar be bg bxr ca cop cs cu cy da de el en es et eu fa fi fr fro ga gd gl got grc gv hbo he
 hi hr hsb hu hy hyw id is it ja ka kk kmr ko kpv ky la lij lt lv lzh mr myv nb nds nl nn or orv ota
 pcm pl pt qaf qpm qtd ro ru sa sd sk sl sme sq sr sv ta tr ug uk ur wo xcl zh-hans zh-hant
 """.split())
+STANZA_LANGUAGES |= {"no", "se", "zh"}  # Stanza aliases for nb, sme and zh-hans.
 AVAILABLE_LANGUAGES = DICTIONARY_LANGUAGES | TRANSLATION_LANGUAGES
 EXTRA_NAMES = {
     "arz": "Egyptian Arabic", "afb": "Gulf Arabic", "apc": "North Levantine Arabic", "ajp": "South Levantine Arabic",
@@ -44,6 +53,6 @@ def support_summary(code):
         parts.append("Dictionary")
     if code in TRANSLATION_LANGUAGES:
         parts.append("Translation")
-    if code in ("ja", "tr"):
+    if code in PADDLE_LANGUAGES:
         parts.append("OCR")
     return " · ".join(parts) or "Imported dictionary"

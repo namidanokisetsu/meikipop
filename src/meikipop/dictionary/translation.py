@@ -18,7 +18,7 @@ DEFAULT_ENDPOINT = "http://127.0.0.1:8766/v1"
 DEFAULT_MODEL = "hy-mt2"
 MODEL_NAMES = {"quality": "Hy-MT2-7B Q8_0", "lightweight": "Hy-MT2-1.8B Q8_0"}
 LANGUAGE_NAMES = {
-    "en": "English", "ja": "Japanese", "tr": "Turkish", "zh": "Chinese",
+    "en": "English", "ja": "Japanese", "tr": "Turkish", "zh": "Chinese", "cmn": "Chinese",
     "zh-hant": "Traditional Chinese", "zh-tw": "Traditional Chinese",
     "zh-hk": "Traditional Chinese", "fr": "French", "pt": "Portuguese",
     "es": "Spanish", "ru": "Russian", "ar": "Arabic", "ko": "Korean",
@@ -32,9 +32,9 @@ LANGUAGE_NAMES = {
     "el": "Greek", "sv": "Swedish", "fi": "Finnish", "da": "Danish",
     "no": "Norwegian", "hu": "Hungarian", "ro": "Romanian", "bg": "Bulgarian",
 }
-# Publisher's 33 languages and five regional/minority varieties. Other local
-# servers may support more; dictionary support is independent of translation.
-MANAGED_LANGUAGES = frozenset("zh en fr pt es ja tr ru ar ko th it de vi ms id tl fil hi pl cs nl km my fa gu ur te mr he bn ta uk bo kk mn ug yue".split())
+# Publisher's 33 languages and five regional/minority varieties, with code aliases.
+# Other local servers may support more; dictionary support is independent.
+MANAGED_LANGUAGES = frozenset("zh cmn en fr pt es ja tr ru ar ko th it de vi ms id tl fil hi pl cs nl km my fa gu ur te mr he bn ta uk bo kk mn ug yue".split())
 
 
 def default_translation_path():

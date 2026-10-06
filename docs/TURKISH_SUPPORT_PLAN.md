@@ -45,29 +45,31 @@ clients remain explicit compatibility entrypoints.
    rather than one model for every language. Setup is explicit, imports lazy,
    runtime offline and worker-bound; Japanese never invokes neural analysis.
 
-4. **Local OCR and context.** Windows uses MeikiOCR for Japanese and optional
-   Paddle for Turkish; macOS uses native Vision with runtime language checks.
-   The tested Windows desktop environment uses Python 3.12 and PaddleOCR 3.7
-   PP-OCRv6 small models on CPU for interactive latency. Unicode word assembly
+4. **Local OCR and context.** Windows defaults to MeikiOCR for Japanese and
+   Paddle for Turkish; every profile can select Paddle or Chrome Screen AI.
+   macOS also offers native Vision with runtime language checks.
+   The Windows desktop environment uses Python 3.12 and PaddleOCR 3.7
+   PP-OCRv6 small models, supporting 50 languages on CPU. Unicode word assembly
    corrects Paddle's accent fragments; nearby aligned lines retain visible
-   sentence context. This is not a claim of best accuracy across screen content.
+   sentence context.
    Model creation and inference remain off the Qt thread. Copy sentence is an
    explicit local clipboard action using visible scanned context, with a local
    Ctrl/Cmd+Shift+C shortcut. History retains that context. No automatic text
    upload or ChatGPT API connection is added. Pointer hit-testing reuses recognized
    frames between captures. Raw QImages replace UI-thread PNG encoding; Windows
    capture exclusion is held through a scan instead of synchronizing the compositor
-   twice per frame. Live smoothness still needs user acceptance.
+   twice per frame.
    Previews stay anchored until the lookup changes and fit complete text lines.
    Scanning requires a held trigger; automatic hover scanning is removed.
 
 5. **Optional local translation.** Explicitly installed
    [Hy-MT2](https://huggingface.co/tencent/Hy-MT2-7B-GGUF) GGUF models run through
    local llama.cpp, with Quality 7B Q8_0 and Lightweight 1.8B Q8_0 selectors.
+   Both support 33 languages plus five regional and minority varieties.
    There is no silent fallback or Argos backend. Models start lazily when
    Translate is pressed; downloads occur only in setup. Custom servers must
-   use loopback HTTP, without proxies or redirects. Results identify the model;
-   model claims do not imply verified accuracy for every passage or language.
+   use loopback HTTP, without proxies or redirects, and can extend translation
+   coverage with other models. Results identify the model.
    Translation settings offer automatic or manual source and target language
    strips independently of the dictionary profile. Ordinary settings save immediately.
 
@@ -79,11 +81,8 @@ clients remain explicit compatibility entrypoints.
 - Non-OCR global shortcuts are independently recorded and enabled. Defaults
   remain off in library code; the user's requested search shortcut can be
   provisioned in this workspace. Model and dictionary downloads remain explicit.
-- macOS launch/build configuration and CI are prepared. Actual macOS hardware,
-  Input Monitoring/Screen Recording permissions, packaged builds, mixed-DPI
-  placement and OCR accuracy still need platform acceptance. Windows Turkish
-  models are installed and passed a bounded screenshot check; wider OCR
-  accuracy remains dependent on fonts and screen content.
+- macOS requires Input Monitoring/Screen Recording permissions. Recognition
+  languages follow the installed Vision version or selected OCR component.
 - Fixture tests cover dictionary metadata, language policies, latest-request
   delivery, popup controls/context, import safety and translation. Final broad
   test results belong to the current run, not a fixed count in this document.
