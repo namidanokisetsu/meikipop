@@ -19,14 +19,17 @@ class AudioRequest:
     key: tuple[str, str] | None
     database_path: str
     preferred_sources: tuple[str, ...]
+    strict_sources: bool = False
 
 
 class AudioWorker(threading.Thread):
-    def __init__(self, clip_callback: Callable, status_callback: Callable):
+    def __init__(self, clip_callback: Callable, status_callback: Callable, result_callback=None, sources_callback=None):
         super().__init__(daemon=True, name="AudioRepository")
         self._requests = LatestValueQueue()
         self._clip_callback = clip_callback
         self._status_callback = status_callback
+        self._result_callback = result_callback
+        self._sources_callback = sources_callback
         self._running = True
         self._repository = AudioRepository()
         self._last_error = None
@@ -50,11 +53,15 @@ class AudioWorker(threading.Thread):
                     sources = self._repository.sources()
                     self._last_error = None
                     self._status_callback(f"Audio database ready. Sources: {', '.join(sources)}")
+                if request.key is None and self._sources_callback:
+                    self._sources_callback(request.database_path, self._repository.sources())
                 if request.key is not None:
                     clip = self._repository.load(
-                        request.activation_id, *request.key, request.preferred_sources
+                        request.activation_id, *request.key, request.preferred_sources, strict_sources=request.strict_sources
                     )
-                    if clip:
+                    if self._result_callback:
+                        self._result_callback(request, clip)
+                    elif clip:
                         self._clip_callback(clip)
                     elif request.key not in self._reported_missing:
                         logger.info("No pronunciation audio found for %s [%s]", *request.key)
@@ -68,7 +75,11 @@ class AudioWorker(threading.Thread):
                 if message != self._last_error:
                     logger.warning("Pronunciation audio unavailable: %s", exc)
                     self._last_error = message
+                if request.key is not None and self._result_callback:
+                    self._result_callback(request, None)
             except Exception:
                 self._status_callback("Audio lookup failed; see log")
                 logger.exception("Pronunciation audio lookup failed")
+                if request.key is not None and self._result_callback:
+                    self._result_callback(request, None)
         self._repository.close()

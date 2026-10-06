@@ -71,6 +71,10 @@ class AudioRepositoryTests(unittest.TestCase):
     def test_missing_entry(self):
         self.assertIsNone(self.repository.load(1, "不存在", "", ()))
 
+    def test_explicit_source_never_plays_an_unrelated_recording(self):
+        self.assertIsNone(self.repository.load(1, "食べる", "たべる", ("missing",), strict_sources=True))
+        self.assertEqual(self.repository.load(1, "食べる", "たべる", ("secondary",), strict_sources=True).source, "secondary")
+
     def test_connection_is_read_only(self):
         with self.assertRaises(sqlite3.OperationalError):
             self.repository.connection.execute(

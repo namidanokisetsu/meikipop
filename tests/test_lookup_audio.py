@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from PyQt6.QtCore import QLocale, QSettings
 from PyQt6.QtWidgets import QApplication
 from meikipop.gui.lookup_audio import LookupAudio
+from meikipop.dictionary.library import Entry
 
 
 class SentenceAudioTests(unittest.TestCase):
@@ -37,6 +38,52 @@ class SentenceAudioTests(unittest.TestCase):
                 with patch.object(audio.player, "play") as play:
                     audio._play_clip(Mock(activation_id=3, key=("猫", "ねこ")))
                     play.assert_not_called()
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
+    def test_turkish_recordings_follow_priority_and_missing_sources_fall_back_to_tts(self):
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/tr/audio_database", "turkish.db")
+            settings.setValue("profiles/tr/audio_order", ["db:recorded", "tts"])
+            audio = LookupAudio()
+            word = Entry("ev", "ev", "", "Turkdict", "tr", ("house",))
+            try:
+                with patch.object(audio, "_speak", return_value=True) as speak:
+                    audio.play(word, 3, settings)
+                    request = audio.worker.submit.call_args.args[0]
+                    self.assertEqual(request.database_path, "turkish.db")
+                    self.assertEqual(request.preferred_sources, ("recorded",))
+                    self.assertTrue(request.strict_sources)
+                    speak.assert_not_called()
+                    audio._audio_result(request, None)
+                    speak.assert_called_once()
+                    settings.setValue("profiles/tr/audio_order", ["tts", "db:recorded"])
+                    audio.worker.submit.reset_mock()
+                    audio.play(word, 4, settings)
+                    audio.worker.submit.assert_not_called()
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
+    def test_source_override_ignores_late_results_even_for_same_revision(self):
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/audio_database", "japanese.db")
+            audio = LookupAudio()
+            word = Entry("cat", "猫", "ねこ", "Dictionary", "ja", ("cat",))
+            try:
+                audio.play(word, 1, settings, source="db:first")
+                old = audio.worker.submit.call_args.args[0]
+                audio.play(word, 1, settings, source="db:second")
+                current = audio.worker.submit.call_args.args[0]
+                with patch.object(audio, "_play_clip") as play:
+                    audio._audio_result(old, Mock())
+                    play.assert_not_called()
+                    clip = Mock()
+                    audio._audio_result(current, clip)
+                    play.assert_called_once_with(clip)
             finally:
                 audio.shutdown()
                 audio.deleteLater()

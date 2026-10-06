@@ -71,7 +71,7 @@ class AudioRepository:
         )]
 
     def load(self, activation_id: int, written_form: str, reading: str,
-             preferred_sources: tuple[str, ...] = ()) -> AudioClip | None:
+             preferred_sources: tuple[str, ...] = (), *, strict_sources=False) -> AudioClip | None:
         self._require_open()
         rows = []
         if reading:
@@ -99,6 +99,8 @@ class AudioRepository:
         )
         key = (written_form, reading)
         for _entry_id, filename, source in candidates:
+            if strict_sources and source not in preference:
+                continue
             audio_row = self.connection.execute(
                 "SELECT data FROM android WHERE file=? AND source=? ORDER BY id LIMIT 1",
                 (filename, source),
