@@ -124,6 +124,11 @@ The provisioned local library uses the full Turkdict pack and Jitendex
 (2026-10-03), plus KANJIDIC and Jiten metadata packs. These large data files are
 outside Git. Additional local Yomitan packs can be added through the same UI.
 
+**Settings → Appearance → Sentence view** adds clickable words beneath Search.
+It defaults off per profile. Japanese grouping reuses dictionary deconjugation;
+spaced languages keep their original word boundaries. A click keeps the full input
+for base-form analysis, translation, audio, copying and Back.
+
 ### Optional lemma fallback
 
 Exact entries and imported forms remain first. Russian also tries е/ё spelling

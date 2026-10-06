@@ -72,12 +72,12 @@ class LookupWorker(QObject):
         self._thread.start()
 
     def request(self, revision, text, source, foreign, translate=False, target=None, pair=None, translation_settings=None,
-                morphology=False, context=None):
+                morphology=False, context=None, segment=False):
         self.cancel()
         mark("dispatch", revision, translation=translate)
         with self._condition:
             self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings, morphology,
-                             context, threading.Event())
+                             context, segment, threading.Event())
             self._condition.notify()
 
     def cancel(self):
@@ -137,7 +137,7 @@ class LookupWorker(QObject):
                         codes = sorted({meta["language"] for _, meta, _ in engine.library.packs})
                         self._emit(self.languages, codes)
                     if pending is not None:
-                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology, context, cancelled = pending
+                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology, context, segment, cancelled = pending
                         mark("dequeue", revision)
                         options = {"target": target} if target else {}
                         if pair:
@@ -146,6 +146,8 @@ class LookupWorker(QObject):
                             options["morphology"] = True
                         if context is not None:
                             options["context"] = context
+                        if segment:
+                            options["segment"] = True
                         if isinstance(engine, SearchEngine):
                             options.update(cancelled=cancelled, request_id=revision,
                                            translation_progress=lambda result: self._emit(self.progress, revision, result),
@@ -664,6 +666,10 @@ class QuickLookupWindow(QDialog):
         action_layout.addWidget(self.audio_button)
         header_layout.addWidget(self.audio_actions)
         layout.addWidget(self.header)
+        from meikipop.gui.sentence_view import SentenceView
+        self.sentence_view = SentenceView(self)
+        self.sentence_view.word_clicked.connect(self._sentence_word)
+        layout.addWidget(self.sentence_view)
         controls.addWidget(self.source)
         controls.addWidget(self.target_label)
         controls.addWidget(self.foreign)
@@ -798,6 +804,7 @@ class QuickLookupWindow(QDialog):
         font.setPixelSize(config.font_size_definitions)
         self.browser.setFont(font)
         self.search.setFont(font)
+        self._refresh_sentence_view()
         for button in self.findChildren(QToolButton):
             name = button.property("action_name")
             if name:
@@ -927,6 +934,7 @@ class QuickLookupWindow(QDialog):
         self.translate.setAccessibleName(name)
 
     def _edited(self):
+        self._refresh_sentence_view()
         self._invalidate()
         self._display_revision = None
         self._clear_actions()
@@ -1006,6 +1014,8 @@ class QuickLookupWindow(QDialog):
         except (ValueError, TypeError) as error:
             self._failed(self.revision, str(error))
             return
+        segmentation = {"segment": True} if (not translate and not selected and not context
+                        and self.settings.value(f"profiles/{self.preferred_foreign}/sentence_view", False, bool)) else {}
         worker.request(self.revision, text, source,
                        self.preferred_foreign, translate=bool(translate),
                        target=target,
@@ -1013,7 +1023,7 @@ class QuickLookupWindow(QDialog):
                        translation_settings=translation_settings,
                        context=lookup_context if not translate else None,
                        morphology=not translate and self.preferred_foreign != "ja" and
-                       self.settings.value(f"profiles/{self.preferred_foreign}/morphology", False, bool))
+                       self.settings.value(f"profiles/{self.preferred_foreign}/morphology", False, bool), **segmentation)
 
     def deliver(self, revision, result):
         if revision != self.revision or self._shutting_down:
@@ -1094,7 +1104,8 @@ class QuickLookupWindow(QDialog):
             self._history.append((self._result, getattr(self, "_result_context", ""),
                                   self._result_profile, self._result_target, tuple(self._expanded),
                                   self.browser.verticalScrollBar().value(), tuple(self._details_expanded),
-                                  self._result_input))
+                                  self._result_input, getattr(self, "_result_sentence_span", None),
+                                  getattr(self, "_result_sentence_spans", ())))
             self._history = self._history[-30:]
         if details_expanded is not None:
             self._details_expanded = set(details_expanded)
@@ -1107,6 +1118,11 @@ class QuickLookupWindow(QDialog):
         self._result_target = self.foreign.currentData()
         self._result_context = previous_context if same else ""
         self._result_input = self.search.text().strip()
+        self._refresh_sentence_view()
+        if result.sentence_spans and result.text == self._result_input:
+            self.sentence_view.set_sentence(result.text, result.source, result.sentence_spans)
+        self._result_sentence_span = self.sentence_view.selected
+        self._result_sentence_spans = self.sentence_view.spans
         self._expanded = set(expanded)
         self._kanji_expanded = False
         self._render()
@@ -1281,6 +1297,26 @@ class QuickLookupWindow(QDialog):
         menu.exec(self.search.mapToGlobal(point))
         menu.deleteLater()
 
+    def _refresh_sentence_view(self):
+        if not hasattr(self, "sentence_view"):
+            return
+        enabled = self.settings.value(f"profiles/{self.preferred_foreign}/sentence_view", False, bool)
+        text = self.search.text().strip()
+        self.sentence_view.setVisible(enabled and not self._peek and bool(text))
+        if enabled:
+            self.sentence_view.setFont(self.browser.font() if hasattr(self, "browser") else self.font())
+            self.sentence_view.set_sentence(text, self.preferred_foreign)
+
+    def _sentence_word(self, start, end):
+        raw = self.search.text()
+        if self.sentence_view.text != raw.strip():
+            return
+        leading = len(raw) - len(raw.lstrip())
+        first = len(raw[:leading + start].encode("utf-16-le")) // 2
+        length = len(raw[leading + start:leading + end].encode("utf-16-le")) // 2
+        self.search.setSelection(first, length)
+        self.submit(translate=False, selection=True)
+
     def go_back(self):
         if not self._history:
             return
@@ -1302,6 +1338,11 @@ class QuickLookupWindow(QDialog):
         if self._setup is not None:
             self._setup.sync_profile(profile)
         self.scan_settings_changed.emit()
+        self._refresh_sentence_view()
+        if len(previous) > 9:
+            self.sentence_view.set_sentence(self.search.text().strip(), profile, previous[9])
+        self.sentence_view.selected = previous[8] if len(previous) > 8 else None
+        self.sentence_view.render()
         self._display(result, remember=False, expanded=expanded,
                       details_expanded=previous[6] if len(previous) > 6 else ())
         self.set_context(context)
@@ -1369,6 +1410,7 @@ class QuickLookupWindow(QDialog):
         self.setSizeGripEnabled(self.is_pinned or not self._peek)
         self._place_actions()
         self.search.setVisible(not self._peek)
+        self._refresh_sentence_view()
         self.actions_row.setVisible(self.is_pinned or not self._peek)
 
     def _place_actions(self):

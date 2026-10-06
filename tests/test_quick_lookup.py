@@ -89,6 +89,50 @@ class QuickLookupTests(unittest.TestCase):
         self.window.deliver(revision, SearchResult("old", "ja", "en", (entry("OLD"),)))
         self.assertNotIn("OLD", self.window.browser.toPlainText())
 
+    def test_sentence_view_is_opt_in_and_profile_scoped(self):
+        self.window.search.setText("猫がいる")
+        self.assertTrue(self.window.sentence_view.isHidden())
+        self.settings.setValue("profiles/ja/sentence_view", True)
+        self.window.reload_appearance()
+        self.assertFalse(self.window.sentence_view.isHidden())
+        self.window.set_mode("tr")
+        self.assertTrue(self.window.sentence_view.isHidden())
+
+    def test_sentence_word_keeps_unicode_offsets_context_and_history(self):
+        self.settings.setValue("profiles/tr/sentence_view", True)
+        self.window.set_mode("tr")
+        text = "😀 ev kitap ev"
+        self.window.search.setText(text)
+        self.window.debounce.stop()
+        view = self.window.sentence_view
+        with patch.object(self.window.worker, "request") as request:
+            self.window.submit()
+            self.assertTrue(request.call_args.kwargs["segment"])
+            self.window.deliver(self.window.revision, SearchResult(text, "tr", "en"))
+            start = text.rindex("ev")
+            view._clicked(QUrl(f"word:{start}:{start + 2}"))
+            self.assertEqual(self.window.search.selectedText(), "ev")
+            self.assertEqual(request.call_args.kwargs["context"], (text, start, start + 2))
+            self.assertFalse(request.call_args.kwargs.get("segment", False))
+            self.window.deliver(self.window.revision, SearchResult("ev", "tr", "en", (entry("ev", language="tr"),)))
+            self.assertEqual(self.window._context, text)
+            view._clicked(QUrl("word:5:10"))
+            self.window.deliver(self.window.revision, SearchResult("kitap", "tr", "en", (entry("kitap", language="tr"),)))
+            self.window.go_back()
+            self.assertEqual(self.window._result.text, "ev")
+            self.assertEqual(view.selected, (start, start + 2))
+            self.assertEqual(self.window.search.text(), text)
+
+    def test_sentence_view_rejects_external_links_and_escapes_text(self):
+        view = self.window.sentence_view
+        view.set_sentence('<script>kitap</script> & ev', "tr")
+        selected = Mock()
+        view.word_clicked.connect(selected)
+        view._clicked(QUrl("https://example.com"))
+        view._clicked(QUrl("word:0:2000"))
+        selected.assert_not_called()
+        self.assertIn("<script>", view.toPlainText())
+
     def test_morphology_option_follows_profile_for_dictionary_lookup_only(self):
         self.settings.setValue("profiles/tr/morphology", True)
         self.window.set_mode("tr")
