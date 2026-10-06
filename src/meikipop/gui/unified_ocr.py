@@ -594,7 +594,7 @@ class UnifiedOCR(QObject):
             return
         if QApplication.activeModalWidget() or QApplication.activePopupWidget():
             return
-        if QApplication.activeWindow() is self.window:
+        if QApplication.activeWindow() is self.window and not self.window._peek:
             if not self.holding:
                 return
             # An explicit scan outside Search hands focus back to the source app.
@@ -790,7 +790,7 @@ class UnifiedOCR(QObject):
             return
         # AppKit can leave Qt's active window pointing at the hidden Search
         # popup after another application takes focus.
-        if (QApplication.activeWindow() is self.window
+        if (QApplication.activeWindow() is self.window and not self.window._peek
                 and (sys.platform != "darwin" or self.window.isVisible())):
             mark("discard", generation, reason="active_search")
             return

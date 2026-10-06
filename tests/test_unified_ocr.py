@@ -252,12 +252,14 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window.set_context.assert_not_called()
 
     def test_active_manual_search_cannot_be_replaced_by_ocr(self):
+        self.window._peek = False
         self.window.show()
         with patch.object(QApplication, "activeWindow", return_value=self.window):
             self.controller.deliver(self.controller.generation, Mock(), Mock(), "")
         self.window.show_entries.assert_not_called()
 
     def test_macos_hidden_search_with_stale_active_window_accepts_ocr(self):
+        self.window._peek = False
         with patch("meikipop.gui.unified_ocr.sys.platform", "darwin"), \
                 patch.object(QApplication, "activeWindow", return_value=self.window):
             self.controller.deliver(self.controller.generation, Mock(entries=(Mock(),)),
@@ -265,6 +267,7 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window.show_entries.assert_called_once()
 
     def test_windows_active_search_guard_is_preserved_when_hidden(self):
+        self.window._peek = False
         with patch("meikipop.gui.unified_ocr.sys.platform", "win32"), \
                 patch.object(QApplication, "activeWindow", return_value=self.window):
             self.controller.deliver(self.controller.generation, Mock(), Mock(), "")
@@ -439,6 +442,24 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
                 self.controller.scan()
         self.assertTrue(self.window.isVisible())
         dispatch.assert_not_called()
+
+    def test_active_ocr_preview_stays_visible_during_held_scan(self):
+        self.window.show()
+        self.controller.busy = True
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
+                patch.object(QApplication, "activeWindow", return_value=self.window):
+            self.controller.scan()
+        self.assertTrue(self.window.isVisible())
+        self.assertTrue(self.controller.holding)
+
+    def test_active_ocr_preview_accepts_new_results(self):
+        self.window.show()
+        result = SimpleNamespace(entries=[Mock()], text="kitap", source="tr", kanji=[])
+        hit = ContextHit("kitap", "kitap", 0, 5)
+        with patch.object(QApplication, "activeWindow", return_value=self.window):
+            self.controller.deliver(self.controller.generation, result, hit, "")
+        self.window.show_entries.assert_called_once_with(result.entries, text="kitap", source="tr",
+                                                         peek=True, kanji=[])
 
     def test_outside_click_dismisses_pinned_popup(self):
         self.window.show()
