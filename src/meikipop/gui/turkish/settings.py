@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QTabWidget, QWid
 
 from meikipop.config.config import config
 from meikipop.gui.activation import parse_activation_bindings, serialise_activation_bindings
-from meikipop.gui.themes import THEMES
+from meikipop.gui.themes import THEMES, theme_name
 from meikipop.gui.shortcut_edit import ShortcutEdit
 
 
@@ -85,7 +85,8 @@ class SettingsDialog(QDialog):
         appearance = tab("Popup Appearance")
         self.theme = QComboBox()
         self.theme.addItems(["Meikipop", *THEMES])
-        self.theme.setCurrentText(window.settings.value("popup_theme", "Meikipop"))
+        selected = window.settings.value("popup_theme", "Meikipop")
+        self.theme.setCurrentText(selected if selected == "Meikipop" else theme_name(selected))
         appearance.addRow("Preset:", self.theme)
         self.font = QFontComboBox()
         self.font.setWritingSystem(QFontDatabase.WritingSystem.Latin)

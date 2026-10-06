@@ -30,8 +30,8 @@ class ProfileThemeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_four_presets_keep_text_and_metadata_readable(self):
-        self.assertEqual(set(THEMES), {"Charcoal", "Slate", "Dusk", "Light", "Custom"})
+    def test_presets_keep_text_and_metadata_readable(self):
+        self.assertEqual(set(THEMES), {"Cyan", "Lime", "Light", "Custom"})
         for name, theme in THEMES.items():
             if not theme:
                 continue
@@ -41,6 +41,10 @@ class ProfileThemeTests(unittest.TestCase):
                 self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 7)
                 for key in ('color_highlight_word', 'color_highlight_reading'):
                     self.assertGreaterEqual(contrast(bg, theme[key]), 4.5)
+                if name in ('Cyan', 'Lime'):
+                    self.assertEqual(bg, '#000000')
+                    self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 20)
+                    self.assertGreaterEqual(contrast(bg, theme['color_highlight_word']), 12)
                 self.assertGreaterEqual(contrast(bg, surface_colors(bg, theme['color_foreground'])['muted']), 4.5)
 
     def test_headword_furigana_is_opt_in_and_only_shown_for_japanese(self):
@@ -83,7 +87,7 @@ class ProfileThemeTests(unittest.TestCase):
                 widget.theme.setCurrentText('Custom')
                 widget.set_color('color_background', '#102030')
                 widget.save()
-                widget.theme.setCurrentText('Slate')
+                widget.theme.setCurrentText('Cyan')
                 widget.theme.setCurrentText('Custom')
                 self.assertEqual(widget.controls['color_background'].text(), '#102030')
                 self.assertEqual(settings.value('profiles/tr/theme_name'), 'Dusk')

@@ -17,7 +17,7 @@ from .rendering import render_result
 from .browser import DictionaryBrowser
 from .desktop_input import DesktopInput
 from meikipop.gui.selection import SelectionCapture
-from meikipop.gui.themes import THEMES
+from meikipop.gui.themes import THEMES, theme_name
 
 from meikipop.config.config import config
 from meikipop.gui.popup_style import frame_stylesheet, popup_position
@@ -622,11 +622,7 @@ class ClipboardWindow(QWidget):
 
     def apply_appearance(self):
         theme = self.settings.value("popup_theme", "Meikipop")
-        preset = THEMES.get(theme, {})
-        if theme == "light":
-            preset = THEMES["Academic"]
-        elif theme == "dark":
-            preset = THEMES["Nazeka"]
+        preset = {} if theme == "Meikipop" else THEMES[theme_name(theme)]
         def color(key):
             return preset.get(key, self.settings.value(key, getattr(config, key)))
         bg, fg = color("color_background"), color("color_foreground")
