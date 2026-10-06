@@ -67,6 +67,21 @@ class DesktopAccessTests(unittest.TestCase):
         self.access.settings_action.trigger()
         self.window.open_settings.assert_called_once_with(False)
 
+    def test_native_reopen_handler_waits_for_qt_startup(self):
+        import sys
+        from types import SimpleNamespace
+        install = Mock()
+        with patch("meikipop.gui.desktop_access.sys.platform", "darwin"), \
+                patch.object(QApplication, "platformName", return_value="cocoa"), \
+                patch.dict(sys.modules, {"meikipop.gui.macos_reopen":
+                                        SimpleNamespace(install_reopen_handler=install)}):
+            access = DesktopAccess(self.window, self.app)
+            install.assert_not_called()
+            self.app.processEvents()
+            install.assert_called_once_with(access.dock_clicked)
+            access.menu_bar.deleteLater()
+            access.deleteLater()
+
     def test_launch_intent_is_forwarded_to_existing_instance(self):
         from meikipop.scripts.quick_lookup import main
         for platform, arguments, background in (

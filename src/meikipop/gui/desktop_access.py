@@ -21,8 +21,12 @@ class DesktopAccess(QObject):
         quit_action = menu.addAction("Quit Meikipop", app.quit)
         quit_action.setMenuRole(QAction.MenuRole.QuitRole)
         if sys.platform == "darwin" and QApplication.platformName() != "offscreen":
-            from meikipop.gui.macos_reopen import install_reopen_handler
-            self._reopen_handler = install_reopen_handler(self.dock_clicked)
+            # Qt installs its Apple-event handlers as the native loop starts.
+            QTimer.singleShot(0, self._install_reopen_handler)
+
+    def _install_reopen_handler(self):
+        from meikipop.gui.macos_reopen import install_reopen_handler
+        self._reopen_handler = install_reopen_handler(self.dock_clicked)
 
     def dock_clicked(self):
         QTimer.singleShot(0, self.reopen)
