@@ -19,6 +19,7 @@ from meikipop.dictionary.search import SearchEngine, SearchResult
 from meikipop.gui.popup_style import frame_stylesheet, popup_position, surface_colors
 from meikipop.gui.action_icons import action_icon
 from meikipop.gui.ruby import RubyBrowser, ruby_html
+from meikipop.language.profiles import configured_profiles, default_partner
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
 
 
@@ -507,10 +508,10 @@ class QuickLookupWindow(QDialog):
         self.target_label = QLabel("↔")
         self.update_languages(())
         initial_profile = self.settings.value("profile", self.settings.value("source", "ja"))
-        if initial_profile in ("auto", "en"):
+        if initial_profile == "auto" or initial_profile == "en" and not self.settings.contains("profile"):
             initial_profile = self.settings.value("foreign", "ja")
         self.source.setCurrentIndex(max(0, self.source.findData(initial_profile)))
-        self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{initial_profile}/target", "en"))))
+        self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{initial_profile}/target", default_partner(initial_profile)))))
         self.translate = self._action("translate", "Translate")
         self.translate.setEnabled(False)
         self.translate.clicked.connect(lambda: self.submit(translate=True, context=bool(self._peek and self._context)))
@@ -614,7 +615,9 @@ class QuickLookupWindow(QDialog):
     @property
     def preferred_foreign(self):
         mode = self.source.currentData()
-        return mode if mode not in ("auto", "en", None) else self.settings.value("profile", "ja")
+        if mode == "en" and not self.settings.contains("profiles/en/target"):
+            return self.settings.value("profile", "ja")
+        return mode if mode not in ("auto", None) else self.settings.value("profile", "ja")
 
     def apply_style(self):
         colors = surface_colors(config.color_background, config.color_foreground)
@@ -659,16 +662,15 @@ class QuickLookupWindow(QDialog):
                                    self.settings.value("compact_preview", True, type=bool), type=bool)
 
     def update_languages(self, languages):
-        current_source = self.source.currentData() or self.settings.value("source", "auto")
+        current_source = self.source.currentData() or self.settings.value("profile", self.settings.value("source", "ja"))
         current_target = self.foreign.currentData() or "en"
-        codes = list(dict.fromkeys(["ja", "tr", "en", *languages,
-                                   *([current_source] if current_source != "auto" else []), current_target]))
+        codes = list(dict.fromkeys([*configured_profiles(self.settings), *languages,
+                                   *([current_source] if current_source != "auto" else [])]))
         with QSignalBlocker(self.source), QSignalBlocker(self.foreign):
             self.source.clear()
             self.foreign.clear()
             for code in codes:
-                if code != "en":
-                    self.source.addItem(language_name(code), code)
+                self.source.addItem(language_name(code), code)
             for code in dict.fromkeys([*LANGUAGE_NAMES, *codes]):
                 self.foreign.addItem(language_name(code), code)
             self.source.setCurrentIndex(max(0, self.source.findData(current_source)))
@@ -687,14 +689,14 @@ class QuickLookupWindow(QDialog):
 
     def _mode_changed(self):
         mode = self.source.currentData()
-        if self.sender() is self.source and mode not in ("auto", "en"):
+        if self.sender() is self.source and mode != "auto" and (mode != "en" or self.settings.contains("profiles/en/target")):
             with QSignalBlocker(self.foreign):
-                self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{mode}/target", "en"))))
+                self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{mode}/target", default_partner(mode)))))
             self.settings.setValue("profile", mode)
         self._update_target_visibility()
         if self.foreign.currentData() == self.preferred_foreign:
             with QSignalBlocker(self.foreign):
-                self.foreign.setCurrentIndex(self.foreign.findData("en"))
+                self.foreign.setCurrentIndex(self.foreign.findData(default_partner(mode)))
         self.settings.setValue("source", self.source.currentData())
         self.settings.setValue(f"profiles/{self.preferred_foreign}/target", self.foreign.currentData())
         self.mode_changed.emit(self.source.currentData())

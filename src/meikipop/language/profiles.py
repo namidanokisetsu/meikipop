@@ -20,6 +20,18 @@ _NAMES = {"ja": "日本語", "tr": "Türkçe", "en": "English", "zh": "中文",
           "ru": "Русский", "uk": "Українська", "ar": "العربية", "el": "Ελληνικά"}
 
 
+def configured_profiles(settings):
+    settings.beginGroup("profiles")
+    try:
+        return tuple(dict.fromkeys(("ja", "tr", *settings.childGroups())))
+    finally:
+        settings.endGroup()
+
+
+def default_partner(code):
+    return "ja" if code == "en" else "en"
+
+
 def _letter_or_number(char):
     return char.isalnum()
 

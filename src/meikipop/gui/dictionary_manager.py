@@ -8,13 +8,14 @@ import zipfile
 from PyQt6.QtCore import QObject, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget,
-    QLineEdit, QListWidgetItem, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QInputDialog, QLineEdit, QListWidgetItem, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from meikipop.dictionary.library import Library, default_library_path, import_yomitan, save_preferences
 from meikipop.dictionary.translation import TranslationSettings, load_settings, load_profile_settings, save_profile_settings
 from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
+from meikipop.language.profiles import configured_profiles, default_partner
 
 
 class SetupOperation(QObject):
@@ -96,10 +97,13 @@ class SetupDialog(QDialog):
         layout = QVBoxLayout(self)
         profile_row = QHBoxLayout()
         self.profile = QComboBox()
-        for code in ("ja", "tr"):
+        for code in configured_profiles(settings):
             self.profile.addItem(language_name(code), code)
         self.profile.setCurrentIndex(max(0, self.profile.findData(settings.value("profile", settings.value("source", "ja")))))
         profile_row.addWidget(self.profile, 1)
+        self.add_profile_button = QPushButton("Add language…")
+        self.add_profile_button.clicked.connect(self.choose_profile)
+        profile_row.addWidget(self.add_profile_button)
         layout.addLayout(profile_row)
         tabs = QTabWidget()
         layout.addWidget(tabs, 1)
@@ -377,6 +381,23 @@ class SetupDialog(QDialog):
             del blocker
             library.close()
 
+    def choose_profile(self):
+        choices = {name: code for code, name in LANGUAGE_NAMES.items() if self.profile.findData(code) < 0}
+        if choices:
+            name, accepted = QInputDialog.getItem(self, "Add language", "Language", list(choices), editable=False)
+            if accepted:
+                self.add_profile(choices[name])
+
+    def add_profile(self, code):
+        prefix = f"profiles/{code}/"
+        if not self.settings.contains(prefix + "target"):
+            self.settings.setValue(prefix + "target", default_partner(code))
+        if code not in ("ja", "tr") and not self.settings.contains(prefix + "scan_bindings"):
+            self.settings.setValue(prefix + "scan_bindings", "")
+        if self.parent() is not None:
+            self.parent().update_languages(())
+        self.sync_profile(code)
+
     def move_pack(self, offset):
         row = self.packs.currentRow()
         visible = [i for i in range(self.packs.count()) if not self.packs.item(i).isHidden()]
@@ -479,7 +500,7 @@ class SetupDialog(QDialog):
         except ValueError as error:
             translation = TranslationSettings()
             self.status.setText(str(error))
-        self.translation_partner.setCurrentIndex(max(0, self.translation_partner.findData(self.settings.value(f"profiles/{code}/target", "en"))))
+        self.translation_partner.setCurrentIndex(max(0, self.translation_partner.findData(self.settings.value(f"profiles/{code}/target", default_partner(code)))))
         for key, control in (("source", self.translation_source), ("target", self.translation_target)):
             selected = self.settings.value(f"profiles/{code}/translation_{key}", "auto")
             if control.findData(selected) < 0:

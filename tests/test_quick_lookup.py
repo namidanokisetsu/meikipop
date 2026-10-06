@@ -435,6 +435,24 @@ class QuickLookupTests(unittest.TestCase):
             self.window.translation_worker = None
             dialog.deleteLater()
 
+    def test_added_profiles_survive_refresh_without_dictionaries(self):
+        dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+        try:
+            dialog.add_profile("de")
+            self.assertEqual(self.window.preferred_foreign, "de")
+            self.window.update_languages(("ja", "tr"))
+            self.assertGreaterEqual(self.window.source.findData("de"), 0)
+            self.assertEqual(self.settings.value("profiles/de/scan_bindings"), "")
+            dialog.add_profile("en")
+            self.assertEqual(self.window.preferred_foreign, "en")
+            self.assertEqual(self.window.foreign.currentData(), "ja")
+            reopened = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+            self.assertGreaterEqual(reopened.profile.findData("de"), 0)
+            self.assertEqual(reopened.profile.currentData(), "en")
+            reopened.deleteLater()
+        finally:
+            dialog.deleteLater()
+
     def test_translation_direction_is_manual_or_automatic_without_changing_profile(self):
         self.window.translation_worker = Mock()
         dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)

@@ -119,7 +119,7 @@ class SearchEngine:
         entries, suggestions, message = (), (), ""
         matched_length = 0
         if text and not translate:
-            if source == "en" or pair and source == pair[1]:
+            if (source == "en" and foreign != "en") or pair and source == pair[1]:
                 entries = self.library.reverse(text, foreign if pair else target)
                 if not entries and morphology and foreign != "ja":
                     entries = self._lemma_lookup(text, foreign, context)
@@ -136,7 +136,7 @@ class SearchEngine:
                 if not entries:
                     suggestions = self.library.suggest(text, source)
             if not entries and not suggestions:
-                active = self.library._active(target if source == "en" else source)
+                active = self.library._active(foreign if pair and source == pair[1] or source == "en" and foreign != "en" else source)
                 message = "No entry found." if active else "Add a dictionary to start searching."
         translation = ""
         if translate and text:
