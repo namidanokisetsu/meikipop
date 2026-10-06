@@ -103,7 +103,8 @@ class AudioWorker(threading.Thread):
         cancelled = lambda: not self._running or self._latest_request is not request
         clip = None
         try:
-            result = self._online.lookup(request.key[0], request.language, request.iso3, cancelled)
+            result = self._online.lookup(request.key[0], request.language, request.iso3, cancelled,
+                                         reading=request.key[1] if len(request.key) > 1 else "")
             if result:
                 filename, source, data, credit, page_url = result
                 clip = AudioClip(request.activation_id, request.key, filename, source, data, credit, page_url)

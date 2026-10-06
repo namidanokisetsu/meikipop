@@ -24,8 +24,8 @@ class OnlineAudio:
         remaining = deadline - monotonic()
         if cancelled() or remaining <= 0:
             raise InterruptedError()
-        with requests.get(url, params=params, timeout=(min(1.5, remaining), min(2, remaining)), stream=True, allow_redirects=False,
-                          headers={"User-Agent": "Meikipop/2.0 (desktop pronunciation lookup)"}) as response:
+        with requests.get(url, params=params, timeout=(min(3, remaining), min(4, remaining)), stream=True, allow_redirects=False,
+                          headers={"User-Agent": "Meikipop/2.1 (https://github.com/namidanokisetsu/meikipop)"}) as response:
             response.raise_for_status()
             if response.is_redirect:
                 raise ValueError("Unexpected recording redirect")
@@ -45,32 +45,43 @@ class OnlineAudio:
             raise ValueError("Invalid recording data")
         return data
 
-    def lookup(self, term, language, iso3, cancelled=lambda: False):
+    def lookup(self, term, language, iso3, cancelled=lambda: False, reading=""):
+        language = {"cmn": "zh", "fil": "tl", "nb": "no", "nn": "no"}.get(language, language).split("-", 1)[0]
         # Russian stress belongs in display/TTS, not in Commons file names.
         term = term.replace("\u0301", "") if language in ("ru", "uk", "be") else term
-        key = (term, language, iso3)
+        key = (term, language, iso3, reading)
         cached = self.cache.get(key)
         if cached and monotonic() - cached[0] < (3600 if cached[1] else 180):
             self.cache.move_to_end(key)
             return cached[1]
         if not term or len(term) > 200 or not re.fullmatch(r"[a-z]{2,3}", language):
             return None
-        deadline = monotonic() + 5
-        escaped = re.escape(term).replace("/", r"\/")
-        patterns = [(f"{language}(-[a-zA-Z]{{2}})?-{escaped}[0-9]*\\.ogg", "Wiktionary")]
+        deadline = monotonic() + 12
+        candidates = list(dict.fromkeys([term, *([reading] if reading and language == "ja" else [])]))
+        escaped = "(?:" + "|".join(re.escape(text).replace(" ", "[ _]") for text in candidates) + ")"
+        extension = r"\.(?:ogg|oga|wav|mp3|flac)"
+        patterns = [(f"(?:L[0-9]+-)?{language}(?:-[a-zA-Z]{{2}})?-{escaped}[0-9]*{extension}", "Wiktionary")]
         if re.fullmatch(r"[a-z]{3}", iso3):
-            patterns.append((f"LL-Q[0-9]+ \\({iso3}\\)-.+-{escaped}\\.wav", "Lingua Libre"))
+            patterns.append((f"LL-Q[0-9]+ \\({iso3}\\)-.+-{escaped}{extension}", "Lingua Libre"))
         result = None
         try:
-            pattern = "(" + "|".join(pattern for pattern, _ in patterns) + ")"
-            response = self._fetch(self.API, params={"action": "query", "format": "json", "generator": "search",
-                "gsrnamespace": 6, "gsrlimit": 10, "gsrsearch": f"intitle:/{pattern}/i",
-                "prop": "imageinfo", "iiprop": "url|user|extmetadata"},
-                cancelled=cancelled, deadline=deadline)
+            # An indexed term narrows the regex scan. CirrusSearch uses Lucene
+            # regex syntax, which has ordinary groups, not Python's (?:groups).
+            pattern = "(" + "|".join(value for value, _ in patterns).replace("(?:", "(").replace("/", r"\/") + ")"
+            pages = {}
+            for candidate in candidates:
+                title = candidate.replace('\\', '\\\\').replace('"', '\\"')
+                response = self._fetch(self.API, params={"action": "query", "format": "json", "generator": "search",
+                    "gsrnamespace": 6, "gsrlimit": 25, "gsrsearch": f'intitle:"{title}" intitle:/{pattern}/i',
+                    "prop": "imageinfo", "iiprop": "url|user|extmetadata"},
+                    cancelled=cancelled, deadline=deadline)
+                pages.update(response.get("query", {}).get("pages", {}))
+                if pages:
+                    break
             if "error" in response:
                 raise ValueError("Recording search failed")
             for pattern, source in patterns:
-                for page in response.get("query", {}).get("pages", {}).values():
+                for page in pages.values():
                     if not re.fullmatch("File:" + pattern, page.get("title", ""), re.IGNORECASE):
                         continue
                     for info in page.get("imageinfo", []):

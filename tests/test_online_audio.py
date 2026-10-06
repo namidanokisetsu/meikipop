@@ -5,6 +5,18 @@ from meikipop.audio.online import OnlineAudio
 
 
 class OnlineAudioTests(unittest.TestCase):
+    def test_japanese_wav_and_reading_are_included_with_indexed_search(self):
+        client = OnlineAudio()
+        info = {"query": {"pages": {"1": {"title": "File:L7-ja-猫.wav", "imageinfo": [{
+            "url": "https://upload.wikimedia.org/audio.wav", "extmetadata": {}}]}}}}
+        with patch.object(client, "_fetch", side_effect=[info, b"RIFFfixture"]) as fetch:
+            result = client.lookup("猫", "ja", "jpn", reading="ねこ")
+            self.assertEqual(result[2], b"RIFFfixture")
+            query = fetch.call_args_list[0].kwargs["params"]["gsrsearch"]
+            self.assertIn('intitle:"猫"', query)
+            self.assertIn('ねこ', query)
+            self.assertNotIn('(?:', query)
+
     def test_exact_language_and_word_filter_and_cached_recording_credit(self):
         client = OnlineAudio()
         recording = {

@@ -39,7 +39,7 @@ class SentenceAudioTests(unittest.TestCase):
                     self.assertTrue(audio.worker.submit.call_args.args[0].online)
                 settings.setValue("profiles/tr/audio_priority", [])
                 self.assertEqual(source_order(settings, "tr"), [])
-                self.assertEqual(source_order(settings, "ru"), ["online", "tts"])
+                self.assertEqual(source_order(settings, "ru"), ["tts", "online"])
             finally:
                 audio.shutdown()
                 audio.deleteLater()
@@ -118,6 +118,7 @@ class SentenceAudioTests(unittest.TestCase):
     def test_online_defaults_to_entry_language_and_falls_back_to_system_voice(self):
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
             settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ru/audio_priority", ["online", "tts"])
             audio = LookupAudio()
             word = Entry("hello", "привет", "приве\u0301т", "Fixture", "ru", ("hello",))
             try:
@@ -129,6 +130,7 @@ class SentenceAudioTests(unittest.TestCase):
                     audio._audio_result(request, None)
                     speak.assert_called_once_with("приве\u0301т", "ru", 80)
                     settings.setValue("profiles/ru/audio_mode", "tts")
+                    settings.remove("profiles/ru/audio_priority")
                     audio.worker.submit.reset_mock()
                     audio.play(word, 2, settings)
                     audio.worker.submit.assert_not_called()

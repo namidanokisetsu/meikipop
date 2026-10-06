@@ -12,7 +12,7 @@ def source_order(settings, language):
         return saved if isinstance(saved, list) else [saved] if saved else []
     mode = audio_mode(settings, language)
     if mode == "online":
-        return ["online", "tts"]
+        return ["tts", "online"]
     if mode == "tts":
         return ["tts"]
     return local_source_order(settings, language)
