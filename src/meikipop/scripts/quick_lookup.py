@@ -12,6 +12,7 @@ def main(argv=None):
     parser.add_argument("--no-ocr", action="store_true", help="Run dictionary search without screen lookup")
     parser.add_argument("--check-runtime", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    background = args.background or not args.text
 
     if args.check_runtime:
         # Packaging smoke check; never creates a window or requests permissions.
@@ -38,7 +39,7 @@ def main(argv=None):
     app.setQuitOnLastWindowClosed(False)
     from meikipop.gui.single_instance import SingleInstance
     instance = SingleInstance(paths.data_dir, app)
-    if not instance.start(args.text, args.background):
+    if not instance.start(args.text, background):
         return 0
     app.aboutToQuit.connect(instance.shutdown)
     window = QuickLookupWindow(args.library)
@@ -97,7 +98,7 @@ def main(argv=None):
         window.restore_shortcut(binding)
     except (ValueError, OSError, RuntimeError) as error:
         window.show_message(str(error))
-    if not args.background or not QSystemTrayIcon.isSystemTrayAvailable():
+    if not background:
         QTimer.singleShot(0, lambda: window.open_search(args.text))
     return app.exec()
 
