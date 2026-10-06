@@ -17,6 +17,8 @@ clients remain explicit compatibility entrypoints.
    Structured Turkdict content and multiple Japanese dictionaries share the
    existing HTML converter. The working local library includes full Turkdict,
    Jitendex, KANJIDIC and Jiten packs; data and models stay outside Git.
+   In-process changes refresh readers immediately; external inventory changes have
+   a two-second fallback check. Search caches include each reader's library revision.
 
 2. **One popup.** Debounced typing, Enter, explicit local translation and OCR
    use the shared result surface. A worker retains only the newest pending
@@ -31,6 +33,11 @@ clients remain explicit compatibility entrypoints.
    Frequency display defaults to the harmonic mean of positive ranks, with one
    best rank per dictionary; counts and nonnumeric labels are excluded. Per-source
    display remains optional. Cyan/Lime use black backgrounds and white text.
+   Unchanged render identities preserve documents and selections; fitting is coalesced.
+   Selection lookup inside results is independently opt-in for new profiles, with
+   a one-time migration preserving existing behavior. The Turkish compatibility
+   browser retains immediate double-click lookup without a duplicate release request.
+   Pin freezes a preview; existing dismissal and fresh-scan actions leave it.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings
@@ -56,9 +63,12 @@ clients remain explicit compatibility entrypoints.
    explicit local clipboard action using visible scanned context, with a local
    Ctrl/Cmd+Shift+C shortcut. History retains that context. No automatic text
    upload or ChatGPT API connection is added. Pointer hit-testing reuses recognized
-   frames between captures. Raw QImages replace UI-thread PNG encoding; Windows
-   capture exclusion is held through a scan instead of synchronizing the compositor
-   twice per frame.
+   frames independently of fresh recognition, with dictionary work on a separate worker.
+   Windows captures regions through worker-owned MSS with immutable geometry and pixel
+   ownership; unsupported capture uses the guarded Qt fallback. Capture exclusion is held
+   through a scan. Stationary capture requests are spaced by 250 ms when the worker is free,
+   plus the 16 ms scheduling tick; capture and recognition add their own latency. Cached
+   frames expire after two seconds and cannot cross sessions, screens or profiles.
    Previews stay anchored until the lookup changes and fit complete text lines.
    Scanning requires a held trigger; automatic hover scanning is removed.
 
@@ -72,6 +82,10 @@ clients remain explicit compatibility entrypoints.
    coverage with other models. Results identify the model.
    Translation settings offer automatic or manual source and target language
    strips independently of the dictionary profile. Ordinary settings save immediately.
+   Automatic sentence and miss/partial-match routing default off in new profiles;
+   migration preserves existing routing. Streaming is batched, cancellable through startup
+   and HTTP reads, and retains useful dictionary content. Keep model warm is optional,
+   defaults off, and changes only the owned server on the next intentional translation.
 
 ## Compatibility and remaining acceptance
 
@@ -83,6 +97,8 @@ clients remain explicit compatibility entrypoints.
   provisioned in this workspace. Model and dictionary downloads remain explicit.
 - macOS requires Input Monitoring/Screen Recording permissions. Recognition
   languages follow the installed Vision version or selected OCR component.
+  Native capture exclusion, mixed-DPI placement, global gestures and packaging still
+  require platform acceptance; fixture timings do not measure model inference speed.
 - Fixture tests cover dictionary metadata, language policies, latest-request
   delivery, popup controls/context, import safety and translation. Final broad
   test results belong to the current run, not a fixed count in this document.

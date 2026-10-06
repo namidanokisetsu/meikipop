@@ -41,20 +41,25 @@ forms; importing a dictionary does not provide a universal morphology model.
 Imported Turkish forms retain the dictionary's grammar labels, including alternative analyses.
 Reimport an older forms pack to restore labels discarded by earlier versions; existing dictionary preferences are preserved.
 
-Typed search opens beside the tray with keyboard focus. Enter searches immediately.
-Explicit sentences go straight to translation; words try dictionaries first and
-translate automatically when no entry matches. Hover OCR stays dictionary-only.
+Typed search opens on the tray's screen with keyboard focus. Enter searches immediately.
+Automatic sentence translation and translation after incomplete dictionary matches
+are independent options in **Translation**. New profiles default both off; existing
+profiles retain their previous routing. Translate remains available explicitly.
+Hover OCR stays dictionary-only.
 OCR translations show the original sentence, a divider, then the translation. Typed translations
 show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
-Dictionary sections have independent previews and expansion controls. Pin with the scan gesture
-to keep and resize results. Imported frequency, inflection and kanji information uses compact labels.
+Dictionary sections have independent previews and expansion controls. Left-click a preview
+or use the scan gesture to freeze and resize it. Escape, outside click, Close, or a new
+scan leave the result. Entering a preview pauses its dismissal grace; leaving rearms it.
+Search also supports edge and corner resizing. Imported frequency, inflection and kanji information uses compact labels.
 Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, taking
 the best matching rank per dictionary. **Dictionaries → Combine frequency ranks**
 switches between the combined number and individual labels. Counts and nonnumeric
 bands are excluded from the mean.
-The copy button previews its sentence on hover; other popup hover labels are hidden.
+The copy button previews its sentence on hover; action icons have short tooltips.
+Dictionary-internal tooltips remain hidden.
 Kanji always use compact cards with meanings and readings, without a separate label or details toggle.
 
 The top controls are Translate, Read sentence, then Read word. In pinned OCR results they
@@ -92,9 +97,12 @@ Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 
 **Settings → Shortcuts** configures one text-lookup shortcut and optional automatic selection.
 Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected
-text, preserving the clipboard, or uses the clipboard if nothing is selected. Sentences
-translate automatically; the prefilled input remains selected for immediate typing.
-Press the shortcut again to close the popup. Ordinary settings save immediately;
+text, preserving the clipboard, or uses the clipboard if nothing is selected. The prefilled
+input remains selected for immediate typing and follows the profile's translation options.
+Inside results, select text and choose **Look up** in its context menu or use the existing
+lookup shortcut. Otherwise that shortcut closes the popup. **Look up selection inside results**
+is separate from global selection watching: new profiles default it off, existing profiles
+retain automatic lookup. Native selection and copying remain available. Ordinary settings save immediately;
 downloads, imports and removals require their action buttons.
 Automatic lookup on double-click or drag selection is disabled by default and configured per profile.
 These previews leave keyboard focus in the original app. Selected-text lookup preserves the clipboard.
@@ -210,8 +218,10 @@ python -m meikipop.scripts.translation_server --install lightweight
 
 **Translate** starts only the installed selected model, off the UI thread, at
 `http://127.0.0.1:8766/v1`. Windows uses the CUDA runtime for the selected NVIDIA
-GPU; Apple Silicon uses Metal. The server frees model memory after an idle
-minute and reloads it when needed. The app stops only its own server when
+GPU; Apple Silicon uses Metal. By default the server frees model memory after an idle
+minute and reloads it when needed. **Keep model warm** retains that memory after intentional
+use; it defaults off and never starts a model at app launch. Changes take effect on the next
+translation without interrupting an active request. The app stops only its own server when
 exiting. CPU execution is possible
 but may be slower. Weight size excludes runtime and context memory, so close
 other GPU-heavy applications if necessary.
@@ -222,7 +232,11 @@ translation pairs beyond Hy-MT2. It is never started or downloaded by the app.
 Requests use numeric loopback addresses, bypass proxies and reject redirects. No text goes to a
 cloud translation service. Search and translation do not download anything;
 neither Torch nor the older Argos/CTranslate2 backend is required or offered.
-The result's tooltip identifies its selected model.
+Translation arrives in small batches. The Translate icon becomes Cancel while busy;
+its tooltip identifies startup and the selected model. Editing, closing, or changing
+translation settings rejects late output. Automatic fallback retains useful dictionary
+content on failure or cancellation. If a custom server rejects streaming, disable
+**Stream translation**; the app never retries an expensive request automatically.
 
 ## Optional Turkish OCR export
 
@@ -285,6 +299,9 @@ Focused tests cover stale-result rejection, input/pinning/history, source
 rendering, import cancellation, offline inference and archive validation.
 Hands-on OCR accuracy, global keys, display scaling and clean-machine packaging
 remain platform acceptance work. See the [support plan](TURKISH_SUPPORT_PLAN.md).
+Optional developer traces use `MEIKIPOP_TIMING=1` or the `meikipop.timing` debug logger.
+They record request/frame stages and discard reasons without text, pixels or paths;
+document construction and the first applicable Qt paint are recorded separately.
 
 ## Language coverage
 
