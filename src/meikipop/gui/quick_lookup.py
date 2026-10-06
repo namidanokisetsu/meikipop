@@ -9,7 +9,7 @@ import sys
 import threading
 
 from PyQt6.QtCore import QObject, QEvent, QLocale, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QCursor, QFont, QKeySequence, QShortcut
+from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QKeySequence, QShortcut, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QPushButton, QToolButton, QToolTip, QVBoxLayout, QWidget,
@@ -369,6 +369,27 @@ def _metadata(entries, combine_frequencies=True):
 
 def _source_name(source):
     return re.sub(r"\s*\[\d{4}[^\]]*\]", "", source).replace("Jitendex.org", "Jitendex").strip()
+
+
+def _compact_context(text, font, width):
+    text = " ".join(text.split())
+    layout = QTextLayout(text, font)
+    option = QTextOption()
+    option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    layout.setTextOption(option)
+    layout.beginLayout()
+    line = layout.createLine()
+    if line.isValid():
+        line.setLineWidth(max(1, width))
+    length = line.textLength() if line.isValid() else 0
+    layout.endLayout()
+    # Qt text offsets count UTF-16 units, including emoji and astral kanji.
+    encoded = text.encode("utf-16-le")
+    first = encoded[:length * 2].decode("utf-16-le").rstrip()
+    rest = encoded[length * 2:].decode("utf-16-le").lstrip()
+    if not rest:
+        return first
+    return first + "\n" + QFontMetricsF(font).elidedText(rest, Qt.TextElideMode.ElideRight, max(1, width))
 
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
@@ -1110,6 +1131,10 @@ class QuickLookupWindow(QDialog):
             if self._peek and self.is_pinned:
                 show_source = self.settings.value(f"profiles/{self.preferred_foreign}/pinned_sentence", True, bool)
                 source_text = self._result_context or (self._result.text if self._result.translation else "")
+                if show_source and source_text:
+                    width = (self.browser.viewport().width() - self.audio_actions.sizeHint().width()
+                             - 8 - 2 * self.browser.document().documentMargin())
+                    source_text = _compact_context(source_text, self.browser.font(), width)
             self._place_actions()
             from meikipop.gui.profile_appearance import DEFAULTS
             identity = (repr(self._result), self.preferred_foreign, tuple(sorted(expanded)),
@@ -1592,6 +1617,8 @@ class QuickLookupWindow(QDialog):
             mark("paint", self._document_revision)
         if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
             self._place_actions()
+            if self._peek and self.is_pinned and hasattr(self, "render_timer"):
+                self.render_timer.start(0)
         if event.type() == QEvent.Type.ToolTip and not isinstance(watched, QToolButton):
             QToolTip.hideText()
             return True

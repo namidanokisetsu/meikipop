@@ -40,7 +40,8 @@ clients remain explicit compatibility entrypoints.
    browser retains immediate double-click lookup without a duplicate release request.
    Pin freezes a preview; existing dismissal and fresh-scan actions leave it.
    Pinned OCR results include compact original context, enabled by default with
-   a per-profile Appearance toggle. Copy and translation retain the complete context.
+   a per-profile Appearance toggle. Long context is limited to two lines that adapt
+   to the popup width; copy, translation and audio retain the complete context.
    Dictionary-provided disclosures remain independently collapsible after pinning,
    including nested Turkdict sections; toggles preserve the reading position and
    history restores their state.

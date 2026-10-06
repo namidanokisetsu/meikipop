@@ -645,6 +645,40 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_mode("ja")
         self.assertFalse(appearance.pinned_sentence.isChecked())
 
+    def test_long_pinned_sentence_keeps_definitions_visible_and_full_context(self):
+        sentence = "猫 <&> 😀 " + "長い文の中に猫がいる。\n" * 80
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context(sentence)
+        self.window.pin.setChecked(True)
+        browser = self.window.browser
+        lengths = []
+        for scale, width in ((100, 480), (200, 340), (200, 650)):
+            with self.subTest(scale=scale, width=width):
+                self.settings.setValue("profiles/ja/scale", scale)
+                self.window.reload_appearance()
+                self.window.resize(width, 420)
+                self.app.processEvents()
+                self.wait_until(lambda: not self.window.render_timer.isActive())
+                block = browser.document().begin()
+                self.assertLessEqual(block.layout().lineCount(), 2)
+                self.assertIn("…", block.text())
+                self.assertNotIn(sentence, browser.toPlainText())
+                lengths.append(len(block.text()))
+                definition = browser.cursorRect(browser.document().find("cat"))
+                self.assertGreaterEqual(definition.top(), 0)
+                self.assertLess(definition.bottom(), browser.viewport().height())
+        self.assertGreater(lengths[-1], lengths[-2])
+        self.assertEqual(self.window._result_context, sentence.strip())
+        with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
+            self.window.copy_sentence()
+            clipboard.return_value.setText.assert_called_once_with(sentence.strip())
+        self.window.audio = Mock()
+        self.window.play_audio(sentence=True)
+        self.assertEqual(self.window.audio.play_text.call_args.args[0], sentence.strip())
+        with patch.object(self.window, "translation_worker") as worker:
+            self.window.submit(translate=True, context=True)
+            self.assertEqual(worker.request.call_args.args[1], sentence.strip())
+
     def test_pinned_translation_hides_source_when_disabled_and_keeps_copy(self):
         sentence = "猫がいる。"
         self.settings.setValue("profiles/ja/pinned_sentence", False)
