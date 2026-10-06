@@ -5,8 +5,7 @@ import sys
 import threading
 import zipfile
 
-from PyQt6.QtCore import QObject, QSignalBlocker, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import QObject, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget,
     QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
@@ -135,11 +134,6 @@ class SetupDialog(QDialog):
         self.add_profile_button = QPushButton("Add language…")
         self.add_profile_button.clicked.connect(self.choose_profile)
         profile_row.addWidget(self.add_profile_button)
-        support = QPushButton("Support")
-        support.setToolTip("Language coverage")
-        support.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(
-            "https://github.com/namidanokisetsu/meikipop/blob/main/docs/TURKISH_SETUP.md#language-coverage")))
-        profile_row.addWidget(support)
         layout.addLayout(profile_row)
         tabs = QTabWidget()
         self.tabs = tabs
