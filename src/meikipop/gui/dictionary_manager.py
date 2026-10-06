@@ -183,6 +183,10 @@ class SetupDialog(QDialog):
         self.combine_frequencies.setToolTip("Harmonic mean across enabled rank dictionaries; best matching rank per dictionary")
         self.combine_frequencies.toggled.connect(self.save_frequency_display)
         dictionary_layout.addWidget(self.combine_frequencies)
+        self.show_pitch = QCheckBox("Pitch accent")
+        self.show_pitch.setToolTip("Show accents from enabled Japanese pitch dictionaries")
+        self.show_pitch.toggled.connect(self.save_pitch_display)
+        dictionary_layout.addWidget(self.show_pitch)
         self.morphology_row = QWidget()
         morphology_layout = QHBoxLayout(self.morphology_row)
         morphology_layout.setContentsMargins(0, 0, 0, 0)
@@ -597,6 +601,9 @@ class SetupDialog(QDialog):
         self.install_button.setEnabled(self.recommended.currentData() is not None and self.operation is None)
         with QSignalBlocker(self.combine_frequencies):
             self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
+        self.show_pitch.setVisible(code == "ja")
+        with QSignalBlocker(self.show_pitch):
+            self.show_pitch.setChecked(self.settings.value("profiles/ja/show_pitch", True, bool))
         with QSignalBlocker(self.morphology):
             self.morphology.setChecked(self.settings.value(f"profiles/{code}/morphology", False, bool))
         self.update_morphology_controls()
@@ -671,6 +678,11 @@ class SetupDialog(QDialog):
 
     def save_frequency_display(self, enabled):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/combine_frequencies", enabled)
+        if self.parent() is not None:
+            self.parent()._render()
+
+    def save_pitch_display(self, enabled):
+        self.settings.setValue("profiles/ja/show_pitch", enabled)
         if self.parent() is not None:
             self.parent()._render()
 

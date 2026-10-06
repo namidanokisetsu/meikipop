@@ -22,7 +22,7 @@ separate Turkish client and its existing settings.
 ## Dictionaries and controls
 
 Open **Settings → Dictionaries → Import ZIPs** and select local Yomitan archives.
-Definition, forms, frequency and kanji packs are indexed on disk without
+Definition, forms, frequency, Japanese pitch and kanji packs are indexed on disk without
 replacing `dictionary.pkl`. Enable packs and move them up or down; changes save immediately.
 Choose a recommended pack and press **Install**, or select an installed pack and press
 **Remove**. Removal deletes all revisions of that dictionary so an older copy cannot reappear.
@@ -59,6 +59,10 @@ Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, t
 the best matching rank per dictionary. **Dictionaries → Combine frequency ranks**
 switches between the combined number and individual labels. Counts and nonnumeric
 bands are excluded from the mean.
+Import a Yomitan pitch dictionary with the Japanese profile selected. **Dictionaries →
+Pitch accent** controls its display: overlines mark high morae, ꜜ marks a drop,
+and brackets show the supplied accent number or H/L pattern. Sources and alternative
+accents remain separate. Reimport an older mixed pack to add previously skipped pitch data.
 The copy button previews its sentence on hover; action icons have short tooltips.
 Dictionary-internal tooltips remain hidden.
 Kanji always use compact cards with meanings and readings, without a separate label or details toggle.

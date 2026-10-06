@@ -59,6 +59,7 @@ class Entry:
     route: str = "exact"
     frequencies: tuple = ()
     inflection: tuple = ()
+    pitches: tuple = ()
 
     def glosses(self):
         from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
@@ -93,13 +94,13 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
         if destination.exists():
             with closing(sqlite3.connect(destination)) as existing:
                 version = existing.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
-            if version and version[0] == "2":
+            if version and version[0] == "3":
                 return destination
         banks = sorted((n for n in zf.namelist() if re.fullmatch(r"term_bank_\d+\.json", n)),
                        key=lambda n: int(n[10:-5]))
         metadata_banks = [n for n in zf.namelist() if re.fullmatch(r"(?:term_meta|kanji)_bank_\d+\.json", n)]
         if not banks and not metadata_banks:
-            raise ValueError("No definitions, forms, frequency or kanji banks found.")
+            raise ValueError("No definitions, forms, frequency, pitch or kanji banks found.")
         fd, temporary = tempfile.mkstemp(prefix=".import-", suffix=".sqlite3.tmp", dir=directory)
         os.close(fd)
         db = sqlite3.connect(temporary)
@@ -115,6 +116,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 CREATE TABLE forms(key TEXT, folded TEXT, target TEXT, labels TEXT);
                 CREATE TABLE frequencies(key TEXT, reading_key TEXT, rank REAL, label TEXT);
                 CREATE TABLE kanji(character TEXT PRIMARY KEY, data TEXT);
+                CREATE TABLE pitches(key TEXT, reading_key TEXT, reading TEXT, data TEXT);
                 CREATE VIRTUAL TABLE gloss_search USING fts5(gloss, content='');
             """)
             for number, name in enumerate(banks, 1):
@@ -168,8 +170,15 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 db.execute("INSERT OR REPLACE INTO kanji VALUES(?,?)",
                            (character, json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
                 kanji_count += 1
-            if not (count or redirects or frequency_count or kanji_count):
-                raise ValueError("Dictionary contains no usable definitions, forms, frequencies or kanji.")
+            from .pitch import pitch_rows
+            pitch_count = 0
+            if source_language == "ja":
+                for term, reading, data in pitch_rows(zf, cancelled):
+                    db.execute("INSERT INTO pitches VALUES(?,?,?,?)", (key(term), key(reading), reading,
+                               json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
+                    pitch_count += 1
+            if not (count or redirects or frequency_count or kanji_count or pitch_count):
+                raise ValueError("Dictionary contains no usable definitions, forms, frequencies, pitch or kanji.")
             if progress:
                 progress(f"{title}: indexing…")
             db.executescript("""
@@ -179,13 +188,14 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 CREATE INDEX form_key ON forms(key);
                 CREATE INDEX form_folded ON forms(folded);
                 CREATE INDEX frequency_key ON frequencies(key,reading_key);
+                CREATE INDEX pitch_key ON pitches(key,reading_key);
             """)
-            metadata = dict(schema_version="2", imported_at_ns=str(time_ns()), title=title, language=source_language,
+            metadata = dict(schema_version="3", imported_at_ns=str(time_ns()), title=title, language=source_language,
                             target_language=str(index.get("targetLanguage", "")),
                             frequency_mode=str(index.get("frequencyMode", "rank-based")),
                             revision=str(index.get("revision", "")), sha256=sha,
                             entries=str(count), forms=str(redirects),
-                            frequencies=str(frequency_count), kanji=str(kanji_count))
+                            frequencies=str(frequency_count), kanji=str(kanji_count), pitches=str(pitch_count))
             db.executemany("INSERT INTO metadata VALUES(?,?)", metadata.items())
             db.commit()
             if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -198,10 +208,16 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 with closing(sqlite3.connect(destination)) as existing, existing:
                     existing.execute("ATTACH DATABASE ? AS upgraded", (temporary,))
                     existing.execute("BEGIN IMMEDIATE")
-                    existing.execute("ALTER TABLE forms ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'")
+                    if version[0] == "1":
+                        existing.execute("ALTER TABLE forms ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'")
                     existing.execute("""UPDATE forms SET labels=COALESCE((SELECT labels FROM upgraded.forms f
                         WHERE f.rowid=forms.rowid AND f.key=forms.key AND f.target=forms.target),'[]')""")
-                    existing.execute("UPDATE metadata SET value='2' WHERE key='schema_version'")
+                    existing.execute("CREATE TABLE IF NOT EXISTS pitches(key TEXT, reading_key TEXT, reading TEXT, data TEXT)")
+                    existing.execute("DELETE FROM pitches")
+                    existing.execute("INSERT INTO pitches SELECT * FROM upgraded.pitches")
+                    existing.execute("CREATE INDEX IF NOT EXISTS pitch_key ON pitches(key,reading_key)")
+                    existing.execute("INSERT OR REPLACE INTO metadata VALUES('pitches',?)", (str(pitch_count),))
+                    existing.execute("UPDATE metadata SET value='3' WHERE key='schema_version'")
             else:
                 os.replace(temporary, destination)
             library_changed(directory)
@@ -252,7 +268,7 @@ class Library:
                 db.row_factory = sqlite3.Row
                 db.execute("PRAGMA cache_size=-2048")
                 metadata = dict(db.execute("SELECT key,value FROM metadata"))
-                if metadata.get("schema_version") not in ("1", "2"):
+                if metadata.get("schema_version") not in ("1", "2", "3"):
                     raise ValueError("Unsupported dictionary pack")
                 identity = (metadata["language"], metadata["title"])
                 previous = selected.get(identity)
@@ -327,7 +343,7 @@ class Library:
 
         def form_rows(meta, db, candidate, fold=False):
             column = "folded" if fold else "key"
-            labels = "labels" if meta.get("schema_version") == "2" else "'[]'"
+            labels = "labels" if meta.get("schema_version") in ("2", "3") else "'[]'"
             return db.execute(f"SELECT target,{labels} FROM forms WHERE {column}=? LIMIT 64",
                               (folded(candidate) if fold else candidate,))
 
@@ -400,9 +416,31 @@ class Library:
         for entry in entries:
             identity = (entry.term, entry.reading)
             if identity not in cache:
-                cache[identity] = self.frequencies(*identity, language)
-            result.append(replace(entry, frequencies=cache[identity]))
+                cache[identity] = (self.frequencies(*identity, language),
+                                   self.pitches(*identity) if language == "ja" else ())
+            result.append(replace(entry, frequencies=cache[identity][0], pitches=cache[identity][1]))
         return tuple(result)
+
+    def pitches(self, term, reading=""):
+        from .pitch import Pitch
+        result = []
+        # Kana-only terms may omit the reading. Never attach another reading's accent.
+        reading = reading or term
+        def variants(text):
+            return tuple(dict.fromkeys((key(text), key("".join(
+                chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in text)), key("".join(
+                chr(ord(c) + 0x60) if "ぁ" <= c <= "ゖ" else c for c in text)))))
+        for _, meta, db in self._active("ja"):
+            if not int(meta.get("pitches", 0)):
+                continue
+            for term_key in variants(term):
+                for reading_key in variants(reading):
+                    for row in db.execute("SELECT reading,data FROM pitches WHERE key=? AND reading_key=?",
+                                          (term_key, reading_key)):
+                        data = json.loads(row[1])
+                        result.append(Pitch(meta["title"], row[0], data["position"], tuple(data["nasal"]),
+                                            tuple(data["devoice"]), tuple(data["tags"])))
+        return tuple(dict.fromkeys(result))
 
     def frequencies(self, term, reading="", language="ja"):
         from .metadata import Frequency

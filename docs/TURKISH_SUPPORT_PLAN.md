@@ -9,7 +9,7 @@ clients remain explicit compatibility entrypoints.
 
 ## Current design
 
-1. **Indexed library.** Import local Yomitan definition, forms, frequency and
+1. **Indexed library.** Import local Yomitan definition, forms, frequency, pitch and
    kanji archives into immutable SQLite packs. Imports are atomic and
    cancellable; per-pack enablement and ordering are separate preferences.
    Explicit recommended downloads reuse this importer. Removal closes readers
@@ -19,6 +19,12 @@ clients remain explicit compatibility entrypoints.
    Jitendex, KANJIDIC and Jiten packs; data and models stay outside Git.
    In-process changes refresh readers immediately; external inventory changes have
    a two-second fallback check. Search caches include each reader's library revision.
+   Japanese pitch packs retain reading-specific alternatives, source labels, tags,
+   nasal/devoicing markers and numeric or H/L patterns. Schema 3 keeps older packs
+   readable; reimport adds pitch metadata transactionally with live readers.
+   The optional Japanese pitch display uses high-mora overlines and downstep marks.
+   This adapts [Chibipop's pitch approach](https://github.com/stellarie/chibipop/blob/main/src/dict/pitch.rs)
+   to our existing SQLite library and Qt HTML rather than its Rust renderer.
 
 2. **One popup.** Debounced typing, Enter, explicit local translation and OCR
    use the shared result surface. A worker retains only the newest pending
