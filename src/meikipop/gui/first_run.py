@@ -166,8 +166,6 @@ class SetupWizard(QWizard):
         self.window.open_settings()
         dialog = self.window._setup
         dialog.tabs.setCurrentIndex(tab)
-        # The existing settings dialog owns cancellation and download progress.
-        dialog.exec()
 
     def validateCurrentPage(self):
         if self.currentId() == 3:
@@ -195,9 +193,13 @@ class SetupWizard(QWizard):
 
 
 def show_setup(window):
-    wizard = SetupWizard(window)
-    window._setup_wizard = wizard
-    wizard.exec()
+    wizard = getattr(window, "_setup_wizard", None)
+    if wizard is None or not wizard.isVisible() and wizard.operation is None:
+        wizard = SetupWizard(window)
+        window._setup_wizard = wizard
+    wizard.show()
+    wizard.raise_()
+    wizard.activateWindow()
 
 
 class DownloadPage(QWizardPage):
