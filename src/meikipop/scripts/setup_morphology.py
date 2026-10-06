@@ -24,7 +24,15 @@ def _run(arguments, cancelled=None):
         creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     # Let the current install step finish so cancellation cannot leave half an
     # installed Python package. No following step starts after cancellation.
-    output, _ = process.communicate()
+    while True:
+        try:
+            output, _ = process.communicate() if "pip" in arguments or "ensurepip" in arguments else process.communicate(timeout=0.2)
+            break
+        except subprocess.TimeoutExpired:
+            if cancelled and cancelled.is_set() and "pip" not in arguments and "ensurepip" not in arguments:
+                process.terminate()
+                process.communicate()
+                raise InterruptedError("Model setup cancelled.")
     if cancelled and cancelled.is_set():
         raise InterruptedError("Model setup cancelled.")
     if process.returncode:

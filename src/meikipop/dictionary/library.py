@@ -66,7 +66,7 @@ class Entry:
         return StructuredContentConverter().extract_glosses(list(self.definitions))
 
 
-def import_yomitan(archive, directory=None, language=None, progress=None, cancelled=None):
+def import_yomitan(archive, directory=None, language=None, progress=None, cancelled=None, warnings=None):
     """Read one bank at a time, then atomically publish a complete pack.
 
     Existing packs stay readable during imports. The archive hash makes reimport
@@ -82,7 +82,8 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             digest.update(chunk)
     sha = digest.hexdigest()
     # Language belongs to the pack identity when a legacy archive omits it.
-    with zipfile.ZipFile(archive) as zf:
+    from .archive import DictionaryArchive
+    with DictionaryArchive(archive) as zf:
         index = json.loads(zf.read("index.json"))
         source_language = language_code(language or index.get("sourceLanguage") or "ja")
         title = index.get("title")
@@ -127,7 +128,9 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 if not isinstance(rows, list):
                     raise ValueError(f"Invalid term bank: {name}")
                 terms, forms, glosses = [], [], []
-                for row in rows:
+                for row_number, row in enumerate(rows):
+                    if row_number % 1000 == 0 and cancelled and cancelled():
+                        raise InterruptedError("Dictionary import cancelled.")
                     if (not isinstance(row, list) or len(row) < 6 or
                             not isinstance(row[0], str) or not isinstance(row[1], str) or
                             not isinstance(row[5], list)):
@@ -196,6 +199,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                             revision=str(index.get("revision", "")), sha256=sha,
                             entries=str(count), forms=str(redirects),
                             frequencies=str(frequency_count), kanji=str(kanji_count), pitches=str(pitch_count))
+            metadata["checksum_warnings"] = json.dumps(sorted(zf.checksum_warnings))
             db.executemany("INSERT INTO metadata VALUES(?,?)", metadata.items())
             db.commit()
             if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -221,6 +225,8 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             else:
                 os.replace(temporary, destination)
             library_changed(directory)
+            if warnings is not None:
+                warnings.extend(sorted(zf.checksum_warnings))
         finally:
             db.close()
             if os.path.exists(temporary):

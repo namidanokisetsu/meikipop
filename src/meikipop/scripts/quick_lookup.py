@@ -34,6 +34,21 @@ def main(argv=None):
         from meikipop.gui.first_run import SetupWizard
         from meikipop.gui.dictionary_manager import SetupDialog
         if getattr(sys, "frozen", False):
+            import json
+            from pathlib import Path
+            import tempfile
+            import threading
+            import zipfile
+            from meikipop.dictionary.import_job import background_import
+            with tempfile.TemporaryDirectory() as folder:
+                archive = Path(folder) / "fixture.zip"
+                with zipfile.ZipFile(archive, "w") as bundle:
+                    bundle.writestr("index.json", json.dumps({"title": "Runtime check", "format": 3, "sourceLanguage": "en"}))
+                    bundle.writestr("term_bank_1.json", json.dumps([["test", "", "", "", 0, ["fixture"]]]))
+                message, imported = background_import([archive], Path(folder) / "library", "en", None,
+                                                     lambda text: None, threading.Event())
+                if not imported:
+                    raise RuntimeError(message)
             import stanza
             import torch
             if sys.platform == "win32":

@@ -1887,6 +1887,9 @@ class QuickLookupWindow(QDialog):
     def shutdown(self):
         if self._shutting_down:
             return
+        onboarding = getattr(self, "_language_setup", None)
+        if onboarding is not None:
+            onboarding.cancelled.set()
         self._shutting_down = True
         self.selection.cancel()
         if self.audio:

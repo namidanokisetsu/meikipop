@@ -57,6 +57,37 @@ class FirstRunTests(unittest.TestCase):
         self.assertFalse(self.settings.value("setup/completed", False, bool))
         self.assertIn("unavailable", self.wizard.error.text())
 
+    def test_manual_setup_skips_download_page(self):
+        self.wizard.restart()
+        self.wizard.manual.setChecked(True)
+        self.assertEqual(self.wizard.nextId(), 2)
+        self.assertIsNone(self.wizard.operation)
+
+    def test_automatic_setup_starts_once_after_language_selection(self):
+        self.window.directory = self.directory.name
+        with patch("meikipop.gui.language_setup.LanguageSetup") as setup:
+            self.wizard.begin_downloads()
+            self.wizard.begin_downloads()
+        setup.assert_called_once()
+        setup.return_value.thread.start.assert_called_once()
+        self.wizard.operation = None
+
+    def test_language_plan_uses_supported_models_and_native_mac_ocr(self):
+        from meikipop.gui.language_setup import language_plan
+        japanese = language_plan("ja", platform="win32")
+        self.assertEqual([task.kind for task in japanese], ["dictionary", "ocr", "translation"])
+        self.assertEqual(japanese[-1].value, "lightweight")
+        turkish = language_plan("tr", platform="darwin")
+        self.assertEqual([task.kind for task in turkish], ["dictionary", "morphology", "translation"])
+
+    def test_cancelled_language_setup_does_not_start_downloads(self):
+        from meikipop.gui.language_setup import LanguageSetup, language_plan
+        operation = LanguageSetup(language_plan("ja"), self.directory.name)
+        operation.cancelled.set()
+        with patch("meikipop.gui.language_setup.install_task") as install:
+            operation.run()
+        install.assert_not_called()
+
 
 class ModelInstallerTests(unittest.TestCase):
     def test_frozen_morphology_uses_bundled_worker(self):

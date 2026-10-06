@@ -1,9 +1,7 @@
 """Explicit, offline dictionary and translation setup."""
-import json
 from pathlib import Path
 import sys
 import threading
-import zipfile
 
 from PyQt6.QtCore import QObject, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -11,7 +9,7 @@ from PyQt6.QtWidgets import (
     QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from meikipop.dictionary.library import Library, default_library_path, import_yomitan, language_code, save_preferences
+from meikipop.dictionary.library import Library, default_library_path, language_code, save_preferences
 from meikipop.dictionary.translation import TranslationSettings, load_settings, load_profile_settings, save_profile_settings
 from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
@@ -47,6 +45,15 @@ class SetupOperation(QObject):
             pass
 
     def _run(self):
+        if self.paths or self.recommended:
+            try:
+                from meikipop.dictionary.import_job import background_import
+                result = background_import(self.paths, self.directory, self.language, self.recommended,
+                                           lambda text: self._emit(self.progress, text), self.cancelled)
+                self._emit(self.finished, *result)
+            except Exception as error:
+                self._emit(self.finished, str(error), False)
+            return
         if self.ocr:
             try:
                 from meikipop.scripts.setup_ocr import install
@@ -63,17 +70,11 @@ class SetupOperation(QObject):
             except Exception as error:
                 self._emit(self.finished, str(error), False)
             return
-        if self.recommended or self.remove:
+        if self.remove:
             try:
-                if self.recommended:
-                    from meikipop.dictionary.catalog import install_recommended
-                    install_recommended(self.recommended, self.directory,
-                                        lambda text: self._emit(self.progress, text), self.cancelled)
-                    status = "Dictionary installed."
-                else:
-                    from meikipop.dictionary.library import remove_dictionary
-                    remove_dictionary(self.directory, self.remove, lambda: self._emit(self.refresh), self.cancelled)
-                    status = "Dictionary removed."
+                from meikipop.dictionary.library import remove_dictionary
+                remove_dictionary(self.directory, self.remove, lambda: self._emit(self.refresh), self.cancelled)
+                status = "Dictionary removed."
                 self._emit(self.finished, status, True)
             except Exception as error:
                 self._emit(self.finished, str(error), False)
@@ -89,33 +90,7 @@ class SetupOperation(QObject):
             except Exception as error:
                 self._emit(self.finished, str(error), False)
             return
-        imported = 0
-        errors = []
-        for path in self.paths:
-            if self.cancelled.is_set():
-                break
-            try:
-                self._emit(self.progress, f"Importing {Path(path).name}…")
-                with zipfile.ZipFile(path) as archive:
-                    with archive.open("index.json") as stream:
-                        metadata = json.loads(stream.read(1024 * 1024))
-                language = metadata.get("sourceLanguage") or self.language
-                if not language:
-                    raise ValueError("No source language in this archive. Choose its language and import again.")
-                import_yomitan(path, self.directory, language=language,
-                               progress=lambda value: self._emit(self.progress, value),
-                               cancelled=self.cancelled.is_set)
-                imported += 1
-            except InterruptedError:
-                break
-            except Exception as error:
-                errors.append(f"{Path(path).name}: {error}")
-        status = f"Imported {imported}."
-        if self.cancelled.is_set():
-            status += " Cancelled. Completed imports were kept."
-        if errors:
-            status += "\n" + "\n".join(errors)
-        self._emit(self.finished, status, bool(imported))
+        self._emit(self.finished, "No dictionaries selected.", False)
 
 
 class SetupDialog(QDialog):
@@ -132,7 +107,7 @@ class SetupDialog(QDialog):
         self._close_pending = False
         self._loading = True
         self.setWindowTitle("Meikipop Settings")
-        self.setWindowModality(Qt.WindowModality.WindowModal)
+        self.setWindowModality(Qt.WindowModality.NonModal)
         self.resize(700, 520)
         layout = QVBoxLayout(self)
         profile_row = QHBoxLayout()
@@ -886,17 +861,9 @@ class SetupDialog(QDialog):
 
     def reject(self):
         self.audio_sources.shutdown()
-        if self.operation is not None:
-            self._close_pending = True
-            self.cancel_operation()
-        else:
-            super().reject()
+        # Closing Settings leaves the background job running. Cancel is explicit.
+        super().reject()
 
     def closeEvent(self, event):
         self.audio_sources.shutdown()
-        if self.operation is not None:
-            self._close_pending = True
-            self.cancel_operation()
-            event.ignore()
-        else:
-            super().closeEvent(event)
+        super().closeEvent(event)

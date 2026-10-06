@@ -627,7 +627,7 @@ class QuickLookupTests(unittest.TestCase):
             self.assertFalse(self.settings.value("profiles/ja/compact_preview", True, bool))
             dialog.sync_profile("tr")
             self.assertEqual(dialog.translation_target.currentData(), "auto")
-            self.assertEqual(dialog.audio_sources.order(), ["online", "tts"])
+            self.assertEqual(dialog.audio_sources.order(), ["tts", "online"])
             self.assertTrue(dialog.audio_form.isRowVisible(dialog.audio_sources))
             self.assertFalse(dialog.audio_form.isRowVisible(dialog.audio_database))
             dialog.audio_sources.items.item(2).setCheckState(Qt.CheckState.Checked)
@@ -636,15 +636,15 @@ class QuickLookupTests(unittest.TestCase):
             self.assertEqual(self.settings.value("profiles/tr/pin_gesture"), "middle")
             dialog.audio_sources.items.setCurrentRow(1)
             dialog.audio_sources.move(-1)
-            self.assertEqual(self.settings.value("profiles/tr/audio_priority"), ["tts", "online", "database"])
+            self.assertEqual(self.settings.value("profiles/tr/audio_priority"), ["online", "tts", "database"])
             dialog.sync_profile("ja")
             self.assertEqual(dialog.audio_volume.value(), 42)
-            self.assertEqual(dialog.audio_sources.order(), ["online", "tts"])
+            self.assertEqual(dialog.audio_sources.order(), ["tts", "online"])
             self.assertFalse(dialog.audio_form.isRowVisible(dialog.audio_database))
             self.assertEqual(dialog.translation_target.currentData(), "ru")
             self.assertFalse(dialog.appearance.compact_preview.isChecked())
             dialog.sync_profile("tr")
-            self.assertEqual(dialog.audio_sources.order(), ["tts", "online", "database"])
+            self.assertEqual(dialog.audio_sources.order(), ["online", "tts", "database"])
         finally:
             dialog.deleteLater()
 
@@ -1418,6 +1418,25 @@ class DictionaryManagerTests(unittest.TestCase):
             library.close()
         self.assertEqual(self.dialog.packs.count(), 2)
 
+    def test_import_keeps_ui_responsive_and_continues_after_settings_close(self):
+        from PyQt6.QtCore import QTimer
+        ticks = []
+        timer = QTimer()
+        timer.setInterval(5)
+        timer.timeout.connect(lambda: ticks.append(1))
+        timer.start()
+        try:
+            self.dialog.begin_operation([self.archive("Background", "ja")])
+            operation = self.dialog.operation
+            self.dialog.reject()
+            self.assertFalse(operation.cancelled.is_set())
+            self.assertEqual(self.dialog.windowModality(), Qt.WindowModality.NonModal)
+            self.wait_for_operation()
+            self.assertGreater(len(ticks), 0)
+            self.assertEqual(self.dialog.packs.count(), 1)
+        finally:
+            timer.stop()
+
     def test_russian_ocr_default_and_paddle_availability_follow_profile(self):
         with patch("meikipop.gui.dictionary_manager.sys.platform", "win32"):
             self.dialog.sync_profile("ru")
@@ -1494,10 +1513,9 @@ class DictionaryManagerTests(unittest.TestCase):
             operation.cancelled.set()
             return result
 
-        with patch("meikipop.gui.dictionary_manager.import_yomitan", side_effect=import_then_cancel):
-            operation.start()
-            operation.thread.join(timeout=3)
-        self.assertFalse(operation.thread.is_alive())
+        from meikipop.dictionary.import_job import import_batch
+        with patch("meikipop.dictionary.import_job.import_yomitan", side_effect=import_then_cancel):
+            import_batch([first, second], self.directory, None, lambda text: None, operation.cancelled)
         library = Library(self.directory)
         try:
             self.assertEqual([metadata["title"] for _, metadata, _ in library.packs], ["A"])
