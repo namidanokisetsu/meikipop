@@ -42,13 +42,16 @@ class RubyTests(unittest.TestCase):
             block = block.next()
         return result
 
-    def test_definitions_use_paired_ruby_and_headword_defaults_to_brackets(self):
+    def test_readings_default_to_brackets_with_independent_furigana_options(self):
         definition = {"type": "structured-content", "content": {"tag": "ruby", "content": [
             "食", {"tag": "rt", "content": "た"}, "べ", "物", {"tag": "rt", "content": "べもの"}]}}
         entry = Entry("1", "食べ物", "たべもの", "Fixture", "ja", (definition,))
         result = SearchResult("食べ物", "ja", "en", (entry,))
         self.browser.setHtml(render_result(result))
         self.assertIn("食べ物 [たべもの]", self.browser.toPlainText())
+        self.assertIn("食 [た]べ物 [べもの]", self.browser.toPlainText())
+        self.assertEqual(self.objects(), [])
+        self.browser.setHtml(render_result(result, definition_furigana=True))
         self.assertEqual([(f.charFormat().property(BASE), f.charFormat().property(READING))
                           for f in self.objects()], [("食", "た"), ("べ物", "べもの")])
         self.browser.setHtml(render_result(result, headword_furigana=True))

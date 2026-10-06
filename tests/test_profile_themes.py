@@ -58,20 +58,26 @@ class ProfileThemeTests(unittest.TestCase):
             widget = ProfileAppearance(settings, lambda: profile[0], Mock())
             try:
                 self.assertFalse(widget.headword_furigana.isChecked())
+                self.assertFalse(widget.definition_furigana.isChecked())
                 self.assertEqual(widget.controls['furigana_scale'].value(), 50)
                 widget.controls['furigana_scale'].setValue(60)
                 widget.headword_furigana.click()
+                widget.definition_furigana.click()
+                self.assertTrue(settings.value('profiles/ja/definition_furigana', False, bool))
                 self.assertTrue(settings.value('profiles/ja/headword_furigana', False, bool))
                 profile[0] = 'tr'
                 widget.reload()
                 self.assertFalse(widget.form.isRowVisible(widget.headword_furigana))
+                self.assertFalse(widget.form.isRowVisible(widget.definition_furigana))
                 self.assertFalse(widget.form.isRowVisible(widget.controls['furigana_scale']))
                 widget.save()
                 self.assertFalse(settings.contains('profiles/tr/headword_furigana'))
+                self.assertFalse(settings.contains('profiles/tr/definition_furigana'))
                 self.assertFalse(settings.contains('profiles/tr/furigana_scale'))
                 profile[0] = 'ja'
                 widget.reload()
                 self.assertTrue(widget.headword_furigana.isChecked())
+                self.assertTrue(widget.definition_furigana.isChecked())
                 self.assertTrue(widget.form.isRowVisible(widget.headword_furigana))
                 self.assertEqual(widget.controls['furigana_scale'].value(), 60)
             finally:

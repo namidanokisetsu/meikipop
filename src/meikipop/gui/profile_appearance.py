@@ -67,6 +67,8 @@ class ProfileAppearance(QWidget):
         form.addRow("Font", self.font)
         self.headword_furigana = QCheckBox("Furigana")
         form.addRow("Headword reading", self.headword_furigana)
+        self.definition_furigana = QCheckBox("Furigana")
+        form.addRow("Definition readings", self.definition_furigana)
         self.controls = {}
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
@@ -87,6 +89,7 @@ class ProfileAppearance(QWidget):
         self.theme.currentTextChanged.connect(self.apply_theme)
         self.font.currentFontChanged.connect(self.save)
         self.headword_furigana.toggled.connect(self.save)
+        self.definition_furigana.toggled.connect(self.save)
         self.compact_preview.toggled.connect(self.save)
         self.pinned_sentence.toggled.connect(self.save)
         for key, widget in self.controls.items():
@@ -109,6 +112,8 @@ class ProfileAppearance(QWidget):
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
         self.form.setRowVisible(self.headword_furigana, self.profile() == "ja")
+        self.definition_furigana.setChecked(self.settings.value("profiles/ja/definition_furigana", False, bool))
+        self.form.setRowVisible(self.definition_furigana, self.profile() == "ja")
         self.form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
@@ -155,6 +160,7 @@ class ProfileAppearance(QWidget):
         self.settings.setValue(prefix + "font_family", self.font.currentFont().family())
         if self.profile() == "ja":
             self.settings.setValue(prefix + "headword_furigana", self.headword_furigana.isChecked())
+            self.settings.setValue(prefix + "definition_furigana", self.definition_furigana.isChecked())
         for key, widget in self.controls.items():
             if key == "furigana_scale" and self.profile() != "ja":
                 continue

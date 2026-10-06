@@ -163,8 +163,10 @@ class LookupWorker(QObject):
 class _GlossConverter(StructuredContentConverter):
     """Prune structured previews before conversion, retaining lists and emphasis."""
     def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term="",
-                 details_expanded=(), detail_prefix="", definitions=()):
+                 details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False):
         super().__init__()
+        self.definition_furigana = definition_furigana
+        self.colors = surface_colors(config.color_background, config.color_foreground)
         self.expanded = expanded
         self.preview = preview
         self.generic_source = generic_source
@@ -216,7 +218,8 @@ class _GlossConverter(StructuredContentConverter):
             if tag == "rt":
                 reading = self._node_to_html(child.get("content"))
                 text = "".join(base)
-                parts.append(ruby_html(text, reading) if text and reading else text)
+                parts.append((ruby_html(text, reading) if self.definition_furigana else
+                              f'{text} [{reading}]') if text and reading else text)
                 base = []
             else:
                 base.append(self._node_to_html(child))
@@ -233,7 +236,7 @@ class _GlossConverter(StructuredContentConverter):
                     self.clipped = True
                     text += "…" if text else ""
                 node = text
-            return super()._node_to_html(node)
+            return super()._node_to_html(node).replace('\n', '<br>') if node.strip() else node
         if isinstance(node, list):
             parts = []
             for child in node:
@@ -297,8 +300,17 @@ class _GlossConverter(StructuredContentConverter):
                 return "; ".join(filter(None, (self._node_to_html(
                     child.get("content") if isinstance(child, dict) and child.get("tag") == "li" else child)
                     for child in children)))
-            if isinstance(data, dict) and data.get("class") == "tag":
-                return "<small>" + self._node_to_html(content) + "</small> "
+            source_class = data.get("class", "") if isinstance(data, dict) else ""
+            if source_class == "tag" or kind == "tag":
+                label = self._node_to_html(content)
+                return f'<span style="color:{self.colors["muted"]}"><small>[{label}]</small></span> ' if label else ""
+            if kind == "tags":
+                return self._node_to_html(content)
+            if tag in ("td", "th"):
+                labels = {"form-pri": "common", "form-valid": "valid", "form-rare": "rare",
+                          "form-out": "obsolete", "form-irr": "irregular"}
+                if source_class in labels:
+                    node["content"] = labels[source_class]
             if kind in ("sense-groups", "sense-group"):
                 tag = node["tag"] = "div"
             # Keep a small, safe subset of typography. Dictionary CSS must not
@@ -308,6 +320,13 @@ class _GlossConverter(StructuredContentConverter):
                                  ("fontWeight", ("bold", "normal", "400", "700"))):
                 if style.get(name) in values:
                     safe_style[name] = style[name]
+            if kind in ("bold-text", "example-keyword"):
+                safe_style["fontWeight"] = "bold"
+            if tag in ("td", "th"):
+                safe_style.update(borderStyle="solid", borderWidth="1px", borderColor=self.colors["border"],
+                                  padding="4px", color=config.color_foreground)
+                if tag == "th":
+                    safe_style["backgroundColor"] = self.colors["hover"]
             size = style.get("fontSize", "")
             if isinstance(size, str) and re.fullmatch(r"0?\.[7-9]em", size):
                 safe_style["fontSize"] = size
@@ -393,7 +412,8 @@ def _compact_context(text, font, width):
 
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
-                  headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=()):
+                  headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
+                  definition_furigana=False):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
@@ -446,6 +466,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
             converter = _GlossConverter(expanded=full, limit=None if preview else 360, preview=preview,
                                         generic_source=generic_source, term=term,
                                         details_expanded=details_expanded, detail_prefix=f"{group_index}:{index}",
+                                        definition_furigana=definition_furigana,
                                         definitions=tuple(definition for entry in entries for definition in entry.definitions))
             definitions = []
             for entry in entries if full else entries[:2]:
@@ -1143,6 +1164,7 @@ class QuickLookupWindow(QDialog):
                         tuple(getattr(config, key) for key in DEFAULTS), self.devicePixelRatioF(),
                         self.audio_actions.sizeHint().width(), show_source, source_text if show_source else None,
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
+                        self.settings.value("profiles/ja/definition_furigana", False, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool))
             if identity == self._render_identity:
                 mark("render_reused", self.revision)
@@ -1158,6 +1180,7 @@ class QuickLookupWindow(QDialog):
                                                show_source=show_source, source_text=source_text,
                                                details_expanded=self._details_expanded,
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
+                                               definition_furigana=self.settings.value("profiles/ja/definition_furigana", False, bool),
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
             self._document_revision = self.revision

@@ -29,7 +29,10 @@ clients remain explicit compatibility entrypoints.
    settings controls. Ruby explicitly resolves the selected font for kana and
    kanji, uses visible glyph bounds for spacing, and defaults to gray at 50%
    with a Japanese size control. Autoplay remembers all pronunciations in a
-   scan-key hold; manual playback remains repeatable.
+   scan-key hold; manual playback remains repeatable. Headword and definition
+   readings default to brackets, with separate Japanese furigana toggles.
+   Shared dictionary rendering retains topic/usage labels, emphasis, line breaks
+   and merged table cells; forms use visible status labels and theme-aware borders.
    Frequency display defaults to the harmonic mean of positive ranks, with one
    best rank per dictionary; counts and nonnumeric labels are excluded. Per-source
    display remains optional. Themes are Monochrome Dark, Light and Custom; removed

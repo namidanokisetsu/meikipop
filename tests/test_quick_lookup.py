@@ -401,7 +401,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry(definitions=definitions),), "猫", peek=True)
         self.app.processEvents()
         text = self.window.browser.toPlainText()
-        self.assertIn("noun archaic", text)
+        self.assertIn("[noun] [archaic]", text)
         self.assertIn("first gloss; second gloss", text)
         self.assertNotIn("alternate form", text)
         cursor = self.window.browser.document().find("first gloss")

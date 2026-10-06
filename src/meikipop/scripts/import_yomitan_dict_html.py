@@ -93,7 +93,7 @@ _BLOCK_TAGS = {
     'table', 'thead', 'tbody', 'tfoot', 'tr',
 }
 # Tags that carry inline/character formatting
-_INLINE_TAGS = {'span'}
+_INLINE_TAGS = {'span', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'small'}
 # Table cell tags — can have Qt borders
 _CELL_TAGS = {'td', 'th'}
 # All tags we render (unknown tags get their wrapper dropped)
@@ -310,6 +310,11 @@ class StructuredContentConverter:
             inner = f'[{inner}]'
 
         style_attr = f' style="{css}"' if css else ''
+        if tag in _CELL_TAGS:
+            for attribute in ('colSpan', 'rowSpan'):
+                value = node.get(attribute)
+                if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 100:
+                    style_attr += f' {attribute.lower()}="{value}"'
 
         if tag in _RENDERED_TAGS:
             return f'<{tag}{style_attr}>{inner}</{tag}>'
