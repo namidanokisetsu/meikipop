@@ -9,11 +9,44 @@ from meikipop.dictionary.translation_stream import events, read_translation
 
 
 def event(text, finish=None):
-    return ('data: ' + json.dumps({'choices': [{'delta': {'content': text}, 'finish_reason': finish}]},
-                                  ensure_ascii=False) + '\r\n\r\n').encode()
+    return sse({'choices': [{'delta': {'content': text}, 'finish_reason': finish}]})
+
+
+def sse(payload):
+    return ('data: ' + json.dumps(payload, ensure_ascii=False) + '\r\n\r\n').encode()
 
 
 class StreamTests(unittest.TestCase):
+    def test_llama_role_reasoning_finish_and_usage_events(self):
+        # Matches b11146 tools/server/server-task.cpp chat-completion events.
+        payload = (sse({'choices': [{'delta': {'role': 'assistant', 'content': None}}]})
+                   + sse({'choices': [{'delta': {'reasoning_content': 'private', 'content': None}}]})
+                   + event('猫') + event(' ev')
+                   + sse({'choices': [{'delta': {}, 'finish_reason': 'stop'}]})
+                   + sse({'choices': [], 'usage': {'completion_tokens': 2}, 'timings': {}})
+                   + b'data: [DONE]\n\n')
+        progress = Mock()
+        self.assertEqual(read_translation(io.BytesIO(payload), threading.Event(), progress), '猫 ev')
+        self.assertEqual([call.args[0] for call in progress.call_args_list], ['猫', '猫 ev'])
+
+    def test_usage_cannot_hide_truncation_or_replace_translation(self):
+        usage = sse({'choices': [], 'usage': {'completion_tokens': 2}})
+        for payload, message in (
+                (usage + b'data: [DONE]\n\n', 'no translated text'),
+                (event('half', 'length') + usage + b'data: [DONE]\n\n', 'output limit'),
+                (event('half') + usage, 'ended early')):
+            with self.subTest(message=message), self.assertRaisesRegex(RuntimeError, message):
+                read_translation(io.BytesIO(payload), threading.Event(), Mock())
+
+    def test_invalid_event_shapes_remain_errors(self):
+        for payload in ({}, [], {'choices': []}, {'choices': {}},
+                        {'choices': [{'delta': {'content': 0}}]},
+                        {'choices': [{'delta': {'content': []}}]},
+                        {'choices': [{'delta': None}]}, {'choices': [{}]},
+                        {'choices': [], 'usage': {}, 'error': 'failed'}):
+            with self.subTest(payload=payload), self.assertRaisesRegex(RuntimeError, 'invalid translation stream'):
+                read_translation(io.BytesIO(sse(payload)), threading.Event(), Mock())
+
     def test_loopback_stream_cancels_a_blocked_read_without_retry(self):
         from meikipop.dictionary.translation import LocalTranslator, TranslationSettings
         ready, release = threading.Event(), threading.Event()

@@ -88,9 +88,18 @@ def read_translation(response, cancelled, on_text):
         raise RuntimeError("Translation cancelled.")
     for event in events(chunks(), cancelled):
         try:
-            choice = event["choices"][0]
+            choices = event["choices"]
+            if not isinstance(choices, list) or "error" in event:
+                raise ValueError()
+            # llama.cpp ends usage-enabled streams with no choices.
+            if not choices and isinstance(event.get("usage"), dict):
+                continue
+            choice = choices[0]
             finish = choice.get("finish_reason") or finish
             delta = choice["delta"].get("content", "")
+            # Role and reasoning events may carry null instead of text.
+            if delta is None:
+                delta = ""
             if not isinstance(delta, str):
                 raise ValueError()
         except (KeyError, IndexError, TypeError, AttributeError, ValueError) as error:
