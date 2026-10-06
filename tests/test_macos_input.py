@@ -85,6 +85,16 @@ class InputPermissionTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS event tap")
 class MacListenerTests(unittest.TestCase):
+    def test_permission_symbol_is_resolved_before_listener_thread_starts(self):
+        from pynput._util.darwin import HIServices
+        events = []
+        listener = KeyboardListener()
+        with patch("meikipop.utils.macos.require_input_monitoring_permission"), \
+                patch.object(HIServices, "AXIsProcessTrusted", side_effect=lambda: events.append("resolve")), \
+                patch.object(keyboard.Listener, "start", side_effect=lambda: events.append("start")):
+            listener.start()
+        self.assertEqual(events, ["resolve", "start"])
+
     def test_all_keyboard_listeners_bypass_carbon_layout_context(self):
         for factory in (lambda: KeyboardListener(), lambda: TextHotKeys({"<cmd>+d": Mock()})):
             listener = factory()

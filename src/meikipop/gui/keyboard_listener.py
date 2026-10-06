@@ -16,6 +16,11 @@ class MacListenerMixin:
     def start(self):
         from meikipop.utils.macos import require_input_monitoring_permission
         require_input_monitoring_permission()
+        if sys.platform == "darwin":
+            from pynput._util.darwin import HIServices
+            # PyObjC's lazy symbol cache is not thread-safe. Keyboard and mouse
+            # listeners both use this function as soon as their threads start.
+            HIServices.AXIsProcessTrusted()
         return super().start()
 
     def canonical(self, key):
