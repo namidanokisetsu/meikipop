@@ -41,12 +41,15 @@ def read_selection(automation, api, foreground):
     texts, rectangles = [], []
     for index in range(ranges.Length):
         selected = ranges.GetElement(index)
-        text = selected.GetText(2001)
+        text = selected.GetText(4002)  # Detect excess even when every code point uses a surrogate pair.
         if text:
             texts.append(text)
         if sum(map(len, texts)) + len(texts) - 1 > 2000:
             return NativeSelection("blocked")
-        bounds = selected.GetBoundingRectangles() or ()
+        try:
+            bounds = selected.GetBoundingRectangles() or ()
+        except Exception:
+            bounds = ()  # Some controls expose text without visible geometry.
         for offset in range(0, min(len(bounds), 256) - 3, 4):
             rect = tuple(bounds[offset:offset + 4])
             if all(math.isfinite(n) for n in rect) and rect[2] > 0 and rect[3] > 0:
