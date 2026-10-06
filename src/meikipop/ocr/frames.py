@@ -10,11 +10,14 @@ class RecognizedFrame:
     provider: tuple
     scene: int
     captured_at: float
+    pixel_size: tuple = ()
+    physical_crop: tuple = ()
 
     @property
     def identity(self):
         return (self.request.generation, self.request.screen, self.request.geometry,
-                self.request.crop, self.request.scale, self.language, self.provider, self.scene)
+                self.request.crop, self.request.scale, self.language, self.provider, self.scene,
+                self.pixel_size, self.physical_crop)
 
     def point(self, x, y):
         left, top, width, height = self.request.crop

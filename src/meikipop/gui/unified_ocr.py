@@ -63,6 +63,9 @@ class ScanWorker(threading.Thread):
                         engine.refresh()
                     continue
                 generation, pixels, point, language, *options = job
+                capture_request = pixels if isinstance(pixels, CaptureRequest) else (
+                    pixels.request if isinstance(pixels, PixelFrame) else options[2] if len(options) > 2 else None)
+                mark("ocr_dequeue", capture_request.revision if capture_request else generation)
                 capture_phase = False
                 try:
                     if self._obsolete(generation):
@@ -105,7 +108,8 @@ class ScanWorker(threading.Thread):
                         request = pixels.request if isinstance(pixels, PixelFrame) else options[2]
                         captured_at = pixels.captured_at if isinstance(pixels, PixelFrame) else options[3]
                         frame = RecognizedFrame(request, tuple(replace(p, words=tuple(p.words)) for p in paragraphs or ()),
-                                                language, selection, caches[provider_key].revision, captured_at)
+                                                language, selection, caches[provider_key].revision, captured_at,
+                                                image.size, pixels.physical_crop if isinstance(pixels, PixelFrame) else ())
                         self.frames.emit(generation, frame, "")
                         continue
                     hit = hit_paragraphs(paragraphs, point, language)

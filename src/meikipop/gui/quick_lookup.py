@@ -805,6 +805,7 @@ class QuickLookupWindow(QDialog):
             else:
                 self.browser.clear()
                 self._render_identity = None
+                self._document_revision = None
         self._pending_revision = None
         self.busy_delay.stop()
         self._remember_request = False
@@ -812,6 +813,8 @@ class QuickLookupWindow(QDialog):
         self.worker.cancel()
         if self.translation_worker is not None:
             self.translation_worker.cancel()
+        if self.audio:
+            self.audio.cancel()
         self._set_translation_busy(False)
 
     def _show_busy(self):
@@ -827,8 +830,6 @@ class QuickLookupWindow(QDialog):
         self.audio_button.setEnabled(False)
         self.sentence_audio_button.setEnabled(False)
         self._clear_context()
-        if self.audio:
-            self.audio.cancel()
 
     def _translate_clicked(self):
         if self._translation_busy or self._pending_revision is not None and not self.busy_delay.isActive():
@@ -869,6 +870,7 @@ class QuickLookupWindow(QDialog):
             self._result = None
             self._result_context = ""
             self._render_identity = None
+            self._document_revision = None
             self.browser.clear()
 
     def submit(self, translate=None, *, context=False, remember=False):
@@ -1685,6 +1687,9 @@ class QuickLookupWindow(QDialog):
         if self.audio:
             self.audio.shutdown()
         self.debounce.stop()
+        for timer in (self.busy_delay, self.fit_timer, self.render_timer, self.stream_timer):
+            timer.stop()
+        self._translation_chunk = None
         self.worker.shutdown()
         if self.translation_worker is not None:
             self.translation_worker.shutdown()
