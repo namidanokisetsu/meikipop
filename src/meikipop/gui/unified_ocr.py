@@ -131,17 +131,12 @@ class UnifiedOCR(QObject):
         self.worker = None
         self.enabled = False
         self.holding = False
-        self.auto_scan = False
         self.pin_gesture = "left"
         self._dismissed_hold = False
-        self._dismissed_point = None
-        self._hover_point = None
-        self._hover_since = 0
         self._last_scan_at = 0
         self._last_capture_at = 0
         self._capture_hidden = False
         self._capture_excluded = False
-        self._follow_point = None
         self.busy = False
         self.generation = 0
         self.last_point = None
@@ -210,14 +205,13 @@ class UnifiedOCR(QObject):
         self.profile_ocr_provider = settings.value(f"profiles/{profile}/ocr_provider", default) if settings else default
         if previous_profile_provider != self.profile_ocr_provider:
             self.invalidate()
-        self.auto_scan = settings.value(f"profiles/{profile}/auto_scan", settings.value("auto_scan", False, bool), bool) if settings else False
         self.pin_gesture = settings.value(f"profiles/{profile}/pin_gesture", settings.value("pin_gesture", "left")) if settings else "left"
         if self.pin_gesture not in ("left", "middle", "popup"):
             self.pin_gesture = "left"
         if self.input:
             self.input.pin_gesture = self.pin_gesture
             self.input.set_pin_shortcut(settings.value(f"profiles/{profile}/pin_shortcut", "c") if settings else "c")
-        if self.enabled and (self.holding or self.auto_scan):
+        if self.enabled and self.holding:
             self.timer.start()
             self.follow_timer.start()
         else:
@@ -343,15 +337,13 @@ class UnifiedOCR(QObject):
                 self.window.hide()
             self.leave_timer.stop()
             self.last_point = None
-            self._dismissed_point = None
             self.timer.start()
             self.follow_timer.start()
             self.scan()
         else:
             self.restore_capture_visibility()
-            if not self.auto_scan:
-                self.timer.stop()
-                self.follow_timer.stop()
+            self.timer.stop()
+            self.follow_timer.stop()
             self.invalidate()
             self.leave_timer.start()
         self._sync_pin_ready()
@@ -359,12 +351,10 @@ class UnifiedOCR(QObject):
     def dismiss(self):
         self.restore_capture_visibility()
         self._dismissed_hold = self.holding
-        self._dismissed_point = QCursor.pos()
         self.holding = False
         self._capture_hidden = False
-        if not self.auto_scan:
-            self.timer.stop()
-            self.follow_timer.stop()
+        self.timer.stop()
+        self.follow_timer.stop()
         self.invalidate()
         self.window.hide()
         if self.input:
@@ -384,7 +374,7 @@ class UnifiedOCR(QObject):
             self.window.hide()
 
     def scan(self):
-        if (not self.enabled or not (self.holding or self.auto_scan) or self._dismissed_hold or
+        if (not self.enabled or not self.holding or self._dismissed_hold or
                 self.busy or self.window.is_pinned):
             return
         point = QCursor.pos()
@@ -399,17 +389,6 @@ class UnifiedOCR(QObject):
             # Do this here too: the trigger may have been pressed inside Search.
             self.window.hide()
         now = monotonic()
-        if self._dismissed_point is not None:
-            if (point - self._dismissed_point).manhattanLength() < 24:
-                return
-            self._dismissed_point = None
-            self._hover_point = None
-        if not self.holding:
-            if self._hover_point is None or (point - self._hover_point).manhattanLength() >= 4:
-                self._hover_point, self._hover_since = QPoint(point), now
-                return
-            if now - self._hover_since < 0.35 or now - self._last_scan_at < 1:
-                return
         if (self.last_point is not None and (point - self.last_point).manhattanLength() < 4
                 and now - self._last_scan_at < 1):
             return
@@ -435,7 +414,7 @@ class UnifiedOCR(QObject):
         QTimer.singleShot(60 if self._capture_hidden else 0, lambda: self.capture(generation, point))
 
     def capture(self, generation, point):
-        if (generation != self.generation or not self.enabled or not (self.holding or self.auto_scan)
+        if (generation != self.generation or not self.enabled or not self.holding
                 or self.window.is_pinned):
             self.restore_capture_visibility()
             self.busy = False
@@ -491,7 +470,7 @@ class UnifiedOCR(QObject):
 
     def deliver(self, generation, result, hit, error):
         self.busy = False
-        if (generation != self.generation or not self.enabled or not (self.holding or self.auto_scan)
+        if (generation != self.generation or not self.enabled or not self.holding
                 or self._dismissed_hold or self.window.is_pinned):
             return
         if QApplication.activeWindow() is self.window:

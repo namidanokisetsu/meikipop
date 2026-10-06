@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QInputDialog, QLineEdit, QListWidgetItem, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from meikipop.dictionary.library import Library, default_library_path, import_yomitan, save_preferences
+from meikipop.dictionary.library import Library, default_library_path, import_yomitan, language_code, save_preferences
 from meikipop.dictionary.translation import TranslationSettings, load_settings, load_profile_settings, save_profile_settings
 from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
@@ -91,6 +91,7 @@ class SetupDialog(QDialog):
         self._apply_shortcut = apply_shortcut
         self.operation = None
         self._close_pending = False
+        self._loading = True
         self.setWindowTitle("Meikipop Settings")
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.resize(700, 520)
@@ -106,6 +107,7 @@ class SetupDialog(QDialog):
         profile_row.addWidget(self.add_profile_button)
         layout.addLayout(profile_row)
         tabs = QTabWidget()
+        self.tabs = tabs
         layout.addWidget(tabs, 1)
         dictionaries = QWidget()
         dictionary_layout = QVBoxLayout(dictionaries)
@@ -154,13 +156,10 @@ class SetupDialog(QDialog):
         for code, name in LANGUAGE_NAMES.items():
             self.translation_partner.addItem(name, code)
         translation_form.addRow("Translate both ways with", self.translation_partner)
-        self.translation_source = QComboBox()
-        self.translation_target = QComboBox()
+        from meikipop.gui.language_strip import LanguageStrip
+        self.translation_source = LanguageStrip(LANGUAGE_NAMES)
+        self.translation_target = LanguageStrip(LANGUAGE_NAMES)
         for label, control in (("From", self.translation_source), ("To", self.translation_target)):
-            control.addItem("Automatic", "auto")
-            for code, name in LANGUAGE_NAMES.items():
-                control.addItem(name, code)
-            control.setMinimumContentsLength(12)
             translation_form.addRow(label, control)
         self.translation_mode = QComboBox()
         self.translation_mode.addItem("Quality · Hy-MT2-7B Q8_0 (8 GB)", "quality")
@@ -184,9 +183,6 @@ class SetupDialog(QDialog):
         self.model_button = QPushButton("Download selected model")
         self.model_button.clicked.connect(self.choose_model)
         translation_layout.addWidget(self.model_button)
-        self.translation_apply = QPushButton("Apply")
-        self.translation_apply.clicked.connect(self.save_translation)
-        translation_layout.addWidget(self.translation_apply)
         translation_layout.addStretch()
         tabs.addTab(translation, "Translation")
         translation_error = ""
@@ -224,29 +220,18 @@ class SetupDialog(QDialog):
         self.selected_text = QCheckBox("Look up selected text automatically")
         shortcut_layout.addRow(self.selected_text)
         self.selected_text.toggled.connect(self.save_text_triggers)
-        save_shortcut = QPushButton("Apply")
-        save_shortcut.clicked.connect(self.save_shortcut)
-        shortcut_layout.addRow(save_shortcut)
         tabs.addTab(shortcuts, "Shortcuts")
 
         scanning = QWidget()
         scan_layout = QFormLayout(scanning)
         self.scan_layout = scan_layout
-        self.auto_scan = QCheckBox("Scan automatically on hover")
-        self.auto_scan.setChecked(settings.value("auto_scan", False, bool))
-        self.auto_scan.setToolTip("Off: hold the scan key. On: pause over text to scan.")
-        scan_layout.addRow(self.auto_scan)
-        self.compact_preview = QCheckBox("Compact preview")
-        self.compact_preview.setChecked(settings.value("compact_preview", True, bool))
-        self.compact_preview.setToolTip("Pin to expand. Turn off to show full definitions immediately.")
-        scan_layout.addRow(self.compact_preview)
         self.pin_gesture = QComboBox()
         for label, code in (("Scan key + left click", "left"), ("Scan key + middle click", "middle"),
                             ("Popup click only", "popup")):
             self.pin_gesture.addItem(label, code)
         self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(settings.value("pin_gesture", "left"))))
         self.pin_gesture.setToolTip("Pin the current preview without moving the pointer to it.")
-        scan_layout.addRow("Pin result", self.pin_gesture)
+        shortcut_layout.addRow("Pin with mouse", self.pin_gesture)
         self.ja_ocr_provider = QComboBox()
         self.ja_ocr_provider.addItem("MeikiOCR (CPU)", "meikiocr")
         self.ja_ocr_provider.addItem("PaddleOCR (multilingual)", "paddle")
@@ -299,10 +284,7 @@ class SetupDialog(QDialog):
             click_note = QLabel("Clicks outside the popup also reach the underlying app.")
             click_note.setWordWrap(True)
             scan_layout.addRow(click_note)
-        save_scan = QPushButton("Apply")
-        save_scan.clicked.connect(self.save_scan_settings)
-        scan_layout.addRow(save_scan)
-        tabs.addTab(scanning, "Screen lookup")
+        tabs.addTab(scanning, "OCR")
 
         from meikipop.gui.profile_appearance import ProfileAppearance
         self.appearance = ProfileAppearance(settings, self.profile.currentData, self.apply_appearance)
@@ -318,21 +300,22 @@ class SetupDialog(QDialog):
         audio_form.addRow("Volume", self.audio_volume)
         self.audio_database = QLineEdit()
         self.audio_database.setPlaceholderText("System voice when no database is selected")
-        audio_form.addRow("Japanese audio database", self.audio_database)
+        audio_form.addRow("Recordings database", self.audio_database)
         audio_browse = QPushButton("Choose android.db…")
         audio_browse.clicked.connect(self.choose_audio)
         audio_form.addRow(audio_browse)
-        self.audio_sources = QLineEdit()
-        audio_form.addRow("Preferred sources", self.audio_sources)
+        from meikipop.gui.audio_sources import AudioSources
+        self.audio_sources = AudioSources()
+        self.audio_sources.changed.connect(lambda: self.autosave(self.save_audio))
+        audio_form.addRow("Source priority", self.audio_sources)
         self.audio_form = audio_form
         self.audio_browse = audio_browse
-        audio_apply = QPushButton("Apply")
-        audio_apply.clicked.connect(self.save_audio)
-        audio_form.addRow(audio_apply)
         tabs.addTab(audio, "Audio")
+        self.audio_tab = audio
         self.audio_autoplay.currentIndexChanged.connect(self.save_autoplay)
 
         self.status = QLabel()
+        self.audio_sources.failed.connect(self.status.setText)
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.status)
@@ -350,8 +333,31 @@ class SetupDialog(QDialog):
         self.packs.itemChanged.connect(lambda _: self.save_dictionaries())
         self.profile.currentIndexChanged.connect(self.profile_changed)
         self.profile_changed()
+        self._loading = False
+        for control in (self.translation_partner, self.translation_source, self.translation_target, self.translation_mode):
+            control.currentIndexChanged.connect(lambda _: self.autosave(self.save_translation))
+        for control in (self.translation_endpoint, self.translation_model):
+            control.editingFinished.connect(lambda: self.autosave(self.save_translation))
+        self.translation_autostart.toggled.connect(lambda _: self.autosave(self.save_translation))
+        for control in (self.scan_key, self.scan_mouse):
+            control.currentIndexChanged.connect(lambda _: self.autosave(self.save_shortcut))
+        for control in (self.shortcut, self.pin_shortcut):
+            control.recorder.editingFinished.connect(lambda: self.autosave(self.save_shortcut))
+            control.enabled.toggled.connect(lambda _: self.autosave(self.save_shortcut))
+        for control in (self.pin_gesture, self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider):
+            control.currentIndexChanged.connect(lambda _: self.autosave(self.save_scan_settings))
+        self.screenai_directory.editingFinished.connect(lambda: self.autosave(self.save_scan_settings))
+        self.audio_volume.valueChanged.connect(lambda _: self.autosave(self.save_audio))
+        self.audio_database.editingFinished.connect(lambda: self.autosave(self.save_audio))
         if translation_error:
             self.status.setText(translation_error)
+
+    def autosave(self, callback):
+        if not self._loading and self.operation is None:
+            callback()
+
+    def show_audio(self):
+        self.tabs.setCurrentWidget(self.audio_tab)
 
     def reload(self, preserve=False):
         prior = {self.packs.item(i).data(Qt.ItemDataRole.UserRole): self.packs.item(i).checkState()
@@ -383,10 +389,12 @@ class SetupDialog(QDialog):
 
     def choose_profile(self):
         choices = {name: code for code, name in LANGUAGE_NAMES.items() if self.profile.findData(code) < 0}
-        if choices:
-            name, accepted = QInputDialog.getItem(self, "Add language", "Language", list(choices), editable=False)
-            if accepted:
-                self.add_profile(choices[name])
+        name, accepted = QInputDialog.getItem(self, "Add language", "Language or code", sorted(choices), editable=True)
+        if accepted:
+            try:
+                self.add_profile(language_code(choices.get(name, name.strip().lower())))
+            except ValueError as error:
+                self.status.setText(str(error))
 
     def add_profile(self, code):
         prefix = f"profiles/{code}/"
@@ -457,8 +465,6 @@ class SetupDialog(QDialog):
                 self.status.setText(str(error))
                 return
         prefix = f"profiles/{self.profile.currentData()}/"
-        self.settings.setValue(prefix + "auto_scan", self.auto_scan.isChecked())
-        self.settings.setValue(prefix + "compact_preview", self.compact_preview.isChecked())
         self.settings.setValue(prefix + "pin_gesture", self.pin_gesture.currentData())
         self.settings.setValue(prefix + "ocr_provider", provider.currentData())
         self.settings.setValue("ja_ocr_provider", self.ja_ocr_provider.currentData())
@@ -473,6 +479,7 @@ class SetupDialog(QDialog):
 
     def profile_changed(self):
         from meikipop.config.config import config
+        previous_loading, self._loading = self._loading, True
         code = self.profile.currentData()
         self.status.clear()
         with QSignalBlocker(self.combine_frequencies):
@@ -502,6 +509,7 @@ class SetupDialog(QDialog):
             self.status.setText(str(error))
         self.translation_partner.setCurrentIndex(max(0, self.translation_partner.findData(self.settings.value(f"profiles/{code}/target", default_partner(code)))))
         for key, control in (("source", self.translation_source), ("target", self.translation_target)):
+            control.set_pair(code, self.translation_partner.currentData())
             selected = self.settings.value(f"profiles/{code}/translation_{key}", "auto")
             if control.findData(selected) < 0:
                 control.addItem(language_name(selected), selected)
@@ -512,17 +520,15 @@ class SetupDialog(QDialog):
         self.translation_autostart.setChecked(translation.auto_start)
         self.appearance.reload()
         self.show_component_controls()
-        self.auto_scan.setChecked(self.settings.value(f"profiles/{code}/auto_scan", self.settings.value("auto_scan", False, type=bool), type=bool))
-        self.compact_preview.setChecked(self.settings.value(f"profiles/{code}/compact_preview", self.settings.value("compact_preview", True, type=bool), type=bool))
         self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(self.settings.value(f"profiles/{code}/pin_gesture", self.settings.value("pin_gesture", "left")))))
         with QSignalBlocker(self.audio_autoplay):
             self.audio_autoplay.setCurrentIndex(max(0, self.audio_autoplay.findData(audio_autoplay_mode(self.settings, code))))
         self.audio_volume.setValue(self.settings.value(f"profiles/{code}/audio_volume", config.audio_volume, type=int))
-        self.audio_database.setText(self.settings.value("profiles/ja/audio_database", config.audio_database_path))
-        self.audio_sources.setText(self.settings.value("profiles/ja/audio_sources", config.audio_preferred_sources))
-        for control in (self.audio_database, self.audio_browse, self.audio_sources):
-            self.audio_form.setRowVisible(control, code == "ja")
+        from meikipop.audio.sources import database_path, source_order
+        self.audio_database.setText(database_path(self.settings, code))
+        self.audio_sources.load(source_order(self.settings, code), self.audio_database.text())
         self.language.setCurrentIndex(max(0, self.language.findData(code)))
+        self._loading = previous_loading
         if self.parent() is not None:
             self.parent().set_mode(code)
 
@@ -558,20 +564,23 @@ class SetupDialog(QDialog):
         if window is not None:
             window.set_mode(self.profile.currentData())
             window.reload_appearance()
-        self.status.setText("Saved.")
+        self.status.clear()
 
     def choose_audio(self):
         path, _ = QFileDialog.getOpenFileName(self, "Pronunciation database", self.audio_database.text(), "SQLite (*.db)")
         if path:
             self.audio_database.setText(path)
+            self.autosave(self.save_audio)
 
     def save_audio(self):
         code = self.profile.currentData()
         self.save_autoplay()
         self.settings.setValue(f"profiles/{code}/audio_volume", self.audio_volume.value())
-        if code == "ja":
-            self.settings.setValue("profiles/ja/audio_database", self.audio_database.text().strip())
-            self.settings.setValue("profiles/ja/audio_sources", self.audio_sources.text())
+        self.settings.setValue(f"profiles/{code}/audio_database", self.audio_database.text().strip())
+        order = self.audio_sources.order()
+        self.settings.setValue(f"profiles/{code}/audio_order", order)
+        if self.audio_database.text().strip() != self.audio_sources.path:
+            self.audio_sources.load(order, self.audio_database.text().strip())
         self.status.setText("Saved.")
 
     def save_autoplay(self):
@@ -581,6 +590,7 @@ class SetupDialog(QDialog):
         directory = QFileDialog.getExistingDirectory(self, "Chrome Screen AI component", self.screenai_directory.text())
         if directory:
             self.screenai_directory.setText(directory)
+            self.autosave(self.save_scan_settings)
 
     def choose_dictionaries(self):
         paths, _ = QFileDialog.getOpenFileNames(self, "Import dictionaries", "", "Yomitan dictionaries (*.zip)")
@@ -614,6 +624,7 @@ class SetupDialog(QDialog):
             self.settings.setValue(f"profiles/{code}/target", self.translation_partner.currentData())
             for key, control in (("source", self.translation_source), ("target", self.translation_target)):
                 self.settings.setValue(f"profiles/{code}/translation_{key}", control.currentData())
+                control.set_pair(code, self.translation_partner.currentData())
             if self.parent() is not None:
                 self.parent().set_mode(code)
                 self.parent().foreign.setCurrentIndex(self.parent().foreign.findData(self.translation_partner.currentData()))
@@ -638,7 +649,7 @@ class SetupDialog(QDialog):
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
         for control in (self.import_button, self.model_button, self.packs, self.up, self.down, self.apply, self.language,
-                        self.translation_mode, self.translation_apply, self.translation_endpoint,
+                        self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
                         self.translation_model, self.translation_autostart):
             control.setEnabled(False)
         self.operation.start()
@@ -653,7 +664,7 @@ class SetupDialog(QDialog):
         self.operation = None
         self.cancel_button.setVisible(False)
         for control in (self.import_button, self.model_button, self.packs, self.up, self.down, self.apply, self.language,
-                        self.translation_mode, self.translation_apply):
+                        self.translation_mode, self.translation_source, self.translation_target):
             control.setEnabled(True)
         self.update_translation_controls()
         self.reload(preserve=True)
@@ -665,6 +676,7 @@ class SetupDialog(QDialog):
             super().reject()
 
     def reject(self):
+        self.audio_sources.shutdown()
         if self.operation is not None:
             self._close_pending = True
             self.cancel_operation()
@@ -672,6 +684,7 @@ class SetupDialog(QDialog):
             super().reject()
 
     def closeEvent(self, event):
+        self.audio_sources.shutdown()
         if self.operation is not None:
             self._close_pending = True
             self.cancel_operation()

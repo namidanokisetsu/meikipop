@@ -7,7 +7,7 @@ import math
 import sys
 import threading
 
-from PyQt6.QtCore import QObject, QEvent, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QEvent, QLocale, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCursor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
@@ -29,6 +29,10 @@ LANGUAGE_NAMES = {
     "ko": "한국어", "ar": "العربية", "it": "Italiano", "pt": "Português",
     "uk": "Українська", "nl": "Nederlands", "pl": "Polski",
 }
+for _locale in QLocale.matchingLocales(QLocale.Language.AnyLanguage, QLocale.Script.AnyScript, QLocale.Country.AnyCountry):
+    _code = _locale.name().split("_")[0]
+    if re.fullmatch(r"[a-z]{2,3}", _code):
+        LANGUAGE_NAMES.setdefault(_code, QLocale.languageToString(_locale.language()))
 
 
 def language_name(code):
@@ -457,8 +461,8 @@ class QuickLookupWindow(QDialog):
         self.frame = QFrame()
         outer.addWidget(self.frame)
         layout = QVBoxLayout(self.frame)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(3)
         self.actions_row = QWidget()
         toolbar = QHBoxLayout(self.actions_row)
         toolbar.setContentsMargins(0, 0, 0, 0)
@@ -542,6 +546,8 @@ class QuickLookupWindow(QDialog):
         self.audio_button = self._action("audio", "Play pronunciation")
         self.audio_button.setEnabled(False)
         self.audio_button.clicked.connect(self.play_audio)
+        self.audio_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.audio_button.customContextMenuRequested.connect(self.audio_source_menu)
         action_layout.addWidget(self.audio_button)
         header_layout.addWidget(self.audio_actions)
         layout.addWidget(self.header)
@@ -639,11 +645,15 @@ class QuickLookupWindow(QDialog):
                 border:1px solid {colors['border']};padding:4px;}}
             QMenu::item:selected {{background:{colors['hover']};}}
             QCheckBox {{color:{config.color_foreground};spacing:4px;}}
-            QScrollBar:vertical {{background:transparent;width:6px;margin:2px 0;}}
-            QScrollBar::handle:vertical {{background:{colors['scroll']};min-height:24px;border-radius:3px;}}
+            QScrollBar:vertical {{background:transparent;width:3px;margin:0;}}
+            QScrollBar::handle:vertical {{background:{colors['scroll']};min-height:20px;border-radius:1px;}}
             QScrollBar::handle:vertical:hover {{background:{colors['muted']};}}
             QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {{height:0;}}
             QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical {{background:transparent;}}
+            QScrollBar:horizontal {{background:transparent;height:3px;margin:0;}}
+            QScrollBar::handle:horizontal {{background:{colors['scroll']};min-width:20px;border-radius:1px;}}
+            QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal {{width:0;}}
+            QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal {{background:transparent;}}
         ''')
         font = QFont(config.font_family)
         font.setPixelSize(config.font_size_definitions)
@@ -1112,7 +1122,27 @@ class QuickLookupWindow(QDialog):
             self._autoplayed.add(key)
         self.play_audio()
 
-    def play_audio(self, *, sentence=False, translation=False):
+    def audio_source_menu(self, point):
+        if self._result is None or not self._result.entries:
+            return
+        from meikipop.audio.sources import database_path, source_label, source_order
+        language = self._result.entries[0].language
+        menu = QMenu(self.audio_button)
+        menu.addAction("Use source priority", self.play_audio)
+        menu.addSeparator()
+        for source in source_order(self.settings, language):
+            action = menu.addAction(source_label(source), lambda checked=False, source=source: self.play_audio(source=source))
+            action.setEnabled(source == "tts" or bool(database_path(self.settings, language)))
+        menu.addSeparator()
+        menu.addAction("Audio settings…", self.open_audio_settings)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.popup(self.audio_button.mapToGlobal(point))
+
+    def open_audio_settings(self):
+        self.open_settings()
+        self._setup.show_audio()
+
+    def play_audio(self, *, sentence=False, translation=False, source=None):
         if self._result is None:
             return
         if not sentence and not translation and self._autoplayed is not None:
@@ -1127,7 +1157,8 @@ class QuickLookupWindow(QDialog):
         elif sentence or not result.entries:
             text, language = (self._context or result.text) if sentence else result.text, result.source
         else:
-            self.audio.play(result.entries[0], self.revision, self.settings, profile=self.preferred_foreign)
+            options = {"source": source} if source else {}
+            self.audio.play(result.entries[0], self.revision, self.settings, profile=self.preferred_foreign, **options)
             return
         self.audio.play_text(text, language, self.revision, self.settings, profile=self.preferred_foreign)
 

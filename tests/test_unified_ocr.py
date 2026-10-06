@@ -394,7 +394,7 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window._place.assert_not_called()
         self.assertFalse(self.window.is_pinned)
 
-    def test_hover_is_opt_in_waits_for_dwell_and_limits_repeat_capture(self):
+    def test_scanning_requires_held_trigger_even_with_legacy_hover_flag(self):
         self.controller.holding = False
         with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
                 patch.object(QApplication, "activeWindow", return_value=None), \
@@ -405,20 +405,11 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.controller.auto_scan = True
             self.controller.scan()
             capture.assert_not_called()
-            clock.return_value = 10.36
+            clock.return_value = 12
             self.controller.scan()
-            self.assertEqual(capture.call_count, 1)
-            self.controller.busy = False
-            clock.return_value = 10.8
-            self.controller.scan()
-            self.assertEqual(capture.call_count, 1)
-            clock.return_value = 11.4
-            self.controller.scan()
-            self.assertEqual(capture.call_count, 2)
+            capture.assert_not_called()
 
-    def test_hover_dismissal_waits_for_pointer_move_and_new_dwell(self):
-        self.controller.holding = False
-        self.controller.auto_scan = True
+    def test_dismissed_scan_requires_release_and_new_trigger(self):
         with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)) as cursor, \
                 patch.object(QApplication, "activeWindow", return_value=None), \
                 patch("meikipop.gui.unified_ocr.monotonic", return_value=10) as clock, \
@@ -433,6 +424,9 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             capture.assert_not_called()
             clock.return_value = 15.4
             self.controller.scan()
+            capture.assert_not_called()
+            self.controller.hold_changed(False)
+            self.controller.hold_changed(True)
             self.assertEqual(capture.call_count, 1)
 
     def test_capture_restores_previous_preview_while_worker_runs(self):

@@ -453,6 +453,29 @@ class QuickLookupTests(unittest.TestCase):
         finally:
             dialog.deleteLater()
 
+    def test_settings_save_immediately_without_leaking_across_profiles(self):
+        dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+        try:
+            dialog.translation_target.setCurrentIndex(dialog.translation_target.findData("ru"))
+            self.assertEqual(self.settings.value("profiles/ja/translation_target"), "ru")
+            dialog.audio_volume.setValue(42)
+            self.assertEqual(self.settings.value("profiles/ja/audio_volume", type=int), 42)
+            dialog.appearance.compact_preview.setChecked(False)
+            self.assertFalse(self.settings.value("profiles/ja/compact_preview", True, bool))
+            dialog.sync_profile("tr")
+            self.assertEqual(dialog.translation_target.currentData(), "auto")
+            dialog.pin_gesture.setCurrentIndex(dialog.pin_gesture.findData("middle"))
+            self.assertEqual(self.settings.value("profiles/tr/pin_gesture"), "middle")
+            dialog.audio_sources.items.setCurrentRow(1)
+            dialog.audio_sources.move(-1)
+            self.assertEqual(self.settings.value("profiles/tr/audio_order")[0], "tts")
+            dialog.sync_profile("ja")
+            self.assertEqual(dialog.audio_volume.value(), 42)
+            self.assertEqual(dialog.translation_target.currentData(), "ru")
+            self.assertFalse(dialog.appearance.compact_preview.isChecked())
+        finally:
+            dialog.deleteLater()
+
     def test_translation_direction_is_manual_or_automatic_without_changing_profile(self):
         self.window.translation_worker = Mock()
         dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
