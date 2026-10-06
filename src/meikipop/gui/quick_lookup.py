@@ -534,6 +534,8 @@ class QuickLookupWindow(QDialog):
     def __init__(self, directory=None, engine_factory=None, settings=None):
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
                          | Qt.WindowType.WindowStaysOnTopHint)
+        if sys.platform == "darwin":
+            self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow)
         if QApplication.platformName() == "xcb":
             self.setWindowFlag(Qt.WindowType.X11BypassWindowManagerHint)
         self.directory = directory
