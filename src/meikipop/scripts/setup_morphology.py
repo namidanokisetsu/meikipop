@@ -12,6 +12,10 @@ def _run(arguments, cancelled=None):
     executable = Path(sys.executable)
     if executable.name.lower() == "pythonw.exe":
         executable = executable.with_name("python.exe")
+    if getattr(sys, "frozen", False) and sys.platform == "win32":
+        console = executable.with_name("Meikipop-cli.exe")
+        if console.exists():
+            executable = console
     if cancelled and cancelled.is_set():
         raise InterruptedError("Model setup cancelled.")
     process = subprocess.Popen([str(executable), *arguments], stdin=subprocess.DEVNULL,
@@ -34,7 +38,10 @@ def install(language, progress=None, cancelled=None):
     if language == "ja" or language not in STANZA_LANGUAGES:
         raise ValueError("Choose a language with base-form model support.")
     if getattr(sys, "frozen", False):
-        raise RuntimeError("Model setup requires the Python desktop installation in this build.")
+        if progress:
+            progress("Downloading base-form model…")
+        _run(["--setup-morphology", language], cancelled)
+        return
     def installed(package):
         try:
             return version(package).split("+")[0]

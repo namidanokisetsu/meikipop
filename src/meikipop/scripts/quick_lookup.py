@@ -10,15 +10,36 @@ def main(argv=None):
     parser.add_argument("--hotkey", nargs="?", const="default", help="Enable an optional search shortcut")
     parser.add_argument("--background", action="store_true", help="Start in the tray")
     parser.add_argument("--no-ocr", action="store_true", help="Run dictionary search without screen lookup")
+    parser.add_argument("--setup", action="store_true", help="Open the setup wizard")
+    parser.add_argument("--setup-morphology", metavar="LANGUAGE", help=argparse.SUPPRESS)
+    parser.add_argument("--setup-ocr", choices=("paddle", "meikiocr"), help=argparse.SUPPRESS)
     parser.add_argument("--check-runtime", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     background = args.background or not args.text
+
+    if args.setup_ocr:
+        from meikipop.scripts.setup_ocr import setup_models
+        setup_models(args.setup_ocr)
+        return 0
+    if args.setup_morphology:
+        from meikipop.language.stanza_analyzer import setup_models
+        setup_models(language=args.setup_morphology)
+        return 0
 
     if args.check_runtime:
         # Packaging smoke check; never creates a window or requests permissions.
         from meikipop.scripts.translation_server import server_command
         if "127.0.0.1" not in server_command("llama-server", "model.gguf"):
             raise RuntimeError("Local translation setup is incomplete.")
+        from meikipop.gui.first_run import SetupWizard
+        from meikipop.gui.dictionary_manager import SetupDialog
+        if getattr(sys, "frozen", False):
+            import stanza
+            import torch
+            if sys.platform == "win32":
+                import paddle
+                import paddleocr
+                import meikiocr
         if sys.platform == "darwin":
             import Vision
             import Quartz
@@ -26,7 +47,7 @@ def main(argv=None):
                 raise RuntimeError("Native screen lookup runtime is incomplete.")
         return 0
 
-    from PyQt6.QtCore import QTimer
+    from PyQt6.QtCore import QSettings, QTimer
     from PyQt6.QtGui import QActionGroup, QFont, QIcon
     from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QStyle
     from meikipop.gui.quick_lookup import QuickLookupWindow
@@ -42,7 +63,12 @@ def main(argv=None):
     if not instance.start(args.text, background):
         return 0
     app.aboutToQuit.connect(instance.shutdown)
-    window = QuickLookupWindow(args.library)
+    from meikipop.gui.first_run import needs_setup, show_setup
+    settings = QSettings("Meikipop", "QuickLookup")
+    first_run = args.setup or needs_setup(settings)
+    if first_run:
+        settings.setValue("setup/pending", True)
+    window = QuickLookupWindow(args.library, settings=settings)
     instance.requested.connect(window.open_search)
     from meikipop.gui.text_triggers import TextTriggers
     text_triggers = TextTriggers(window)
@@ -71,6 +97,7 @@ def main(argv=None):
             action.triggered.connect(lambda _, code=code: window.set_mode(code))
     profiles.aboutToShow.connect(populate_profiles)
     menu.addAction("Settings", window.open_settings)
+    menu.addAction("Setup wizard", lambda: show_setup(window))
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
     tray.setContextMenu(menu)
@@ -95,13 +122,17 @@ def main(argv=None):
     if binding == "default":
         binding = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
     try:
-        window.restore_shortcut(binding)
+        window.restore_shortcut(window.settings.value("hotkey", "") if first_run and binding is None else binding)
     except (ValueError, OSError, RuntimeError) as error:
         window.show_message(str(error))
-    if not background:
+    if first_run:
+        QTimer.singleShot(0, lambda: show_setup(window))
+    elif not background:
         QTimer.singleShot(0, lambda: window.open_search(args.text))
     return app.exec()
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     raise SystemExit(main())

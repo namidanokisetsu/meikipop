@@ -23,7 +23,7 @@ class SetupOperation(QObject):
     finished = pyqtSignal(str, bool)
     refresh = pyqtSignal()
 
-    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None, morphology=None):
+    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None):
         super().__init__()
         self.paths = paths
         self.directory = directory
@@ -32,6 +32,8 @@ class SetupOperation(QObject):
         self.recommended = recommended
         self.remove = remove
         self.morphology = morphology
+        self.ocr = ocr
+        self.installed_component = ""
         self.cancelled = threading.Event()
         self.thread = threading.Thread(target=self._run, name="dictionary-setup", daemon=True)
 
@@ -45,6 +47,14 @@ class SetupOperation(QObject):
             pass
 
     def _run(self):
+        if self.ocr:
+            try:
+                from meikipop.scripts.setup_ocr import install
+                self.installed_component = install(self.ocr, lambda text: self._emit(self.progress, text), self.cancelled)
+                self._emit(self.finished, "OCR ready. Scan with your selected shortcut.", True)
+            except Exception as error:
+                self._emit(self.finished, str(error), False)
+            return
         if self.morphology:
             try:
                 from meikipop.scripts.setup_morphology import install
@@ -348,9 +358,13 @@ class SetupDialog(QDialog):
         component_link.setOpenExternalLinks(True)
         component_layout.addWidget(component_link)
         scan_layout.addRow(self.screenai_controls)
+        self.ocr_install = QPushButton("Install OCR model")
+        self.ocr_install.clicked.connect(lambda: self.begin_operation([], ocr=self.current_ocr_control().currentData()))
+        scan_layout.addRow(self.ocr_install)
         def show_component_controls():
             provider = self.current_ocr_control()
             self.screenai_controls.setVisible(provider.currentData() == "screenai")
+            self.ocr_install.setVisible(provider.currentData() != "vision")
         self.show_component_controls = show_component_controls
         self.ja_ocr_provider.currentIndexChanged.connect(show_component_controls)
         self.tr_ocr_provider.currentIndexChanged.connect(show_component_controls)
@@ -631,7 +645,10 @@ class SetupDialog(QDialog):
         provider = self.current_ocr_control()
         from meikipop.language.support import PADDLE_LANGUAGES, default_ocr_provider
         paddle = provider.model().item(provider.findData("paddle"))
-        paddle.setEnabled(code in PADDLE_LANGUAGES)
+        bundled_mac = sys.platform == "darwin" and getattr(sys, "frozen", False)
+        paddle.setEnabled(code in PADDLE_LANGUAGES and not bundled_mac)
+        if bundled_mac and provider.findData("meikiocr") >= 0:
+            provider.model().item(provider.findData("meikiocr")).setEnabled(False)
         paddle.setToolTip("" if code in PADDLE_LANGUAGES else "The installed Paddle model does not support this language")
         default = default_ocr_provider(code)
         provider.setCurrentIndex(max(0, provider.findData(self.settings.value(f"profiles/{code}/ocr_provider", self.settings.value(f"{code}_ocr_provider", default)))))
@@ -818,10 +835,11 @@ class SetupDialog(QDialog):
         if self.translation_mode.currentData() != "custom" and self.save_translation():
             self.begin_operation([], profile=self.translation_mode.currentData())
 
-    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None):
+    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None):
         if self.operation is not None:
             return
-        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology)
+        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology, ocr)
+        self.ocr_install.setEnabled(False)
         self.operation.refresh.connect(self.dictionaries_changed)
         self.operation.progress.connect(self.status.setText)
         self.operation.finished.connect(self._finished)
@@ -842,6 +860,11 @@ class SetupDialog(QDialog):
             self.cancel_button.setEnabled(False)
 
     def _finished(self, status, changed):
+        component = self.operation.installed_component if self.operation is not None else ""
+        if component:
+            self.screenai_directory.setText(component)
+            self.settings.setValue("screenai_directory", component)
+        self.ocr_install.setEnabled(True)
         self.operation = None
         self.cancel_button.setVisible(False)
         for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
@@ -855,6 +878,8 @@ class SetupDialog(QDialog):
         self.status.setText(status)
         if changed:
             self.dictionaries_changed.emit()
+            if self.parent() is not None:
+                self.parent().scan_settings_changed.emit()
         if self._close_pending:
             self._close_pending = False
             super().reject()
