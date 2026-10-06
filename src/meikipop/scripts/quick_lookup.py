@@ -15,7 +15,7 @@ def main(argv=None):
     parser.add_argument("--setup-ocr", choices=("paddle", "meikiocr"), help=argparse.SUPPRESS)
     parser.add_argument("--check-runtime", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    background = args.background or not args.text
+    background = args.background or (not args.text and sys.platform != "darwin")
 
     if args.setup_ocr:
         from meikipop.scripts.setup_ocr import setup_models
@@ -88,7 +88,15 @@ def main(argv=None):
     if first_run:
         settings.setValue("setup/pending", True)
     window = QuickLookupWindow(args.library, settings=settings)
-    instance.requested.connect(window.open_search)
+    def open_requested(text=""):
+        if sys.platform == "darwin" and not text:
+            window.open_settings()
+        else:
+            window.open_search(text)
+    instance.requested.connect(open_requested)
+    if sys.platform == "darwin":
+        from meikipop.gui.desktop_access import DesktopAccess
+        desktop_access = DesktopAccess(window, app)
     from meikipop.gui.text_triggers import TextTriggers
     text_triggers = TextTriggers(window)
     app.aboutToQuit.connect(text_triggers.shutdown)
@@ -97,7 +105,10 @@ def main(argv=None):
         icon = app.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView)
     app.setWindowIcon(icon)
     window.setWindowIcon(icon)
-    tray = QSystemTrayIcon(icon, app)
+    tray_icon = QIcon(icon)
+    if sys.platform == "darwin":
+        tray_icon.setIsMask(True)
+    tray = QSystemTrayIcon(tray_icon, app)
     tray.setToolTip("Meikipop")
     window.tray_geometry = tray.geometry
     menu = QMenu()
@@ -120,8 +131,9 @@ def main(argv=None):
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
     tray.setContextMenu(menu)
-    tray.activated.connect(lambda reason: window.open_search()
-                           if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
+    if sys.platform != "darwin":
+        tray.activated.connect(lambda reason: window.open_search()
+                               if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
     tray.show()
     app.aboutToQuit.connect(window.shutdown)
     from meikipop.scripts.translation_server import shutdown_server
@@ -147,7 +159,7 @@ def main(argv=None):
     if first_run:
         QTimer.singleShot(0, lambda: show_setup(window))
     elif not background:
-        QTimer.singleShot(0, lambda: window.open_search(args.text))
+        QTimer.singleShot(0, lambda: open_requested(args.text))
     return app.exec()
 
 

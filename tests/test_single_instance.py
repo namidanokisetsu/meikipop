@@ -23,6 +23,10 @@ class SingleInstanceTests(unittest.TestCase):
                 self.assertFalse(second.start(background=True))
                 QTest.qWait(20)
                 requested.assert_called_once()
+                self.assertFalse(second.start(background=False))
+                QTest.qWait(50)
+                self.assertEqual(requested.call_args.args, ('',))
+                self.assertEqual(requested.call_count, 2)
                 first.shutdown()
                 self.assertTrue(second.start())
             finally:

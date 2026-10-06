@@ -1875,7 +1875,7 @@ class QuickLookupWindow(QDialog):
             self._setup = SetupDialog(self.directory, self.settings, self.apply_shortcut, self)
             self._setup.dictionaries_changed.connect(self.refresh_library)
         self._setup.sync_profile(self.preferred_foreign)
-        self._setup.show()
+        self._setup.showNormal()
         self._setup.raise_()
         from meikipop.utils.window_focus import activate_application
         activate_application()
