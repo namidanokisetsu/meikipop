@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
-from PyQt6.QtCore import QEvent, QPoint, QSettings, Qt, QUrl
+from PyQt6.QtCore import QEvent, QPoint, QRect, QSettings, Qt, QUrl
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
@@ -872,6 +872,22 @@ class QuickLookupTests(unittest.TestCase):
         self.assertFalse(self.window._manual_at_cursor)
         self.window.lookup_selected("猫")
         self.assertTrue(self.window._manual_at_cursor)
+
+    def test_macos_search_anchors_below_menu_bar_and_windows_stays_at_bottom(self):
+        area = QRect(1440, 38, 1440, 840)
+        screen = Mock()
+        screen.availableGeometry.return_value = area
+        for platform in ("darwin", "win32"):
+            for tray in (QRect(2550, 0, 24, 24), QRect()):
+                with self.subTest(platform=platform, tray=tray), \
+                        patch("meikipop.gui.quick_lookup.sys.platform", platform), \
+                        patch.object(QApplication, "screenAt", return_value=screen):
+                    self.window.tray_geometry = lambda: tray
+                    self.window._place()
+                    expected = area.top() + 8 if platform == "darwin" else area.bottom() - self.window.height() - 8
+                    self.assertEqual(self.window.y(), expected)
+                    self.assertGreaterEqual(self.window.x(), area.left())
+                    self.assertLessEqual(self.window.geometry().right(), area.right())
 
     def test_escape_hides_and_invalidates_pending_results(self):
         self.window.open_search()

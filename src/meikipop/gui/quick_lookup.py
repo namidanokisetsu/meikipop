@@ -1384,8 +1384,14 @@ class QuickLookupWindow(QDialog):
             self.resize(min(self.width(), area.width()), min(self.height(), area.height()))
             if not self._peek and not self._manual_at_cursor:
                 x = tray.center().x() if tray and not tray.isNull() else area.right()
+                y = area.bottom() - self.height() - 8
+                if sys.platform == "darwin":
+                    y = area.top() + 8
+                    if tray and not tray.isNull():
+                        y = max(y, tray.bottom() + 8)
+                    y = min(y, area.bottom() - self.height())
                 self.move(max(area.left(), min(x - self.width() // 2, area.right() - self.width())),
-                          max(area.top(), area.bottom() - self.height() - 8))
+                          max(area.top(), y))
             else:
                 self.move(*popup_position(point.x(), point.y(), self.size(), area, config.popup_position_mode))
 
