@@ -29,7 +29,6 @@ class DesktopAccessTests(unittest.TestCase):
         self.addCleanup(popup.stop)
 
     def tearDown(self):
-        self.app.applicationStateChanged.disconnect(self.access.state_changed)
         self.dialog.close()
         self.dialog.deleteLater()
         self.access.menu_bar.deleteLater()
@@ -38,12 +37,13 @@ class DesktopAccessTests(unittest.TestCase):
 
     def test_repeated_dock_activation_opens_settings_with_no_windows(self):
         for _ in range(2):
-            self.access.state_changed(Qt.ApplicationState.ApplicationActive)
+            self.access.dock_clicked()
             self.app.processEvents()
         self.assertEqual(self.window.open_settings.call_count, 2)
 
-    def test_inactive_application_does_not_open_settings(self):
-        self.access.state_changed(Qt.ApplicationState.ApplicationInactive)
+    def test_launch_and_application_activation_do_not_open_settings(self):
+        self.app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
+        self.app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationInactive)
         self.app.processEvents()
         self.window.open_settings.assert_not_called()
 

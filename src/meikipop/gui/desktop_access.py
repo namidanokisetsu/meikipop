@@ -1,5 +1,7 @@
 """macOS menu and Dock access for the background dictionary app."""
-from PyQt6.QtCore import QObject, Qt, QTimer
+import sys
+
+from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import QApplication, QDialog, QMenuBar
 
@@ -18,12 +20,12 @@ class DesktopAccess(QObject):
         menu.addAction("Search", window.open_search)
         quit_action = menu.addAction("Quit Meikipop", app.quit)
         quit_action.setMenuRole(QAction.MenuRole.QuitRole)
-        app.applicationStateChanged.connect(self.state_changed)
+        if sys.platform == "darwin" and QApplication.platformName() != "offscreen":
+            from meikipop.gui.macos_reopen import install_reopen_handler
+            self._reopen_handler = install_reopen_handler(self.dock_clicked)
 
-    def state_changed(self, state):
-        if state == Qt.ApplicationState.ApplicationActive:
-            # Qt also emits this for repeated Dock clicks while already active.
-            QTimer.singleShot(0, self.reopen)
+    def dock_clicked(self):
+        QTimer.singleShot(0, self.reopen)
 
     def reopen(self):
         if QApplication.activePopupWidget() is not None:

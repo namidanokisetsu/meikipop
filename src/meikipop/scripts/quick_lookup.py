@@ -161,7 +161,7 @@ def main(argv=None):
         window.show_message(str(error))
     if first_run:
         QTimer.singleShot(0, lambda: show_setup(window))
-    elif not background:
+    elif not background and (args.text or sys.platform != "darwin"):
         QTimer.singleShot(0, lambda: open_requested(args.text))
     return app.exec()
 
