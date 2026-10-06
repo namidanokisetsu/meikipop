@@ -42,9 +42,10 @@ Imported Turkish forms retain the dictionary's grammar labels, including alterna
 Reimport an older forms pack to restore labels discarded by earlier versions; existing dictionary preferences are preserved.
 
 Typed search opens on the tray's screen with keyboard focus. Enter searches immediately.
-Automatic sentence translation and translation after incomplete dictionary matches
-are independent options in **Translation**. New profiles default both off; existing
-profiles retain their previous routing. Translate remains available explicitly.
+Sentence lookups translate automatically, including Japanese input without punctuation
+when the dictionary matches only its beginning. Translation after other incomplete
+dictionary matches remains an optional setting in **Translation**, off in new profiles.
+Translate remains available explicitly.
 Hover OCR stays dictionary-only.
 OCR translations show the original sentence, a divider, then the translation. Typed translations
 show only the translation below the input. Translate and audio
@@ -120,11 +121,6 @@ Copy sentence changes the clipboard only when invoked.
 The provisioned local library uses the full Turkdict pack and Jitendex
 (2026-10-03), plus KANJIDIC and Jiten metadata packs. These large data files are
 outside Git. Additional local Yomitan packs can be added through the same UI.
-
-**Settings → Appearance → Sentence view** adds clickable words beneath Search.
-It defaults off per profile. Japanese grouping reuses dictionary deconjugation;
-spaced languages keep their original word boundaries. A click keeps the full input
-for base-form analysis, translation, audio, copying and Back.
 
 ### Optional lemma fallback
 

@@ -89,50 +89,6 @@ class QuickLookupTests(unittest.TestCase):
         self.window.deliver(revision, SearchResult("old", "ja", "en", (entry("OLD"),)))
         self.assertNotIn("OLD", self.window.browser.toPlainText())
 
-    def test_sentence_view_is_opt_in_and_profile_scoped(self):
-        self.window.search.setText("猫がいる")
-        self.assertTrue(self.window.sentence_view.isHidden())
-        self.settings.setValue("profiles/ja/sentence_view", True)
-        self.window.reload_appearance()
-        self.assertFalse(self.window.sentence_view.isHidden())
-        self.window.set_mode("tr")
-        self.assertTrue(self.window.sentence_view.isHidden())
-
-    def test_sentence_word_keeps_unicode_offsets_context_and_history(self):
-        self.settings.setValue("profiles/tr/sentence_view", True)
-        self.window.set_mode("tr")
-        text = "😀 ev kitap ev"
-        self.window.search.setText(text)
-        self.window.debounce.stop()
-        view = self.window.sentence_view
-        with patch.object(self.window.worker, "request") as request:
-            self.window.submit()
-            self.assertTrue(request.call_args.kwargs["segment"])
-            self.window.deliver(self.window.revision, SearchResult(text, "tr", "en"))
-            start = text.rindex("ev")
-            view._clicked(QUrl(f"word:{start}:{start + 2}"))
-            self.assertEqual(self.window.search.selectedText(), "ev")
-            self.assertEqual(request.call_args.kwargs["context"], (text, start, start + 2))
-            self.assertFalse(request.call_args.kwargs.get("segment", False))
-            self.window.deliver(self.window.revision, SearchResult("ev", "tr", "en", (entry("ev", language="tr"),)))
-            self.assertEqual(self.window._context, text)
-            view._clicked(QUrl("word:5:10"))
-            self.window.deliver(self.window.revision, SearchResult("kitap", "tr", "en", (entry("kitap", language="tr"),)))
-            self.window.go_back()
-            self.assertEqual(self.window._result.text, "ev")
-            self.assertEqual(view.selected, (start, start + 2))
-            self.assertEqual(self.window.search.text(), text)
-
-    def test_sentence_view_rejects_external_links_and_escapes_text(self):
-        view = self.window.sentence_view
-        view.set_sentence('<script>kitap</script> & ev', "tr")
-        selected = Mock()
-        view.word_clicked.connect(selected)
-        view._clicked(QUrl("https://example.com"))
-        view._clicked(QUrl("word:0:2000"))
-        selected.assert_not_called()
-        self.assertIn("<script>", view.toPlainText())
-
     def test_morphology_option_follows_profile_for_dictionary_lookup_only(self):
         self.settings.setValue("profiles/tr/morphology", True)
         self.window.set_mode("tr")
@@ -493,12 +449,18 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.foreign.currentData(), "en")
 
     def test_explicit_sentence_skips_dictionary_and_translates_into_english(self):
-        self.settings.setValue("profiles/ja/auto_translate_sentence", True)
         self.window.lookup_selected("昨日は朝ご飯を食べなかった。")
         self.wait_until(lambda: self.window._result is not None)
         self.assertTrue(self.engine.calls[0][3])
         self.assertEqual(self.window._result.entries, ())
         self.assertNotIn("No entry", self.window.browser.toPlainText())
+
+    def test_short_typed_sentence_translates_despite_old_disabled_setting(self):
+        self.settings.setValue("profiles/ja/auto_translate_sentence", False)
+        self.window.open_search("Cats sleep.")
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertEqual([call[3] for call in self.engine.calls], [True])
+        self.assertEqual(self.window._result.translation, "translated")
 
     def test_word_without_dictionary_hit_falls_back_to_translation_once(self):
         self.settings.setValue("profiles/ja/auto_translate_miss", True)
@@ -513,12 +475,22 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("No entry", self.window.browser.toPlainText())
 
     def test_short_japanese_sentence_does_not_stop_at_first_dictionary_word(self):
-        self.settings.setValue("profiles/ja/auto_translate_miss", True)
         original = self.engine.search
         self.engine.search = lambda text, **options: replace(original(text, **options), matched_length=1)
         self.window.open_search("猫がいる")
         self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
         self.assertEqual([call[3] for call in self.engine.calls], [False, True])
+
+    def test_partial_match_in_explicit_word_lookup_does_not_translate_sentence(self):
+        original = self.engine.search
+        self.engine.search = lambda text, **options: replace(original(text, **options), matched_length=1)
+        self.window.search.setText("猫科の動物です。")
+        self.window.search.setSelection(0, 2)
+        self.window.submit(selection=True)
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertEqual([call[0] for call in self.engine.calls], ["猫科"])
+        self.assertEqual([call[3] for call in self.engine.calls], [False])
+        self.assertIsNone(self.window.translation_worker)
 
     def test_hover_sentence_context_does_not_start_translation(self):
         self.window.show_entries((entry(),), "猫", peek=True)
@@ -1225,7 +1197,6 @@ class QuickLookupTests(unittest.TestCase):
             self.assertFalse(self.window.isVisible())
 
     def test_shortcut_clipboard_sentence_translates_without_dictionary_lookup(self):
-        self.settings.setValue("profiles/ja/auto_translate_sentence", True)
         with patch.object(QApplication, "activeWindow", return_value=None), \
                 patch.object(QApplication, "clipboard") as clipboard, \
                 patch.object(self.window.selection, "start"):

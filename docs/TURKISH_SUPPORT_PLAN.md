@@ -47,9 +47,6 @@ clients remain explicit compatibility entrypoints.
    history restores their state.
    Explicit word lookup within typed or pasted input retains the full input as
    sentence context through dictionary analysis, translation, audio, copying and Back.
-   Optional per-profile Sentence view adds clickable words through the same worker;
-   Japanese grouping reuses deconjugation, while other scripts reuse language policies.
-   Original offsets, selected words and sentence input survive history navigation.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings
@@ -102,13 +99,14 @@ clients remain explicit compatibility entrypoints.
    local llama.cpp, with Quality 7B Q8_0 and Lightweight 1.8B Q8_0 selectors.
    Both support 33 languages plus five regional and minority varieties.
    There is no silent fallback or Argos backend. Models start lazily when
-   Translate is pressed; downloads occur only in setup. Custom servers must
+   a sentence lookup or Translate is requested; downloads occur only in setup. Custom servers must
    use loopback HTTP, without proxies or redirects, and can extend translation
    coverage with other models. Results identify the model.
    Translation settings offer automatic or manual source and target language
    strips independently of the dictionary profile. Ordinary settings save immediately.
-   Automatic sentence and miss/partial-match routing default off in new profiles;
-   migration preserves existing routing. Streaming is batched, cancellable through startup
+   Sentence lookups translate automatically; unpunctuated Japanese input falls back
+   to translation after a partial dictionary match. Word-miss routing remains optional
+   and defaults off in new profiles. Streaming is batched, cancellable through startup
    and HTTP reads, and retains useful dictionary content. Keep model warm is optional,
    defaults off, and changes only the owned server on the next intentional translation.
 

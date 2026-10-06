@@ -59,20 +59,6 @@ class JapaneseLibraryTests(unittest.TestCase):
         entries = self.engine._japanese("読んでいるところです。")
         self.assertEqual({entry.term for entry in entries}, {"読む"})
 
-    def test_sentence_grouping_reuses_inflections_and_preserves_offsets(self):
-        text = "😀 読んでいる、食べました。"
-        spans = self.engine.sentence_spans(text, "ja")
-        words = [text[start:end] for start, end in spans]
-        self.assertEqual(words, ["読んでいる", "食べました"])
-        self.assertEqual(spans[0][0], 2)
-
-    def test_sentence_grouping_cancellation(self):
-        import threading
-        cancelled = threading.Event()
-        cancelled.set()
-        with self.assertRaisesRegex(RuntimeError, "cancelled"):
-            self.engine.sentence_spans("読んでいる", "ja", cancelled)
-
     def test_inflection_labels_hide_intermediate_stems(self):
         self.assertEqual(self.engine._japanese("行かなかった")[0].inflection, ("negative", "past"))
         self.assertEqual(self.engine._japanese("読んでいる")[0].inflection, ("progressive",))

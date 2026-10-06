@@ -24,7 +24,6 @@ class SearchResult:
     kanji: tuple = ()
     translation_model: str = ""
     matched_length: int = 0
-    sentence_spans: tuple = ()
 
 
 class SearchEngine:
@@ -87,8 +86,7 @@ class SearchEngine:
         return tuple(dict.fromkeys(meta["language"] for _, meta, _ in self.library.packs if meta["enabled"]))
 
     def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
-               morphology=False, context=None, translation_progress=None, translation_state=None, cancelled=None, request_id=0,
-               segment=False):
+               morphology=False, context=None, translation_progress=None, translation_state=None, cancelled=None, request_id=0):
         if cancelled is not None and cancelled.is_set():
             raise RuntimeError("Translation cancelled.")
         self.refresh_if_changed()
@@ -104,7 +102,7 @@ class SearchEngine:
         requested_target = language_code(target) if target else None
         pair = tuple(language_code(code) for code in pair) if pair else None
         cache_key = (self.library.revision, text, source, foreign, translate, translator_key, requested_target, pair,
-                     morphology, context if morphology else None, segment)
+                     morphology, context if morphology else None)
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)
             return self.cache[cache_key]
@@ -157,40 +155,12 @@ class SearchEngine:
         kanji = self.library.kanji_info(entries[0].term if entries else text) if not translate and (source == "ja" or target == "ja") else ()
         model = getattr(self.translator, "last_model", "") if translation else ""
         result = SearchResult(text, source, target, entries, suggestions, translation, message, kanji, model, matched_length)
-        if segment and not translate:
-            result = replace(result, sentence_spans=self.sentence_spans(text, source, cancelled))
         # A missing or starting local server must be retryable on the same text.
         if (not translate or translation) and not (cancelled is not None and cancelled.is_set()):
             self.cache[cache_key] = result
         if len(self.cache) > 128:
             self.cache.popitem(last=False)
         return result
-
-    def sentence_spans(self, text, language, cancelled=None):
-        from meikipop.language.profiles import get_profile
-        profile = get_profile(language)
-        spans = profile.word_spans(text)
-        if profile.word_mode != "unspaced":
-            return spans
-        result, consumed = [], 0
-        for start, end in spans:
-            if cancelled is not None and cancelled.is_set():
-                raise RuntimeError("Search cancelled.")
-            if start < consumed:
-                continue
-            # Bound dictionary grouping; remaining characters still stay clickable.
-            if len(result) < 256:
-                if language == "ja":
-                    if self._japanese(text[start:start + 25]):
-                        end = start + self._matched_length
-                else:
-                    for length in range(min(25, len(text) - start), 1, -1):
-                        if self.library.lookup(text[start:start + length], language):
-                            end = start + length
-                            break
-            result.append((start, end))
-            consumed = end
-        return tuple(result)
 
     def _lemma_lookup(self, text, language, context):
         if not self.library._active(language):

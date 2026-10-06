@@ -51,11 +51,11 @@ class PendingTests(QuickLookupTests):
         self.assertFalse(enabled(self.settings, "ja", "selection_lookup"))
         self.settings.setValue("profiles/de/target", "en")
         migrate(self.settings)
-        self.assertFalse(enabled(self.settings, "de", "auto_translate_sentence"))
+        self.assertFalse(enabled(self.settings, "de", "auto_translate_miss"))
         self.assertFalse(self.settings.value("profiles/tr/selected_text", False, bool))
 
     def test_new_install_defaults_off(self):
-        self.assertFalse(enabled(self.settings, "ja", "auto_translate_sentence"))
+        self.assertFalse(enabled(self.settings, "ja", "auto_translate_miss"))
         self.assertFalse(self.window.browser.selection_lookup)
 
     def test_keep_warm_setting_preserves_inflight_request_and_setup_edits_save(self):

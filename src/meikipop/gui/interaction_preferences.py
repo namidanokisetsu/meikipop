@@ -1,6 +1,6 @@
 """One-time migration, before adding or writing any new profile preferences."""
 
-KEYS = ("selection_lookup", "auto_translate_sentence", "auto_translate_miss")
+KEYS = ("selection_lookup", "auto_translate_miss")
 
 
 def migrate(preferences):
