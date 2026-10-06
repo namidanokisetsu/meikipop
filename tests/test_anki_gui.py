@@ -58,11 +58,10 @@ class AnkiGuiTests(unittest.TestCase):
         self.widgets.append(panel)
         with patch("meikipop.gui.anki.AnkiClient") as client:
             panel.load("ja")
-            panel.enabled.setChecked(True)
             client.assert_not_called()
             client.return_value.catalog.return_value = (["Japanese"], ["Basic"])
             client.return_value.names.return_value = ["Front", "Back", "Reading"]
-            panel.refresh()
+            panel.enabled.setChecked(True)
             self.wait_until(lambda: panel.status.text() == "Connected.")
         panel._field_controls["Reading"].setCurrentIndex(panel._field_controls["Reading"].findData("reading"))
         self.assertEqual(load_settings(self.settings, "ja").fields,
@@ -72,6 +71,59 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertFalse(panel.shortcut.enabled.isChecked())
         panel.load("ja")
         self.assertEqual(panel._field_controls["Reading"].currentData(), "reading")
+
+    def test_opening_enabled_settings_refreshes_catalog_and_preserves_choices(self):
+        prefix = "profiles/ja/anki/"
+        self.settings.setValue(prefix + "enabled", True)
+        self.settings.setValue(prefix + "deck", "Japanese")
+        self.settings.setValue(prefix + "model", "Basic")
+        panel = AnkiSettingsPanel(self.settings)
+        self.widgets.append(panel)
+        panel.load("ja")
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.catalog.return_value = (["Default", "Japanese"], ["Cloze", "Basic"])
+            client.return_value.names.return_value = ["Front", "Back"]
+            panel.show()
+            self.wait_until(lambda: panel.status.text() == "Connected.")
+        self.assertEqual(panel.deck.count(), 2)
+        self.assertEqual(panel.model.count(), 2)
+        self.assertEqual(panel.deck.currentText(), "Japanese")
+        self.assertEqual(panel.model.currentText(), "Basic")
+
+    def test_connection_error_can_be_reloaded(self):
+        panel = AnkiSettingsPanel(self.settings)
+        self.widgets.append(panel)
+        panel.load("ja")
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.catalog.side_effect = ValueError("Open Anki and check AnkiConnect.")
+            panel.enabled.setChecked(True)
+            self.wait_until(lambda: panel._task is None)
+            self.assertIn("Open Anki", panel.status.text())
+            self.assertTrue(panel.reload.isEnabled())
+            client.return_value.catalog.side_effect = None
+            client.return_value.catalog.return_value = (["Japanese"], ["Basic"])
+            client.return_value.names.return_value = ["Front", "Back"]
+            panel.reload.click()
+            self.wait_until(lambda: panel.status.text() == "Connected.")
+
+    def test_enabled_profile_switch_refreshes_after_pending_request(self):
+        for profile in ("ja", "tr"):
+            self.settings.setValue(f"profiles/{profile}/anki/enabled", True)
+        panel = AnkiSettingsPanel(self.settings)
+        self.widgets.append(panel)
+        gate = threading.Event()
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.catalog.side_effect = [
+                (["Old"], ["Basic"]), (["Turkish"], ["Basic"])]
+            client.return_value.names.side_effect = lambda *_args, **_kwargs: (gate.wait(2), ["Front", "Back"])[1]
+            panel.load("ja")
+            panel.show()
+            self.wait_until(lambda: panel._task is not None and panel._task.context[1] == "fields")
+            panel.load("tr")
+            gate.set()
+            self.wait_until(lambda: panel.status.text() == "Connected.")
+        self.assertEqual(panel.deck.currentText(), "Turkish")
+        self.assertEqual(load_settings(self.settings, "tr").deck, "Turkish")
 
     def test_profile_switch_discards_pending_catalog(self):
         panel = AnkiSettingsPanel(self.settings)
@@ -117,6 +169,17 @@ class AnkiGuiTests(unittest.TestCase):
         self.settings.setValue("profiles/ja/anki/enabled", True)
         window.update_anki()
         self.assertTrue(window.anki_button.isEnabled())
+        self.assertFalse(window.anki_button.isHidden())
+        self.assertEqual(window.anki_button.text(), "Add to Anki")
+        layout = window.anki_button.parentWidget().layout()
+        self.assertIs(layout.itemAt(layout.count() - 1).widget(), window.anki_button)
+        with patch.object(window, "open_settings") as open_settings:
+            from unittest.mock import Mock
+            window._setup = Mock()
+            window.anki_button.click()
+            open_settings.assert_called_once()
+            window._setup.show_anki.assert_called_once()
+            window._setup = None
         window.search.setText("another word")
         window.debounce.stop()
         self.assertFalse(window.anki_button.isEnabled())

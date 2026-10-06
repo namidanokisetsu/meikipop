@@ -141,8 +141,9 @@ clients remain explicit compatibility entrypoints.
    the chosen dictionary entry and original sentence, with editable definition/context
    and optional frequency/pitch fields. The first Anki field must map to the word;
    duplicates are refused within the chosen deck and note type. Writes are never
-   retried automatically; timeouts report an uncertain outcome. Settings do not
-   connect until Reload or a note-type change, and stale profile replies are ignored.
+   retried automatically; timeouts report an uncertain outcome. Enabling Anki or
+   opening its enabled settings loads decks and fields; stale profile replies are
+   ignored. A bottom-edge Add to Anki button appears when enabled.
    This adapts [Chibipop's Anki integration](https://github.com/stellarie/chibipop/blob/main/src/anki.rs)
    to Qt and the existing entry/context model. Screenshots and existing-note updates
    remain outside this initial adapter to avoid coupling export to capture or review state.

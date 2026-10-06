@@ -38,6 +38,7 @@ class AnkiSettingsPanel(QWidget):
         super().__init__(parent)
         self.settings, self.profile = settings, "ja"
         self._loading, self._task, self._generation = True, None, 0
+        self._refresh_pending = False
         self._field_controls, self._maps = {}, {}
         layout = QVBoxLayout(self)
         self.enabled = QCheckBox("Enable Anki")
@@ -70,11 +71,12 @@ class AnkiSettingsPanel(QWidget):
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        self.enabled.toggled.connect(self._save)
+        self.enabled.toggled.connect(self._enabled_changed)
         self.deck.currentIndexChanged.connect(self._save)
         self.model.currentIndexChanged.connect(self._model_changed)
-        for control in (self.endpoint, self.api_key, self.tags):
-            control.editingFinished.connect(self._save)
+        for control in (self.endpoint, self.api_key):
+            control.editingFinished.connect(self._connection_changed)
+        self.tags.editingFinished.connect(self._save)
         self.shortcut.enabled.toggled.connect(self._save)
         self.shortcut.recorder.editingFinished.connect(self._save)
         self.reload.clicked.connect(self.refresh)
@@ -104,6 +106,24 @@ class AnkiSettingsPanel(QWidget):
         self.shortcut.set_value(shortcut, self.settings.value(self._prefix + "shortcut_preset", "Ctrl+Shift+A"))
         self.status.clear()
         self._loading = False
+        self._refresh_pending = False
+        if options.enabled and self.isVisible():
+            self.refresh()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.enabled.isChecked() and self._task is None:
+            self.refresh()
+
+    def _enabled_changed(self):
+        self._save()
+        if not self._loading and self.enabled.isChecked():
+            self.refresh()
+
+    def _connection_changed(self):
+        self._save()
+        if self.enabled.isChecked():
+            self.refresh()
 
     @property
     def _prefix(self):
@@ -165,6 +185,9 @@ class AnkiSettingsPanel(QWidget):
 
     def refresh(self):
         self._save()
+        if self._task is not None:
+            self._refresh_pending = True
+            return
         options = load_settings(self.settings, self.profile)
         self._start("catalog", lambda: AnkiClient(options).catalog())
 
@@ -179,7 +202,12 @@ class AnkiSettingsPanel(QWidget):
         self.reload.setEnabled(True)
         self.model.setEnabled(True)
         (generation, kind, model), value, error = response
+        if self._refresh_pending:
+            self._refresh_pending = False
+            self.refresh()
+            return
         if generation != self._generation:
+            self.status.clear()
             return
         if error:
             self.status.setText(error)
@@ -198,7 +226,8 @@ class AnkiSettingsPanel(QWidget):
             self._set_fields(value, mapping)
         self._loading = False
         self._save()
-        self.status.setText("Connected." if kind == "fields" else "")
+        self.status.setText("Connected." if kind == "fields" else
+                            "No note types found." if not self.model.count() else "")
         if kind == "catalog":
             self._request_fields()
 
