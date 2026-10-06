@@ -1278,6 +1278,9 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIsNone(triggers.listener)
         try:
             with patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch.object(QApplication, "activeModalWidget", return_value=None), \
+                    patch.object(QApplication, "activePopupWidget", return_value=None), \
+                    patch.object(QApplication, "doubleClickInterval", return_value=400), \
                     patch("meikipop.gui.text_triggers.QCursor.pos", return_value=QPoint(-100, -100)), \
                     patch("meikipop.utils.macos.require_input_monitoring_permission"), \
                     patch.object(self.window.selection, "start") as capture, patch("pynput.mouse.Listener") as listener:
@@ -1290,7 +1293,7 @@ class QuickLookupTests(unittest.TestCase):
                 triggers.click(-100, -100, False)
                 triggers.click(-100, -100, True)
                 triggers.click(-100, -100, False)
-                QTest.qWait(80)
+                self.wait_until(lambda: capture.called)
                 capture.assert_called_once()
                 self.assertTrue(self.window._selection_passive)
                 self.settings.setValue(f"profiles/{self.window.preferred_foreign}/selected_text", False)
