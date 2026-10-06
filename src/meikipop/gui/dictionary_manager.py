@@ -211,6 +211,13 @@ class SetupDialog(QDialog):
         translation_form.addRow("Server model", self.translation_model)
         self.translation_autostart = QCheckBox("Start installed model when translating")
         translation_form.addRow(self.translation_autostart)
+        self.translation_routing = {}
+        for key, label in (("auto_translate_sentence", "Translate sentences automatically"),
+                           ("auto_translate_miss", "Translate after incomplete dictionary matches")):
+            control = QCheckBox(label)
+            self.translation_routing[key] = control
+            translation_form.addRow(control)
+            control.toggled.connect(lambda _: self.autosave(self.save_translation_routing))
         translation_layout.addLayout(translation_form)
         note = QLabel("Downloads only when requested. Text stays on this computer.\n"
                       "The selected model is used without automatic fallback.")
@@ -546,6 +553,9 @@ class SetupDialog(QDialog):
         code = self.profile.currentData()
         with QSignalBlocker(self.selection_lookup):
             self.selection_lookup.setChecked(self.settings.value(f"profiles/{code}/selection_lookup", False, bool))
+        for key, control in self.translation_routing.items():
+            with QSignalBlocker(control):
+                control.setChecked(self.settings.value(f"profiles/{code}/{key}", False, bool))
         self.status.clear()
         from meikipop.dictionary.catalog import recommendations
         self.recommended.clear()
@@ -616,6 +626,12 @@ class SetupDialog(QDialog):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/selection_lookup", self.selection_lookup.isChecked())
         if self.parent() is not None:
             self.parent().browser.selection_lookup = self.selection_lookup.isChecked()
+
+    def save_translation_routing(self):
+        for key, control in self.translation_routing.items():
+            self.settings.setValue(f"profiles/{self.profile.currentData()}/{key}", control.isChecked())
+        if self.parent() is not None:
+            self.parent()._edited()
 
     def save_frequency_display(self, enabled):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/combine_frequencies", enabled)

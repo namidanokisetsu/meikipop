@@ -1,5 +1,6 @@
 """Compact, shared dictionary surface with a latest-request background worker."""
 from collections import OrderedDict
+from dataclasses import replace
 from html import escape
 from urllib.parse import quote
 import re
@@ -461,6 +462,7 @@ class QuickLookupWindow(QDialog):
         self._pending_context_translation = None
         self._translation_busy = False
         self._last_request_translate = False
+        self._translation_base = None
         self._remember_request = False
         self.audio = None
         self._autoplayed = None
@@ -838,10 +840,14 @@ class QuickLookupWindow(QDialog):
         if not text:
             return
         if translate is None:
-            translate = is_sentence(text)
+            translate = is_sentence(text) and self.settings.value(
+                f"profiles/{self.preferred_foreign}/auto_translate_sentence", False, bool)
+        self._invalidate()
         self._last_request_translate = bool(translate)
+        self._translation_base = self._result if translate and self._result is not None and (
+            self._result.text == text or context) else None
         self._remember_request = remember or context
-        self.revision += 1
+        self._restore_actions()
         self._pending_revision = self.revision
         self.busy_delay.start()
         self._pending_context_translation = (self.revision, text) if context else None
@@ -872,8 +878,7 @@ class QuickLookupWindow(QDialog):
         try:
             translation_settings = load_profile_settings(self.settings, self.preferred_foreign) if translate else None
         except (ValueError, TypeError) as error:
-            self._set_translation_busy(False)
-            self.show_message(str(error))
+            self._failed(self.revision, str(error))
             return
         worker.request(self.revision, text, source,
                        self.preferred_foreign, translate=bool(translate),
@@ -893,9 +898,20 @@ class QuickLookupWindow(QDialog):
         self._set_translation_busy(False)
         partial_japanese = result.source == "ja" and 0 < result.matched_length < len(result.text)
         if (not self._peek and not self._last_request_translate and not result.translation
-                and (not result.entries or partial_japanese)):
-            self.submit(translate=True, remember=self._remember_request)
+                and (not result.entries or partial_japanese) and self.settings.value(
+                    f"profiles/{self.preferred_foreign}/auto_translate_miss", False, bool)):
+            remember = self._remember_request
+            self._display(result, remember=remember)
+            self.set_context(result.text)
+            self.submit(translate=True, remember=False)
             return
+        if self._last_request_translate and self._translation_base is not None:
+            base = self._translation_base
+            if result.translation:
+                result = replace(result, entries=base.entries, suggestions=base.suggestions,
+                                 kanji=base.kanji, matched_length=base.matched_length)
+            else:
+                result = replace(base, message=result.message)
         self._display(result, remember=self._remember_request)
         if self._pending_context_translation and self._pending_context_translation[0] == revision:
             self.set_context(self._pending_context_translation[1])
@@ -1060,7 +1076,6 @@ class QuickLookupWindow(QDialog):
             self.lookup_word(str(self._result.suggestions[index]))
 
     def lookup_word(self, text):
-        self._invalidate()
         self._display_revision = None
         self._clear_actions()
         self._set_peek(False)

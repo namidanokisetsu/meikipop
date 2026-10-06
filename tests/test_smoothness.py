@@ -58,6 +58,23 @@ class PendingTests(QuickLookupTests):
         self.assertFalse(enabled(self.settings, "ja", "auto_translate_sentence"))
         self.assertFalse(self.window.browser.selection_lookup)
 
+    def test_disabled_routing_never_starts_translation_and_fallback_keeps_entries(self):
+        from dataclasses import replace
+        self.window.search.setText("猫です")
+        partial = SearchResult("猫です", "ja", "en", (entry(),), matched_length=1)
+        self.window.deliver(self.window.revision, partial)
+        self.assertIsNone(self.window.translation_worker)
+        self.settings.setValue("profiles/ja/auto_translate_miss", True)
+        with patch.object(self.window, "submit") as submit:
+            self.window.deliver(self.window.revision, partial)
+            submit.assert_called_once_with(translate=True, remember=False)
+        self.assertIn("cat", self.window.browser.toPlainText())
+        self.window._last_request_translate = True
+        self.window._translation_base = partial
+        self.window.deliver(self.window.revision, replace(partial, entries=(), message="fixture failure"))
+        self.assertIn("cat", self.window.browser.toPlainText())
+        self.assertTrue(self.window.translate.isEnabled())
+
     def test_right_press_preserves_preview_and_search_is_resizable(self):
         self.window.show_entries((entry(),), "猫", peek=True)
         self.app.processEvents()
