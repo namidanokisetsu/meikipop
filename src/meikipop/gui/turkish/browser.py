@@ -7,6 +7,23 @@ from PyQt6.QtWidgets import QTextBrowser
 class DictionaryBrowser(QTextBrowser):
     word_selected = pyqtSignal(str)
 
+    def __init__(self, *args, selection_lookup=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.selection_lookup = selection_lookup
+        self.selecting = False
+
+    def contextMenuEvent(self, event):
+        menu = self.createStandardContextMenu()
+        if self.selected_text():
+            menu.addSeparator()
+            menu.addAction("Look up", self.lookup_selection)
+        menu.exec(event.globalPos())
+        menu.deleteLater()
+
+    def mousePressEvent(self, event):
+        self.selecting = event.button() == Qt.MouseButton.LeftButton
+        super().mousePressEvent(event)
+
     def selected_text(self):
         return self.textCursor().selectedText().replace("\u2029", "\n").strip()
 
@@ -30,11 +47,11 @@ class DictionaryBrowser(QTextBrowser):
             self.word_selected.emit(text)
 
     def mouseDoubleClickEvent(self, event):
+        self.selecting = event.button() == Qt.MouseButton.LeftButton
         super().mouseDoubleClickEvent(event)
-        if event.button() == Qt.MouseButton.LeftButton and not self.anchorAt(event.position().toPoint()):
-            self.lookup_selection()
 
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
-        if event.button() == Qt.MouseButton.LeftButton and not self.anchorAt(event.position().toPoint()):
+        self.selecting = False
+        if self.selection_lookup and event.button() == Qt.MouseButton.LeftButton and not self.anchorAt(event.position().toPoint()):
             self.lookup_selection()

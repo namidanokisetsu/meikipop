@@ -428,6 +428,8 @@ class QuickLookupWindow(QDialog):
             self.setWindowFlag(Qt.WindowType.X11BypassWindowManagerHint)
         self.directory = directory
         self.settings = settings or QSettings("Meikipop", "QuickLookup")
+        from meikipop.gui.interaction_preferences import migrate
+        migrate(self.settings)
         from meikipop.gui.profile_appearance import load_appearance
         load_appearance(self.settings, self.settings.value("profile", self.settings.value("source", "ja")))
         self.revision = 0
@@ -574,7 +576,8 @@ class QuickLookupWindow(QDialog):
         self.context_label.setVisible(False)
         self.context_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.context_label.setParent(self)
-        self.browser = LocalDictionaryBrowser()
+        self.browser = LocalDictionaryBrowser(selection_lookup=self.settings.value(
+            f"profiles/{initial_profile}/selection_lookup", False, bool))
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)
         self.browser.setAccessibleName("Dictionary results")
@@ -731,6 +734,7 @@ class QuickLookupWindow(QDialog):
                 self.foreign.setCurrentIndex(self.foreign.findData(default_partner(mode)))
         self.settings.setValue("source", self.source.currentData())
         self.settings.setValue(f"profiles/{self.preferred_foreign}/target", self.foreign.currentData())
+        self.browser.selection_lookup = self.settings.value(f"profiles/{self.preferred_foreign}/selection_lookup", False, bool)
         self.mode_changed.emit(self.source.currentData())
         self.reload_appearance()
         if self._setup is not None:

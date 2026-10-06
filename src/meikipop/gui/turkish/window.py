@@ -130,7 +130,7 @@ class ClipboardWindow(QWidget):
         self.search.returnPressed.connect(lambda: self.submit(self.search.text()) if self.search.text().strip() else None)
         self.search.hide()
         content.addWidget(self.search)
-        self.browser = DictionaryBrowser()
+        self.browser = DictionaryBrowser(selection_lookup=True)
         self.browser.word_selected.connect(self.lookup_popup_text)
         self.browser.setFrameShape(QFrame.Shape.NoFrame)
         self.browser.setOpenLinks(False)

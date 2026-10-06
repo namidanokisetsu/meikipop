@@ -107,6 +107,8 @@ class SetupDialog(QDialog):
         super().__init__(parent)
         self.directory = Path(directory or default_library_path())
         self.settings = settings
+        from meikipop.gui.interaction_preferences import migrate
+        migrate(settings)
         self._apply_shortcut = apply_shortcut
         self.operation = None
         self._close_pending = False
@@ -255,6 +257,9 @@ class SetupDialog(QDialog):
         self.selected_text = QCheckBox("Look up selected text automatically")
         shortcut_layout.addRow(self.selected_text)
         self.selected_text.toggled.connect(self.save_text_triggers)
+        self.selection_lookup = QCheckBox("Look up selection inside results")
+        shortcut_layout.addRow(self.selection_lookup)
+        self.selection_lookup.toggled.connect(lambda _: self.autosave(self.save_selection_policy))
         tabs.addTab(shortcuts, "Shortcuts")
 
         scanning = QWidget()
@@ -388,7 +393,7 @@ class SetupDialog(QDialog):
             self.status.setText(translation_error)
 
     def autosave(self, callback):
-        if not self._loading and self.operation is None:
+        if not self._loading:
             callback()
 
     def show_audio(self):
@@ -536,6 +541,8 @@ class SetupDialog(QDialog):
         from meikipop.config.config import config
         previous_loading, self._loading = self._loading, True
         code = self.profile.currentData()
+        with QSignalBlocker(self.selection_lookup):
+            self.selection_lookup.setChecked(self.settings.value(f"profiles/{code}/selection_lookup", False, bool))
         self.status.clear()
         from meikipop.dictionary.catalog import recommendations
         self.recommended.clear()
@@ -601,6 +608,11 @@ class SetupDialog(QDialog):
 
     def current_ocr_control(self):
         return {"ja": self.ja_ocr_provider, "tr": self.tr_ocr_provider}.get(self.profile.currentData(), self.other_ocr_provider)
+
+    def save_selection_policy(self):
+        self.settings.setValue(f"profiles/{self.profile.currentData()}/selection_lookup", self.selection_lookup.isChecked())
+        if self.parent() is not None:
+            self.parent().browser.selection_lookup = self.selection_lookup.isChecked()
 
     def save_frequency_display(self, enabled):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/combine_frequencies", enabled)
@@ -691,12 +703,14 @@ class SetupDialog(QDialog):
             self.settings.setValue(f"profiles/{code}/target", self.translation_partner.currentData())
             for key, control in (("source", self.translation_source), ("target", self.translation_target)):
                 self.settings.setValue(f"profiles/{code}/translation_{key}", control.currentData())
-                control.set_pair(code, self.translation_partner.currentData())
+                with QSignalBlocker(control):
+                    control.set_pair(code, self.translation_partner.currentData())
             if self.parent() is not None:
-                self.parent().set_mode(code)
-                self.parent().foreign.setCurrentIndex(self.parent().foreign.findData(self.translation_partner.currentData()))
-                self.parent()._invalidate()
-            self.dictionaries_changed.emit()
+                window = self.parent()
+                with QSignalBlocker(window.source), QSignalBlocker(window.foreign):
+                    window.set_mode(code)
+                    window.foreign.setCurrentIndex(window.foreign.findData(self.translation_partner.currentData()))
+                window._edited()
             self.status.setText("Saved.")
             return True
         except (ValueError, OSError) as error:
@@ -718,7 +732,7 @@ class SetupDialog(QDialog):
         self.cancel_button.setEnabled(True)
         for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
                         self.model_button, self.packs, self.up, self.down, self.apply, self.language,
-                        self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
+                        self.translation_partner, self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
                         self.translation_model, self.translation_autostart):
             control.setEnabled(False)
         self.operation.start()
@@ -734,7 +748,7 @@ class SetupDialog(QDialog):
         self.cancel_button.setVisible(False)
         for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
                         self.model_button, self.packs, self.up, self.down, self.apply, self.language,
-                        self.translation_mode, self.translation_source, self.translation_target):
+                        self.translation_partner, self.translation_mode, self.translation_source, self.translation_target):
             control.setEnabled(True)
         self.update_translation_controls()
         self.reload(preserve=True)
