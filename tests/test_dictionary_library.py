@@ -71,6 +71,21 @@ class LibraryTests(unittest.TestCase):
         self.library = Library(self.directory)
         self.assertEqual([e.term for e in self.library.lookup("yaz", "tr")], ["yaz", "yazmak"])
 
+    def test_russian_yo_recovery_reuses_forms_without_merging_exact_spellings(self):
+        self.pack("Russian", [self.row("пойти", ["go"]), self.row("все", ["everyone"]),
+                              self.row("всё", ["everything"]), self.row("берёза", ["birch"])], language="ru")
+        self.pack("Forms", [self.row("пошёл", [["пойти", ["past", "masculine"]]])], language="ru")
+        self.library = Library(self.directory)
+        entry = self.library.lookup("ПОШЕЛ", "ru")[0]
+        self.assertEqual((entry.term, entry.route, entry.inflection),
+                         ("пойти", "form spelling", ("past", "masculine")))
+        self.assertEqual(self.library.lookup("береза", "ru")[0].term, "берёза")
+        self.assertEqual([e.term for e in self.library.lookup("все", "ru")], ["все"])
+        self.assertEqual([e.term for e in self.library.lookup("всё", "ru")], ["всё"])
+        self.assertFalse(self.library.lookup("пошел", "ru", tolerant=False))
+        self.assertFalse(self.library.lookup("пошел", "uk"))
+        self.assertFalse(self.library.lookup("е" * 2000, "ru"))
+
     def test_turkish_form_labels_survive_import_and_accent_recovery(self):
         self.pack("Words", [self.row("oğul", ["son"]), self.row("gelmek", ["come"])])
         self.pack("Forms", [self.row("oğlum", [["oğul", ["my (possessive)"]]]),

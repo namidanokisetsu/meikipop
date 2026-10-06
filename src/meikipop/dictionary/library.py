@@ -369,6 +369,22 @@ class Library:
         unique = {}
         for entry in result:
             unique.setdefault(entry.id, entry)
+        if not unique and language == "ru" and tolerant:
+            # Russian commonly omits the dots on ё. Keep existing indexed packs
+            # and form redirects; bound combinations for pasted passages.
+            positions = [i for i, char in enumerate(term) if char in "её"]
+            if len(positions) <= 6:
+                for mask in range(1, 1 << len(positions)):
+                    variant = list(term)
+                    for bit, position in enumerate(positions):
+                        if mask & (1 << bit):
+                            variant[position] = "ё" if term[position] == "е" else "е"
+                    for entry in self.lookup("".join(variant), language, limit, tolerant=False):
+                        route = "form spelling" if entry.route == "form" else "spelling"
+                        unique.setdefault(entry.id, replace(entry, route=route))
+                    if len(unique) >= limit:
+                        break
+            return tuple(list(unique.values())[:limit])
         return self._with_frequencies(tuple(list(unique.values())[:limit]), language)
 
     def _with_frequencies(self, entries, language):
