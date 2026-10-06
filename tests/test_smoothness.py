@@ -58,6 +58,25 @@ class PendingTests(QuickLookupTests):
         self.assertFalse(enabled(self.settings, "ja", "auto_translate_sentence"))
         self.assertFalse(self.window.browser.selection_lookup)
 
+    def test_render_identity_preserves_selection_and_invalidates_metadata(self):
+        from dataclasses import replace
+        from PyQt6.QtGui import QTextCursor
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.app.processEvents()
+        cursor = self.window.browser.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        self.window.browser.setTextCursor(cursor)
+        selected = self.window.browser.selected_text()
+        with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
+            for _ in range(5):
+                self.window._render()
+            render.assert_not_called()
+            self.assertEqual(self.window.browser.selected_text(), selected)
+            self.window._result = replace(self.window._result, entries=(entry(definitions=("new sense",)),))
+            self.window._render()
+            render.assert_called_once()
+        self.assertIn("new sense", self.window.browser.toPlainText())
+
     def test_nested_lookup_is_one_transaction_and_keeps_old_content(self):
         self.window.show_entries((entry(),), "猫")
         with patch.object(self.window.worker, "request") as request, patch.object(self.window, "_edited") as edited:

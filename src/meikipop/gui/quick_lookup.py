@@ -324,6 +324,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
                   headword_furigana=False, combine_frequencies=True):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
+    clearance = 96 if overlay_actions is True else int(overlay_actions)
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
     for entry in result.entries:
         if preview and (entry.source != sources[0] or groups and (entry.term, entry.reading) not in groups):
@@ -331,13 +332,13 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
         groups.setdefault((entry.term, entry.reading), OrderedDict()).setdefault(entry.source, []).append(entry)
     parts = [f'<style>body {{color:{config.color_foreground};}} '
              f'a,h2 {{color:{config.color_highlight_word};text-decoration:none;}} '
-             f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px {96 if overlay_actions else 0}px 3px 0;}} '
+             f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px {clearance}px 3px 0;}} '
              'p {margin:2px 0;} ol,ul {margin:2px 0 4px 8px;padding:0;} '
              'li {margin:1px 0;} hr {margin:6px 0;} '
              f'.metadata {{margin:1px 0 3px;color:{muted};}} .source {{margin:5px 0 2px;color:{muted};}}</style>']
     if result.translation:
         if show_source:
-            parts.append(f'<p style="margin-right:{96 if overlay_actions else 0}px">{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
+            parts.append(f'<p style="margin-right:{clearance}px">{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
         parts.append(f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p>')
         if result.entries:
             parts.append("<hr>")
@@ -437,6 +438,9 @@ class QuickLookupWindow(QDialog):
         self._display_revision = None
         self._pending_revision = None
         self._paint_revision = None
+        self._render_identity = None
+        self._fit_identity = None
+        self._needs_place = False
         self._context = ""
         self._peek = False
         self._history = []
@@ -601,6 +605,12 @@ class QuickLookupWindow(QDialog):
         self.busy_delay.setSingleShot(True)
         self.busy_delay.setInterval(175)
         self.busy_delay.timeout.connect(self._show_busy)
+        self.fit_timer = QTimer(self)
+        self.fit_timer.setSingleShot(True)
+        self.fit_timer.timeout.connect(lambda: self._fit_preview())
+        self.render_timer = QTimer(self)
+        self.render_timer.setSingleShot(True)
+        self.render_timer.timeout.connect(self._render)
         self.source.currentIndexChanged.connect(self._mode_changed)
         self.foreign.currentIndexChanged.connect(self._mode_changed)
         self.worker = LookupWorker(directory, engine_factory)
@@ -684,11 +694,12 @@ class QuickLookupWindow(QDialog):
             if name:
                 button.setIcon(action_icon(name, config.color_foreground))
 
-    def reload_appearance(self):
+    def reload_appearance(self, render=True):
         from meikipop.gui.profile_appearance import load_appearance
         load_appearance(self.settings, self.preferred_foreign)
         self.apply_style()
-        self._render()
+        if render:
+            self._render()
 
     def compact_preview(self):
         return self.settings.value(f"profiles/{self.preferred_foreign}/compact_preview",
@@ -802,6 +813,7 @@ class QuickLookupWindow(QDialog):
         else:
             self._result = None
             self._result_context = ""
+            self._render_identity = None
             self.browser.clear()
 
     def submit(self, translate=None, *, context=False, remember=False):
@@ -877,7 +889,7 @@ class QuickLookupWindow(QDialog):
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
         self.status.hide()
 
-    def _display(self, result, remember=True):
+    def _display(self, result, remember=True, expanded=()):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
             result.text, result.source, result.target)
         previous_context = getattr(self, "_result_context", "")
@@ -892,7 +904,7 @@ class QuickLookupWindow(QDialog):
         self._result_profile = self.preferred_foreign
         self._result_target = self.foreign.currentData()
         self._result_context = previous_context if same else ""
-        self._expanded.clear()
+        self._expanded = set(expanded)
         self._kanji_expanded = False
         self._render()
         self.back.setEnabled(bool(self._history))
@@ -906,24 +918,56 @@ class QuickLookupWindow(QDialog):
 
     def _render(self):
         if self._result is not None:
+            if self.browser.selecting:
+                self.render_timer.start(50)
+                return
             compact = self.compact_preview()
             expanded = self._expanded
             if self._peek and not compact:
                 expanded = {entry.source for entry in self._result.entries}
+            self._place_actions()
+            from meikipop.gui.profile_appearance import DEFAULTS
+            identity = (repr(self._result), self.preferred_foreign, tuple(sorted(expanded)),
+                        self._kanji_expanded, self._peek, self.is_pinned, compact,
+                        tuple(getattr(config, key) for key in DEFAULTS), self.devicePixelRatioF(),
+                        self.audio_actions.sizeHint().width(),
+                        self.settings.value("profiles/ja/headword_furigana", False, bool),
+                        self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool))
+            if identity == self._render_identity:
+                mark("render_reused", self.revision)
+                return
+            scroll = self.browser.verticalScrollBar().value()
+            anchor = self.browser.cursorForPosition(self.browser.viewport().rect().topLeft())
+            block_text, offset = anchor.block().text(), self.browser.cursorRect(anchor).top()
+            mark("html_begin", self.revision)
             self.browser.setHtml(render_result(self._result, expanded,
                                                self._kanji_expanded or self._peek and not compact,
                                                preview=self._peek and not self.is_pinned and compact,
-                                               overlay_actions=self._peek and self.is_pinned,
+                                               overlay_actions=(self.audio_actions.sizeHint().width() + 8) if self._peek and self.is_pinned else 0,
                                                show_source=self._peek,
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
+            self._render_identity = identity
+            mark("document_ready", self.revision)
+            if scroll:
+                block = self.browser.document().begin()
+                while block.isValid() and block.text() != block_text:
+                    block = block.next()
+                if block.isValid() and block_text:
+                    from PyQt6.QtGui import QTextCursor
+                    scroll += self.browser.cursorRect(QTextCursor(block)).top() - offset
+                self.browser.verticalScrollBar().setValue(scroll)
             self.browser.setToolTip("")
-            self._place_actions()
-            QTimer.singleShot(0, self._fit_preview)
+            self.fit_timer.start(0)
 
     def _fit_preview(self):
         if self._shutting_down or not self._peek or self.is_pinned or not self.compact_preview():
             return
+        identity = (self._render_identity, self.browser.viewport().width())
+        if identity == self._fit_identity and not self._needs_place:
+            return
+        self._fit_identity = identity
+        mark("fit", self.revision)
         self.setMinimumHeight(72)
         self.layout().activate()
         document = self.browser.document()
@@ -946,9 +990,13 @@ class QuickLookupWindow(QDialog):
                 block = block.next()
             if bottoms:
                 desired = max(bottoms) + chrome
-        self.resize(self.width(), min(maximum, max(self.minimumSizeHint().height(), desired)))
-        if self.isVisible():
+        height = min(maximum, max(self.minimumSizeHint().height(), desired))
+        if self.height() != height:
+            mark("geometry", self.revision)
+            self.resize(self.width(), height)
+        if self.isVisible() and self._needs_place:
             self._place()
+            self._needs_place = False
 
     def set_compact_preview(self, enabled):
         self.settings.setValue(f"profiles/{self.preferred_foreign}/compact_preview", bool(enabled))
@@ -1020,14 +1068,12 @@ class QuickLookupWindow(QDialog):
         self.settings.setValue("profile", profile)
         self.settings.setValue("source", self.source.currentData())
         self.settings.setValue(f"profiles/{profile}/target", target)
-        self.reload_appearance()
+        self.reload_appearance(render=False)
         if self._setup is not None:
             self._setup.sync_profile(profile)
         self.scan_settings_changed.emit()
-        self._display(result, remember=False)
+        self._display(result, remember=False, expanded=expanded)
         self.set_context(context)
-        self._expanded = set(expanded)
-        self._render()
         self.browser.verticalScrollBar().setValue(scroll)
         self.translate.setEnabled(bool(result.text))
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
@@ -1055,6 +1101,7 @@ class QuickLookupWindow(QDialog):
             self.go_back()
 
     def _place(self):
+        mark("place", self.revision)
         point = QCursor.pos()
         screen = QApplication.screenAt(point) or QApplication.primaryScreen()
         if screen is not None:
@@ -1109,7 +1156,6 @@ class QuickLookupWindow(QDialog):
         self._manual_at_cursor = at_cursor
         self.pin.setChecked(False)
         self._set_peek(False)
-        self._render()
         self._clear_context()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, self._passive_text)
         if not self.is_pinned or not self.isVisible():
@@ -1118,7 +1164,9 @@ class QuickLookupWindow(QDialog):
         self.raise_()
         if not self._passive_text:
             self.activateWindow()
-        self.search.setText(text)
+        with QSignalBlocker(self.search):
+            self.search.setText(text)
+        self._edited()
         self.search.setFocus()
         self.search.selectAll()
         def focus():
@@ -1259,10 +1307,11 @@ class QuickLookupWindow(QDialog):
         self.set_context("")
         self.status.setText("")
         self.status.hide()
-        if peek:
-            self._fit_preview()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, bool(peek))
-        if not self.is_pinned:
+        if peek and self.compact_preview():
+            self._needs_place = True
+            self.fit_timer.start(0)
+        elif not self.is_pinned:
             self._place()
         self.show()
         if not peek:
@@ -1324,7 +1373,7 @@ class QuickLookupWindow(QDialog):
             self._paint_revision = self._display_revision
             mark("paint", self._display_revision)
         if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
-            QTimer.singleShot(0, self._place_actions)
+            self._place_actions()
         if event.type() == QEvent.Type.ToolTip and watched is not self.copy_button:
             QToolTip.hideText()
             return True

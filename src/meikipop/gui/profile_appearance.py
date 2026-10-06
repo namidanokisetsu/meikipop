@@ -1,5 +1,6 @@
 """Live appearance controls and a saved custom palette per language profile."""
 import sys
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFontComboBox, QFormLayout,
                             QPushButton, QSpinBox, QWidget)
@@ -33,6 +34,10 @@ class ProfileAppearance(QWidget):
     def __init__(self, settings, profile, saved):
         super().__init__()
         self.settings, self.profile, self.saved = settings, profile, saved
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(40)
+        self._preview_timer.timeout.connect(self.saved)
         self._loading = True
         form = self.form = QFormLayout(self)
         self.theme = QComboBox()
@@ -136,4 +141,9 @@ class ProfileAppearance(QWidget):
             self.settings.setValue(prefix + key, value)
             if self.theme.currentText() == "Custom" and (key.startswith("color") or key == "background_opacity"):
                 self.settings.setValue(prefix + "custom/" + key, value)
-        self.saved()
+        if isinstance(self.sender(), QSpinBox):
+            if not self._preview_timer.isActive():
+                self._preview_timer.start()
+        else:
+            self._preview_timer.stop()
+            self.saved()
