@@ -2,6 +2,11 @@
 
 look up words on your screen with a held key, or open text search with Ctrl+Shift+D. press the shortcut again to close it. ocr reads text from websites, games, scanned manga, and video subtitles; language coverage depends on the selected provider.
 
+Download the [latest installer](https://github.com/namidanokisetsu/meikipop/releases/latest):
+Windows uses the `-setup.exe`; macOS uses the `.dmg` for Apple silicon or Intel.
+Install, launch Meikipop, and follow the setup wizard. Dictionaries and optional
+models install from inside the app; Python is not required.
+
 This fork now opens one compact popup for Japanese, Turkish and other installed
 Yomitan languages. Use [Start-Meikipop.cmd](Start-Meikipop.cmd) on Windows,
 [Start-Meikipop.command](Start-Meikipop.command) on macOS, or `meikipop` /
@@ -46,6 +51,18 @@ to maintain this focus, there are a few things meikipop is **not**:
 *   **dictionary coverage depends on installed packs.** the shared popup supports multiple Yomitan dictionaries, frequency and kanji packs; imported forms do not provide automatic morphology for every language.
 
 ## installation
+
+### Windows and macOS
+
+Get the [latest release](https://github.com/namidanokisetsu/meikipop/releases/latest).
+On Windows, run the setup EXE. On macOS, open the DMG and drag Meikipop into
+Applications. First launch opens the setup wizard; you can reopen it from the
+tray menu. Settings provides dictionary imports/downloads, OCR model installation,
+translation models and optional base-form models. Downloads are optional and
+are stored separately from the application, so upgrades preserve them.
+
+Current builds are unsigned and not Apple-notarized; see the release notes for
+the operating system's first-launch prompts.
 
 The following installation/provider instructions describe the original Japanese
 app and upstream releases. For this fork's default shared popup, follow the

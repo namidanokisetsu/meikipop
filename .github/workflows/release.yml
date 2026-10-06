@@ -38,3 +38,5 @@ jobs:
             artifacts/*/*.tar.gz
             artifacts/*/*.dmg
             artifacts/*/*.flatpak
+            artifacts/*/*-setup.exe
+            artifacts/*/*.sha256

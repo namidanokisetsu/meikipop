@@ -149,6 +149,14 @@ clients remain explicit compatibility entrypoints.
 
 ## Compatibility and remaining acceptance
 
+- The shared desktop has a first-run wizard and a per-user Windows installer,
+  plus Apple silicon/Intel DMGs. Bundles include Python and inference libraries,
+  not user dictionaries or model weights. Settings downloads OCR, translation
+  and base-form models explicitly; frozen builds use bundled setup workers.
+  Existing settings skip onboarding unless requested; cancelled onboarding resumes.
+  Installer upgrades/uninstall preserve user data. Publisher signing and Apple
+  notarization still require release credentials.
+
 - Preserve the existing configuration, original Japanese `dictionary.pkl`,
   and separate Turkish data/settings. `meikipop legacy-japanese` and
   `meikipop-turkish` retain the earlier workflows and providers.

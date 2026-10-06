@@ -4,6 +4,15 @@ Updated: 2026-10-06
 
 ## Launch
 
+For normal installation, download the Windows setup EXE or macOS DMG from the
+[latest release](https://github.com/namidanokisetsu/meikipop/releases/latest).
+Launch Meikipop and follow the first-run wizard. **Setup wizard** in the tray
+menu reopens it. **Settings → OCR → Install OCR model** installs the selected
+Windows OCR component; macOS includes Apple Vision. Dictionary, translation and
+base-form downloads are available from Settings on both platforms.
+
+For a source checkout:
+
 Use [Start-Meikipop.cmd](../Start-Meikipop.cmd) on Windows or
 [Start-Meikipop.command](../Start-Meikipop.command) on macOS. The Windows launcher
 prefers the checkout's `.venv-desktop` (the Python 3.12 desktop environment)

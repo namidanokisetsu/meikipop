@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from PyInstaller.config import CONF
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 
 def _get_build_version() -> str:
@@ -21,22 +22,24 @@ def _get_build_version() -> str:
 
 
 BUILD_VERSION = _get_build_version()
+model_data, model_binaries, model_imports = collect_all('stanza')
+model_data += copy_metadata('stanza', recursive=True)
 
 a = Analysis(
     ['src/meikipop/scripts/quick_lookup.py'],
     pathex=['src'],
-    binaries=[],
-    datas=[
+    binaries=model_binaries,
+    datas=model_data + [
         ('src/meikipop/resources/icon.ico', 'meikipop/resources'),
         ('src/meikipop/resources/icon.inactive.ico', 'meikipop/resources'),
         ('src/meikipop/scripts/deconjugator.json', 'meikipop/scripts'),
         ('src/meikipop/resources/turkish/*.json', 'meikipop/resources/turkish'),
     ],
-    hiddenimports=['Vision', 'Foundation', 'Quartz', 'AppKit', 'pynput.keyboard._darwin', 'pynput.mouse._darwin'],
+    hiddenimports=model_imports + ['PyQt6.QtTextToSpeech', 'Vision', 'Foundation', 'Quartz', 'AppKit', 'pynput.keyboard._darwin', 'pynput.mouse._darwin'],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
-    excludes=['paddleocr', 'paddlex', 'paddle', 'stanza', 'torch', 'meikiocr', 'onnxruntime'],
+    runtime_hooks=['packaging/runtime.py'],
+    excludes=['paddleocr', 'paddlex', 'paddle', 'meikiocr', 'onnxruntime', 'tkinter', 'IPython', 'pytest'],
     noarchive=False,
     optimize=0,
 )

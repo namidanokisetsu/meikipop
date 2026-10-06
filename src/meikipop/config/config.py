@@ -10,7 +10,7 @@ from meikipop.gui.activation import normalise_activation_bindings
 logger = logging.getLogger(__name__)
 
 APP_NAME = "meikipop"
-APP_VERSION = "2.0.5"
+APP_VERSION = "2.1.0"
 MAX_DICT_ENTRIES = 10
 IS_LINUX = sys.platform.startswith('linux')
 IS_WINDOWS = sys.platform.startswith('win')

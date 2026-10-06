@@ -15,8 +15,10 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
+            torch: '2.8.0'
           - runner: macos-15-intel
             arch: x86_64
+            torch: '2.2.2'
 
     runs-on: ${{ matrix.runner }}
 
@@ -31,8 +33,9 @@ jobs:
       - name: install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install 'numpy<2' 'torch==${{ matrix.torch }}' stanza==1.14.0
           pip install -e .
-          pip install pyinstaller
+          pip install pyinstaller==6.22.3
 
       - name: check native bridge and lookup fixtures
         env:
@@ -42,6 +45,7 @@ jobs:
           python -m meikipop.scripts.quick_lookup --check-runtime
           python -m unittest discover -s tests -p 'test_macos*.py'
           python -m unittest discover -s tests -p 'test_translation_server.py'
+          python -m unittest discover -s tests -p 'test_first_run.py'
 
       - name: verify native architecture
         run: |
@@ -72,9 +76,12 @@ jobs:
             -ov \
             -format UDZO \
             dist/meikipop.macos.${{ matrix.arch }}.dmg
+          shasum -a 256 dist/meikipop.macos.${{ matrix.arch }}.dmg > dist/meikipop.macos.${{ matrix.arch }}.dmg.sha256
 
       - name: upload macos artifact
         uses: actions/upload-artifact@v4
         with:
           name: meikipop-macos-${{ matrix.arch }}
-          path: dist/meikipop.macos.${{ matrix.arch }}.dmg
+          path: |
+            dist/meikipop.macos.${{ matrix.arch }}.dmg
+            dist/meikipop.macos.${{ matrix.arch }}.dmg.sha256

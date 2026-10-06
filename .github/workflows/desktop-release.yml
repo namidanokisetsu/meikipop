@@ -1,0 +1,40 @@
+name: Desktop installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        default: v2.1.0
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Meikipop ${{ inputs.tag }}
+          make_latest: true
+          body_path: packaging/release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/*/*-setup.exe
+            artifacts/*/*.dmg
+            artifacts/*/*.sha256

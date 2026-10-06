@@ -17,29 +17,43 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
           architecture: 'x64'
 
       - name: install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
-          pip install pyinstaller
+          pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -e '.[morphology,turkish-ocr]'
+          pip install pyinstaller==6.22.3
+
+      - name: check setup flow
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -p test_first_run.py
 
       - name: clean previous builds
         run: |
           rmdir build -r -force -ErrorAction SilentlyContinue || true
           rmdir dist -r -force -ErrorAction SilentlyContinue || true
 
-      - name: build with pyinstaller (windows)
-        run: pyinstaller meikipop.win.x64.spec
+      - name: build Windows installer
+        run: ./Build-Windows.ps1 -Python python -ISCC 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+
+      - name: verify bundled runtime
+        run: |
+          & ./dist/Meikipop/Meikipop-cli.exe --check-runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled runtime check failed' }
 
       - name: build windows archive
-        run: powershell -Command "Compress-Archive -Path dist/meikipop.exe -DestinationPath dist/meikipop.windows.x64.zip"
+        run: Compress-Archive -Path dist/Meikipop -DestinationPath dist/meikipop.windows.x64.zip
 
       - name: upload windows artifact
         id: upload
         uses: actions/upload-artifact@v4
         with:
           name: meikipop-windows-x64
-          path: dist/meikipop.windows.x64.zip
+          path: |
+            dist/*-setup.exe
+            dist/*.sha256
+            dist/meikipop.windows.x64.zip
