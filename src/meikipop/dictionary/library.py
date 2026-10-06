@@ -8,10 +8,20 @@ from pathlib import Path
 import re
 import sqlite3
 import tempfile
+import threading
 from time import monotonic, time_ns
 import unicodedata
 import zipfile
 from meikipop.utils.timing import mark
+
+_changes = {}
+_changes_lock = threading.Lock()
+
+
+def library_changed(directory):
+    identity = os.path.normcase(os.path.abspath(directory))
+    with _changes_lock:
+        _changes[identity] = _changes.get(identity, 0) + 1
 
 
 def default_library_path():
@@ -194,6 +204,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                     existing.execute("UPDATE metadata SET value='2' WHERE key='schema_version'")
             else:
                 os.replace(temporary, destination)
+                library_changed(directory)
         finally:
             db.close()
             if os.path.exists(temporary):
@@ -205,6 +216,7 @@ class Library:
     """Open on the querying thread; no dictionary-sized Python collections."""
     def __init__(self, directory=None):
         self.directory = Path(directory or default_library_path())
+        self._identity = os.path.normcase(os.path.abspath(self.directory))
         self.packs = []
         self.errors = []
         self.revision = 0
@@ -217,6 +229,7 @@ class Library:
 
     def refresh(self):
         self.revision += 1
+        self._change_revision = _changes.get(self._identity, 0)
         self.close()
         self.errors = []
         selected = {}
@@ -277,6 +290,9 @@ class Library:
         return tuple(sorted(signature))
 
     def refresh_if_changed(self):
+        if _changes.get(self._identity, 0) != self._change_revision:
+            self.refresh()
+            return True
         if monotonic() < self._next_inventory_check:
             return False
         self._next_inventory_check = monotonic() + 2
@@ -475,6 +491,7 @@ def remove_dictionary(directory, filename, refresh, cancelled):
     try:
         for marker in markers:
             marker.touch()
+        library_changed(root)
         refresh()
         deadline = monotonic() + 15
         remaining = list(paths)
@@ -493,6 +510,7 @@ def remove_dictionary(directory, filename, refresh, cancelled):
     finally:
         for marker in markers:
             marker.unlink(missing_ok=True)
+        library_changed(root)
         refresh()
 
 
@@ -504,6 +522,7 @@ def save_preferences(directory, disabled, order):
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(dict(disabled=list(disabled), order=list(order)), stream, ensure_ascii=False)
         os.replace(temporary, directory / "preferences.json")
+        library_changed(directory)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

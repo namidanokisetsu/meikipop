@@ -11,6 +11,7 @@ class DictionaryBrowser(QTextBrowser):
         super().__init__(*args, **kwargs)
         self.selection_lookup = selection_lookup
         self.selecting = False
+        self._selection_emitted = False
 
     def contextMenuEvent(self, event):
         menu = self.createStandardContextMenu()
@@ -21,6 +22,7 @@ class DictionaryBrowser(QTextBrowser):
         menu.deleteLater()
 
     def mousePressEvent(self, event):
+        self._selection_emitted = False
         self.selecting = event.button() == Qt.MouseButton.LeftButton
         super().mousePressEvent(event)
 
@@ -49,9 +51,14 @@ class DictionaryBrowser(QTextBrowser):
     def mouseDoubleClickEvent(self, event):
         self.selecting = event.button() == Qt.MouseButton.LeftButton
         super().mouseDoubleClickEvent(event)
+        if self.selection_lookup and self.selecting and not self.anchorAt(event.position().toPoint()):
+            self._selection_emitted = True
+            self.lookup_selection()
 
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         self.selecting = False
-        if self.selection_lookup and event.button() == Qt.MouseButton.LeftButton and not self.anchorAt(event.position().toPoint()):
+        if (self.selection_lookup and not self._selection_emitted and event.button() == Qt.MouseButton.LeftButton
+                and not self.anchorAt(event.position().toPoint())):
             self.lookup_selection()
+        self._selection_emitted = False
