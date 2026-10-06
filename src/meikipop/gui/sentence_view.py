@@ -37,8 +37,9 @@ class SentenceView(QTextBrowser):
         pieces, offset = [], 0
         for start, end in self.spans:
             pieces.append(plain(self.text[offset:start]))
-            color = config.color_highlight_word if self.selected == (start, end) else config.color_foreground
-            pieces.append(f'<a href="word:{start}:{end}" style="color:{color};text-decoration:none;">'
+            style = (f"color:{config.color_background};background-color:{config.color_highlight_word};"
+                     if self.selected == (start, end) else f"color:{config.color_foreground};")
+            pieces.append(f'<a href="word:{start}:{end}" style="{style}text-decoration:none;">'
                           + plain(self.text[start:end]) + '</a>')
             offset = end
         pieces.append(plain(self.text[offset:]))

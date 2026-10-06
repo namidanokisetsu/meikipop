@@ -52,7 +52,7 @@ class ProfileAppearance(QWidget):
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(40)
-        self._preview_timer.timeout.connect(self.saved)
+        self._preview_timer.timeout.connect(self._apply_preview)
         self._loading = True
         form = self.form = QFormLayout(self)
         self.theme = QComboBox()
@@ -96,6 +96,9 @@ class ProfileAppearance(QWidget):
         for key, widget in self.controls.items():
             if not key.startswith("color"):
                 widget.valueChanged.connect(self.save)
+
+    def _apply_preview(self):
+        self.saved()
 
     def reload(self):
         self._loading = True
