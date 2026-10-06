@@ -4,6 +4,12 @@ import sys
 from pathlib import Path
 from platformdirs import user_cache_dir
 
+if sys.platform == "darwin":
+    import certifi
+    # The bundled OpenSSL cannot use the build runner's certificate paths.
+    # Keep an explicitly configured trust store and verify downloads normally.
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
 class DiagnosticStream:
     def __init__(self, original, log):
         self.original, self.log = original, log

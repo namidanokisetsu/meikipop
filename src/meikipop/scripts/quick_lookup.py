@@ -56,10 +56,13 @@ def main(argv=None):
                 import paddleocr
                 import meikiocr
         if sys.platform == "darwin":
+            import ssl
             import Vision
             import Quartz
             if not Vision.VNRecognizeTextRequest or not Quartz.CGPreflightScreenCaptureAccess:
                 raise RuntimeError("Native screen lookup runtime is incomplete.")
+            if getattr(sys, "frozen", False) and not ssl.create_default_context().cert_store_stats()["x509_ca"]:
+                raise RuntimeError("Packaged HTTPS certificate trust is missing.")
         return 0
 
     from PyQt6.QtCore import QSettings, QTimer

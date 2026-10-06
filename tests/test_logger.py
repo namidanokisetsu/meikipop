@@ -11,6 +11,24 @@ from meikipop.utils import logger
 
 
 class LoggerTests(unittest.TestCase):
+    def test_mac_download_trust_uses_bundle_certificates_and_preserves_override(self):
+        import os
+        import ssl
+        import certifi
+        for custom in (None, '/custom/trust.pem'):
+            with self.subTest(custom=custom), tempfile.TemporaryDirectory() as directory, \
+                    patch.dict(os.environ), patch("sys.platform", "darwin"), \
+                    patch("sys.stderr", io.StringIO()), \
+                    patch("platformdirs.user_cache_dir", return_value=directory):
+                os.environ.pop('SSL_CERT_FILE', None)
+                if custom:
+                    os.environ['SSL_CERT_FILE'] = custom
+                state = runpy.run_path(str(Path(__file__).resolve().parents[1] / "packaging/runtime.py"))
+                state['stream'].close()
+                self.assertEqual(os.environ['SSL_CERT_FILE'], custom or certifi.where())
+                if not custom:
+                    self.assertGreater(ssl.create_default_context().cert_store_stats()['x509_ca'], 0)
+
     def test_mac_bundle_keeps_diagnostics_when_launch_services_provides_streams(self):
         with tempfile.TemporaryDirectory() as directory:
             original = io.StringIO()
