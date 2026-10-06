@@ -1,4 +1,6 @@
 import logging
+import io
+import runpy
 import tempfile
 import types
 import unittest
@@ -9,6 +11,18 @@ from meikipop.utils import logger
 
 
 class LoggerTests(unittest.TestCase):
+    def test_mac_bundle_keeps_diagnostics_when_launch_services_provides_streams(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original = io.StringIO()
+            with patch("sys.platform", "darwin"), patch("sys.stderr", original), \
+                    patch("platformdirs.user_cache_dir", return_value=directory):
+                state = runpy.run_path(str(Path(__file__).resolve().parents[1] / "packaging/runtime.py"))
+                logger.sys.stderr.write("macOS packaged diagnostic\n")
+                logger.sys.stderr.flush()
+                state["stream"].close()
+            self.assertIn("macOS packaged diagnostic", original.getvalue())
+            self.assertIn("macOS packaged diagnostic", (Path(directory) / "meikipop-runtime.log").read_text())
+
     def tearDown(self):
         root_logger = logging.getLogger()
         for handler in root_logger.handlers[:]:
