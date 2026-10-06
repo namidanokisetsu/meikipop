@@ -59,10 +59,10 @@ clients remain explicit compatibility entrypoints.
    Audio orders enabled Online pronunciations, System voice and Local recordings in one
    per-profile list with checkboxes, drag/drop and arrows, preserving existing choices. Online
    retrieves language-matched Wiktionary/Lingua Libre files from Wikimedia Commons on
-   the audio worker through one combined metadata query, with bounded downloads, cached
+   the audio worker through indexed title searches with exact language/word filters, bounded downloads, cached
    misses and fallback to the next enabled source. System voice can run before the network.
    Recording attribution remains accessible from the audio menu. Existing local database
-   profiles keep their priority order; other profiles default to online word audio.
+   profiles keep their priority order; new profiles default to system voice first.
    Explicit word lookup within typed or pasted input retains the full input as
    sentence context through dictionary analysis, translation, audio, copying and Back.
 
@@ -156,6 +156,10 @@ clients remain explicit compatibility entrypoints.
   Existing settings skip onboarding unless requested; cancelled onboarding resumes.
   Installer upgrades/uninstall preserve user data. Publisher signing and Apple
   notarization still require release credentials.
+  Selecting a language offers automatic recommended dictionaries and supported
+  models, with lightweight/quality translation and a manual skip. ZIP imports run
+  in a separate process and continue with Settings closed. CRC metadata is advisory;
+  decompression, JSON and entry validation still reject unreadable content.
 
 - Preserve the existing configuration, original Japanese `dictionary.pkl`,
   and separate Turkish data/settings. `meikipop legacy-japanese` and

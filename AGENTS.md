@@ -1,6 +1,7 @@
 # Development conventions
 
 - Keep responses and code concise. Comment only non-obvious decisions.
+- Keep README to a couple of short paragraphs and a compact tech/model list. No em dashes, hype, filler, AI stock phrases or repeated explanations. Release notes stay empty or one short sentence; desktop releases contain only the Windows EXE and the two macOS DMGs.
 - Keep UI copy compact: no instructional clutter, implementation diagnostics, redundant labels, or em dashes. Prefer obvious controls with short tooltips.
 - Prioritize transferable input features for Japanese; reuse its existing lookup and rendering. Keep Turkish-specific behavior and settings separate; do not redesign Japanese UI without an explicit request.
 - Keep non-OCR lookup features opt-in and every text shortcut independently configurable or disabled, using key recording and sensible presets rather than syntax entry. Preserve an OCR-only workflow.

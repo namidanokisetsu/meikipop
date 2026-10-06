@@ -20,7 +20,5 @@ try {
     & $ISCC "/DAppVersion=$version" packaging/meikipop.iss
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed' }
     $installer = Get-Item -LiteralPath "dist/Meikipop-$version-windows-x64-setup.exe"
-    $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  $($installer.Name)" | Set-Content -Encoding ascii -LiteralPath "$($installer.FullName).sha256"
     Write-Output $installer.FullName
 } finally { Pop-Location }

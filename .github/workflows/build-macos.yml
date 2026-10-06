@@ -76,7 +76,6 @@ jobs:
             -ov \
             -format UDZO \
             dist/meikipop.macos.${{ matrix.arch }}.dmg
-          shasum -a 256 dist/meikipop.macos.${{ matrix.arch }}.dmg > dist/meikipop.macos.${{ matrix.arch }}.dmg.sha256
 
       - name: upload macos artifact
         uses: actions/upload-artifact@v4
@@ -84,4 +83,3 @@ jobs:
           name: meikipop-macos-${{ matrix.arch }}
           path: |
             dist/meikipop.macos.${{ matrix.arch }}.dmg
-            dist/meikipop.macos.${{ matrix.arch }}.dmg.sha256

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meikipop"
-version = "2.1.0"
+version = "2.1.1"
 description = "Desktop OCR dictionary with multilingual Yomitan lookup"
 readme = "README.md"
 license = "GPL-3.0"

@@ -6,7 +6,9 @@ Updated: 2026-10-06
 
 For normal installation, download the Windows setup EXE or macOS DMG from the
 [latest release](https://github.com/namidanokisetsu/meikipop/releases/latest).
-Launch Meikipop and follow the first-run wizard. **Setup wizard** in the tray
+Choose a language in the first-run wizard to install its recommended dictionaries,
+OCR, base-form support and translation model. **Skip downloads** keeps setup manual.
+**Setup wizard** in the tray
 menu reopens it. **Settings → OCR → Install OCR model** installs the selected
 Windows OCR component; macOS includes Apple Vision. Dictionary, translation and
 base-form downloads are available from Settings on both platforms.
@@ -36,6 +38,8 @@ replacing `dictionary.pkl`. Enable packs and move them up or down; changes save 
 Choose a recommended pack and press **Install**, or select an installed pack and press
 **Remove**. Removal deletes all revisions of that dictionary so an older copy cannot reappear.
 Cancellation keeps completed imports and discards the unfinished pack.
+Imports run in a separate process; closing Settings leaves them running. CRC
+mismatches are warnings when the JSON and dictionary entries remain valid.
 Archive language metadata takes precedence; for a legacy archive without it,
 the selected profile supplies its language.
 
@@ -97,7 +101,7 @@ sit alongside the heading; language switching stays in the tray and Settings.
 Sentence reading uses system TTS even when a Japanese word-audio database is configured.
 **Audio → Source priority** enables and orders Online pronunciations, System voice, and
 Local recordings with checkboxes, dragging, or arrow buttons. Enabled sources run top to
-bottom; put System voice first to avoid network waits. Existing source choices are retained.
+bottom; System voice is first by default. Saved source choices are retained.
 Online uses Wiktionary and Lingua Libre recordings on Wikimedia Commons. It sends the word
 and language, caches recordings and misses in memory, and requires no account; coverage
 depends on contributed recordings. Database controls appear when local sources are enabled;
@@ -177,8 +181,8 @@ models. The status tooltip shows the full path. Equivalent explicit setup:
 Replace `ru` for another Stanza language. Setup downloads only the base-form pipeline;
 runtime never downloads them. Missing models leave exact/form lookup available and
 report a setup error on a lemma miss. UI setup refreshes lookup automatically;
-after command-line setup, toggle the option to retry. Cancellation finishes the
-current installation step before stopping.
+after command-line setup, toggle the option to retry. Model downloads can be cancelled;
+source installations finish an active dependency installation before stopping.
 Neural analysis is optional and can add latency on misses; isolated words can be
 ambiguous. The default workflow needs no NLP models.
 

@@ -6,7 +6,7 @@ on:
       tag:
         description: Release tag
         required: true
-        default: v2.1.0
+        default: v2.1.1
 
 permissions:
   contents: read
@@ -32,9 +32,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Meikipop ${{ inputs.tag }}
           make_latest: true
-          body_path: packaging/release-notes.md
           fail_on_unmatched_files: true
           files: |
             artifacts/*/*-setup.exe
             artifacts/*/*.dmg
-            artifacts/*/*.sha256

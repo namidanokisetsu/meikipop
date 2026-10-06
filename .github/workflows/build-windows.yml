@@ -45,9 +45,6 @@ jobs:
           & ./dist/Meikipop/Meikipop-cli.exe --check-runtime
           if ($LASTEXITCODE -ne 0) { throw 'Bundled runtime check failed' }
 
-      - name: build windows archive
-        run: Compress-Archive -Path dist/Meikipop -DestinationPath dist/meikipop.windows.x64.zip
-
       - name: upload windows artifact
         id: upload
         uses: actions/upload-artifact@v4
@@ -55,5 +52,3 @@ jobs:
           name: meikipop-windows-x64
           path: |
             dist/*-setup.exe
-            dist/*.sha256
-            dist/meikipop.windows.x64.zip
