@@ -15,12 +15,27 @@ DEFAULTS["furigana_scale"] = 50
 DEFAULTS["font_family"] = DEFAULTS["font_family"] or ("Segoe UI" if sys.platform == "win32" else "Helvetica Neue" if sys.platform == "darwin" else "Noto Sans")
 
 
+def custom_palette(settings, profile):
+    prefix = f"profiles/{profile}/"
+    palette = {}
+    for key in THEMES["Monochrome Dark"]:
+        custom = prefix + "custom/" + key
+        if not settings.contains(custom):
+            # Seed before a preset can overwrite the user's saved colors.
+            settings.setValue(custom, settings.value(prefix + key, DEFAULTS[key]))
+        palette[key] = settings.value(custom, DEFAULTS[key], type=type(DEFAULTS[key]))
+    return palette
+
+
 def load_appearance(settings, profile):
     scale = settings.value(f"profiles/{profile}/scale", 100, type=int) / 100
+    custom = custom_palette(settings, profile)
     name = theme_name(settings.value(f"profiles/{profile}/theme_name", DEFAULTS["theme_name"]))
+    settings.setValue(f"profiles/{profile}/theme_name", name)
+    palette = custom if name == "Custom" else THEMES[name]
     for key, default in DEFAULTS.items():
-        if key in THEMES.get(name, {}):
-            value = THEMES[name][key]
+        if key in palette:
+            value = palette[key]
         else:
             value = settings.value(f"profiles/{profile}/{key}", default, type=type(default))
         if key == "theme_name":
@@ -80,6 +95,7 @@ class ProfileAppearance(QWidget):
 
     def reload(self):
         self._loading = True
+        custom = custom_palette(self.settings, self.profile())
         self.theme.blockSignals(True)
         name = theme_name(self.settings.value(f"profiles/{self.profile()}/theme_name", DEFAULTS["theme_name"]))
         self.theme.setCurrentText(name)
@@ -93,7 +109,7 @@ class ProfileAppearance(QWidget):
         self.form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
-            value = THEMES.get(name, {}).get(key, value)
+            value = (custom if name == "Custom" else THEMES[name]).get(key, value)
             if key.startswith("color"):
                 self.set_color(key, value)
             else:
@@ -114,10 +130,7 @@ class ProfileAppearance(QWidget):
 
     def apply_theme(self, name):
         self._loading = True
-        palette = THEMES[name] if name != "Custom" else {
-            key: self.settings.value(f"profiles/{self.profile()}/custom/{key}",
-                                     widget.text() if key.startswith("color") else widget.value())
-            for key, widget in self.controls.items() if key.startswith("color") or key == "background_opacity"}
+        palette = THEMES[name] if name != "Custom" else custom_palette(self.settings, self.profile())
         for key, value in palette.items():
             if key.startswith("color"):
                 self.set_color(key, value)

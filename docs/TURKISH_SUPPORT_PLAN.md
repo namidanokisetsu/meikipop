@@ -32,7 +32,8 @@ clients remain explicit compatibility entrypoints.
    scan-key hold; manual playback remains repeatable.
    Frequency display defaults to the harmonic mean of positive ranks, with one
    best rank per dictionary; counts and nonnumeric labels are excluded. Per-source
-   display remains optional. Cyan/Lime use black backgrounds and white text.
+   display remains optional. Themes are Monochrome Dark, Light and Custom; removed
+   dark presets migrate to Monochrome Dark while saved colors seed Custom once.
    Unchanged render identities preserve documents and selections; fitting is coalesced.
    Selection lookup inside results is independently opt-in for new profiles, with
    a one-time migration preserving existing behavior. The Turkish compatibility

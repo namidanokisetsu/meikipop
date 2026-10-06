@@ -9,7 +9,7 @@ from PyQt6.QtCore import QSettings
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication
 from meikipop.config.config import config
-from meikipop.gui.profile_appearance import ProfileAppearance, load_appearance
+from meikipop.gui.profile_appearance import DEFAULTS, ProfileAppearance, load_appearance
 from meikipop.gui.popup_style import surface_colors
 from meikipop.gui.themes import THEMES
 
@@ -31,7 +31,7 @@ class ProfileThemeTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def test_presets_keep_text_and_metadata_readable(self):
-        self.assertEqual(set(THEMES), {"Cyan", "Lime", "Light", "Custom"})
+        self.assertEqual(set(THEMES), {"Monochrome Dark", "Light", "Custom"})
         for name, theme in THEMES.items():
             if not theme:
                 continue
@@ -41,7 +41,11 @@ class ProfileThemeTests(unittest.TestCase):
                 self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 7)
                 for key in ('color_highlight_word', 'color_highlight_reading'):
                     self.assertGreaterEqual(contrast(bg, theme[key]), 4.5)
-                if name in ('Cyan', 'Lime'):
+                for key in ('color_background', 'color_foreground', 'color_highlight_word', 'color_highlight_reading'):
+                    red, green, blue, _ = QColor(theme[key]).getRgb()
+                    self.assertEqual(red, green)
+                    self.assertEqual(green, blue)
+                if name == 'Monochrome Dark':
                     self.assertEqual(bg, '#000000')
                     self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 20)
                     self.assertGreaterEqual(contrast(bg, theme['color_highlight_word']), 12)
@@ -87,7 +91,7 @@ class ProfileThemeTests(unittest.TestCase):
                 widget.theme.setCurrentText('Custom')
                 widget.set_color('color_background', '#102030')
                 widget.save()
-                widget.theme.setCurrentText('Cyan')
+                widget.theme.setCurrentText('Monochrome Dark')
                 widget.theme.setCurrentText('Custom')
                 self.assertEqual(widget.controls['color_background'].text(), '#102030')
                 self.assertEqual(settings.value('profiles/tr/theme_name'), 'Dusk')
@@ -95,4 +99,46 @@ class ProfileThemeTests(unittest.TestCase):
                 self.assertEqual(settings.value('profiles/ja/scale', type=int), 120)
             finally:
                 config.__dict__.update(previous)
+                widget.deleteLater()
+
+    def test_removed_preset_migrates_without_losing_saved_or_custom_colors(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            settings.setValue('profiles/tr/theme_name', 'Dusk')
+            settings.setValue('profiles/tr/color_background', '#28231F')
+            settings.setValue('profiles/tr/color_highlight_word', '#E4BD8B')
+            settings.setValue('profiles/tr/custom/color_foreground', '#eeeeee')
+            previous = dict(config.__dict__)
+            try:
+                load_appearance(settings, 'tr')
+                self.assertEqual(config.theme_name, 'Monochrome Dark')
+                self.assertEqual(config.color_highlight_word, '#FFFFFF')
+                self.assertEqual(settings.value('profiles/tr/theme_name'), 'Monochrome Dark')
+                widget = ProfileAppearance(settings, lambda: 'tr', Mock())
+                widget.theme.setCurrentText('Light')
+                widget.theme.setCurrentText('Custom')
+                load_appearance(settings, 'tr')
+                self.assertEqual(config.color_background, '#28231F')
+                self.assertEqual(config.color_highlight_word, '#E4BD8B')
+                self.assertEqual(config.color_foreground, '#eeeeee')
+                widget.theme.setCurrentText('Monochrome Dark')
+                widget.deleteLater()
+                widget = ProfileAppearance(settings, lambda: 'tr', Mock())
+                widget.theme.setCurrentText('Custom')
+                self.assertEqual(widget.controls['color_background'].text(), '#28231F')
+                widget.deleteLater()
+                self.assertFalse(settings.contains('profiles/ja/theme_name'))
+            finally:
+                config.__dict__.update(previous)
+
+    def test_new_custom_palette_starts_from_defaults_before_preset_changes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            widget = ProfileAppearance(settings, lambda: 'ja', Mock())
+            try:
+                widget.theme.setCurrentText('Light')
+                widget.theme.setCurrentText('Custom')
+                for key in THEMES['Monochrome Dark']:
+                    self.assertEqual(settings.value('profiles/ja/custom/' + key), DEFAULTS[key])
+            finally:
                 widget.deleteLater()

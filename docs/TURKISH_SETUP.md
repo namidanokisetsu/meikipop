@@ -74,9 +74,10 @@ the selected order. Sentence reading always uses an installed system voice.
 When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
 Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
-**Settings → Appearance** offers black Cyan and Lime, plus Light and Custom. Presets are opaque
-with contrasting text and accents. Changes apply immediately; Custom remembers its own colors
-when switching presets. Appearance remains independent per language profile.
+**Settings → Appearance** offers Monochrome Dark, Light and Custom. Both presets use
+opaque neutral colors. Changes apply immediately; Custom starts with the profile's saved
+colors and remembers them when switching presets. Removed dark presets migrate to
+Monochrome Dark, keeping saved colors in Custom. Appearance remains independent per profile.
 Japanese definition readings appear above their text. Headwords keep the full word
 and bracketed reading by default; **Appearance → Headword reading → Furigana**
 switches the heading to an above-text reading too.

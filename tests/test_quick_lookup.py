@@ -130,16 +130,18 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_mode("tr")
         self.window.open_settings()
         self.assertEqual(dialog.profile.currentData(), "tr")
-        self.assertEqual(dialog.appearance.theme.currentText(), "Lime")
+        self.assertEqual(dialog.appearance.theme.currentText(), "Monochrome Dark")
         self.assertEqual(config.color_background, "#000000")
-        self.assertEqual(config.color_highlight_word, "#B6FF00")
-        dialog.appearance.theme.setCurrentText("Cyan")
-        self.assertEqual(config.color_highlight_word, "#00E5FF")
+        self.assertEqual(config.color_highlight_word, "#FFFFFF")
+        dialog.appearance.theme.setCurrentText("Custom")
+        dialog.appearance.set_color("color_highlight_word", "#eeeeee")
+        dialog.appearance.save()
+        self.assertEqual(config.color_highlight_word, "#eeeeee")
         dialog.profile.setCurrentIndex(dialog.profile.findData("ja"))
         self.assertEqual(self.window.preferred_foreign, "ja")
         self.assertEqual(dialog.appearance.theme.currentText(), "Light")
         self.assertEqual(config.color_background, "#FFFFFF")
-        self.assertEqual(self.settings.value("profiles/tr/theme_name"), "Cyan")
+        self.assertEqual(self.settings.value("profiles/tr/theme_name"), "Custom")
         dialog.hide()
 
     def test_back_restores_profile_appearance_and_saved_identity(self):
@@ -155,7 +157,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.preferred_foreign, "tr")
         self.assertEqual(self.settings.value("profile"), "tr")
         self.assertEqual(config.color_background, "#000000")
-        self.assertEqual(config.color_highlight_word, "#B6FF00")
+        self.assertEqual(config.color_highlight_word, "#FFFFFF")
 
     def test_translate_runs_off_main_thread_and_enter_search_is_local(self):
         self.window.search.setText("猫")
