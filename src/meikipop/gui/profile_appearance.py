@@ -46,6 +46,8 @@ class ProfileAppearance(QWidget):
         self.compact_preview = QCheckBox("Compact preview")
         self.compact_preview.setToolTip("Pin to expand the full entry")
         form.addRow(self.compact_preview)
+        self.pinned_sentence = QCheckBox("Show sentence when pinned")
+        form.addRow(self.pinned_sentence)
         self.font = QFontComboBox()
         form.addRow("Font", self.font)
         self.headword_furigana = QCheckBox("Furigana")
@@ -71,6 +73,7 @@ class ProfileAppearance(QWidget):
         self.font.currentFontChanged.connect(self.save)
         self.headword_furigana.toggled.connect(self.save)
         self.compact_preview.toggled.connect(self.save)
+        self.pinned_sentence.toggled.connect(self.save)
         for key, widget in self.controls.items():
             if not key.startswith("color"):
                 widget.valueChanged.connect(self.save)
@@ -83,6 +86,7 @@ class ProfileAppearance(QWidget):
         self.theme.blockSignals(False)
         self.compact_preview.setChecked(self.settings.value(f"profiles/{self.profile()}/compact_preview",
                                        self.settings.value("compact_preview", True, bool), bool))
+        self.pinned_sentence.setChecked(self.settings.value(f"profiles/{self.profile()}/pinned_sentence", True, bool))
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
         self.form.setRowVisible(self.headword_furigana, self.profile() == "ja")
@@ -131,6 +135,7 @@ class ProfileAppearance(QWidget):
         prefix = f"profiles/{self.profile()}/"
         self.settings.setValue(prefix + "theme_name", self.theme.currentText())
         self.settings.setValue(prefix + "compact_preview", self.compact_preview.isChecked())
+        self.settings.setValue(prefix + "pinned_sentence", self.pinned_sentence.isChecked())
         self.settings.setValue(prefix + "font_family", self.font.currentFont().family())
         if self.profile() == "ja":
             self.settings.setValue(prefix + "headword_furigana", self.headword_furigana.isChecked())

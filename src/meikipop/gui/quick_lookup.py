@@ -335,7 +335,7 @@ def _source_name(source):
 
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
-                  headword_furigana=False, combine_frequencies=True):
+                  headword_furigana=False, combine_frequencies=True, source_text=None):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
@@ -350,9 +350,14 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
              'p {margin:2px 0;} ol,ul {margin:2px 0 4px 8px;padding:0;} '
              'li {margin:1px 0;} hr {margin:6px 0;} '
              f'.metadata {{margin:1px 0 3px;color:{muted};}} .source {{margin:5px 0 2px;color:{muted};}}</style>']
+    if source_text is None:
+        source_text = result.text if result.translation else ""
+    if show_source and source_text:
+        parts.append(f'<p style="margin:0 {clearance}px 4px 0;color:{muted}"><small>'
+                     f'{escape(source_text).replace(chr(10), "<br>")}</small></p>')
+        if result.translation:
+            parts.append("<hr>")
     if result.translation:
-        if show_source:
-            parts.append(f'<p style="margin-right:{clearance}px">{escape(result.text).replace(chr(10), "<br>")}</p><hr>')
         parts.append(f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p>')
         if result.entries:
             parts.append("<hr>")
@@ -1037,12 +1042,16 @@ class QuickLookupWindow(QDialog):
             expanded = self._expanded
             if self._peek and not compact:
                 expanded = {entry.source for entry in self._result.entries}
+            show_source, source_text = self._peek, None
+            if self._peek and self.is_pinned:
+                show_source = self.settings.value(f"profiles/{self.preferred_foreign}/pinned_sentence", True, bool)
+                source_text = self._result_context or (self._result.text if self._result.translation else "")
             self._place_actions()
             from meikipop.gui.profile_appearance import DEFAULTS
             identity = (repr(self._result), self.preferred_foreign, tuple(sorted(expanded)),
                         self._kanji_expanded, self._peek, self.is_pinned, compact,
                         tuple(getattr(config, key) for key in DEFAULTS), self.devicePixelRatioF(),
-                        self.audio_actions.sizeHint().width(),
+                        self.audio_actions.sizeHint().width(), show_source, source_text if show_source else None,
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool))
             if identity == self._render_identity:
@@ -1056,7 +1065,7 @@ class QuickLookupWindow(QDialog):
                                                self._kanji_expanded or self._peek and not compact,
                                                preview=self._peek and not self.is_pinned and compact,
                                                overlay_actions=(self.audio_actions.sizeHint().width() + 8) if self._peek and self.is_pinned else 0,
-                                               show_source=self._peek,
+                                               show_source=show_source, source_text=source_text,
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
@@ -1439,6 +1448,7 @@ class QuickLookupWindow(QDialog):
         return True
 
     def set_context(self, text, start=0, end=None):
+        previous = getattr(self, "_result_context", "")
         self._context = str(text or "").strip()
         self._result_context = self._context
         self.copy_button.setEnabled(bool(self._context))
@@ -1450,6 +1460,8 @@ class QuickLookupWindow(QDialog):
         self.context_label.hide()
         self.copy_button.setVisible(bool(self._context))
         self._set_translation_busy(self._translation_busy)
+        if self._peek and self.is_pinned and previous != self._context:
+            self._render()
 
     def _clear_context(self):
         previous = getattr(self, "_result_context", "")

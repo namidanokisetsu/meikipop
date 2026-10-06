@@ -94,6 +94,9 @@ dictionary lemma. Manual lookup copies the entered text; Back restores the
 saved context. A scan cannot recover text outside the captured screen region.
 Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 **Translate sentence** action translates that same scanned context locally.
+Pinned OCR results show the original sentence in compact text above the entry.
+**Settings → Appearance → Show sentence when pinned** toggles it per profile;
+it defaults on and does not change what Copy sentence copies.
 
 **Settings → Shortcuts** configures one text-lookup shortcut and optional automatic selection.
 Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected

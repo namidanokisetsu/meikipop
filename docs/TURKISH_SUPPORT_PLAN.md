@@ -38,6 +38,8 @@ clients remain explicit compatibility entrypoints.
    a one-time migration preserving existing behavior. The Turkish compatibility
    browser retains immediate double-click lookup without a duplicate release request.
    Pin freezes a preview; existing dismissal and fresh-scan actions leave it.
+   Pinned OCR results include compact original context, enabled by default with
+   a per-profile Appearance toggle. Copy and translation retain the complete context.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings

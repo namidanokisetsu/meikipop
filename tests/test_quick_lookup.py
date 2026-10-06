@@ -290,15 +290,18 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_context(sentence)
         self.assertFalse(self.window.translate_sentence.isVisible())
         self.window.pin.setChecked(True)
+        self.assertTrue(self.window.browser.toPlainText().startswith(sentence))
         self.assertTrue(self.window.translate_sentence.isVisible())
         self.window.translate_sentence.click()
         self.wait_until(lambda: self.window._result.translation)
         self.assertEqual(self.engine.calls[-1][:4], (sentence, "ja", "tr", True))
         self.assertEqual(self.window._context, sentence)
+        self.assertEqual(self.window.browser.toPlainText().count(sentence), 1)
         self.assertIn(sentence, self.window.copy_button.toolTip())
         self.window.go_back()
         self.assertEqual(self.window._result.text, "猫")
         self.assertEqual(self.window._context, sentence)
+        self.assertTrue(self.window.browser.toPlainText().startswith(sentence))
         self.window.search.setText("manual")
         self.assertTrue(self.window.translate.isEnabled())
         self.assertEqual(self.window._context, "")
@@ -535,6 +538,46 @@ class QuickLookupTests(unittest.TestCase):
         self.window.pin.setChecked(True)
         self.window._display(SearchResult("猫がいる。", "ja", "en", translation="There is a cat."))
         self.assertIn("猫がいる。", self.window.browser.toPlainText())
+
+    def test_pinned_sentence_is_optional_per_profile_and_reuses_unchanged_document(self):
+        sentence = "公園で猫が寝ている。 <&>"
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context(sentence)
+        self.assertNotIn(sentence, self.window.browser.toPlainText())
+        self.window.pin.setChecked(True)
+        self.assertTrue(self.window.browser.toPlainText().startswith(sentence))
+        self.assertIn("cat", self.window.browser.toPlainText())
+        with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
+            for _ in range(5):
+                self.window.set_context(sentence)
+                self.window._render()
+            render.assert_not_called()
+            self.window.set_context("別の文。")
+            render.assert_called_once()
+        self.window.open_settings()
+        appearance = self.window._setup.appearance
+        self.assertTrue(appearance.pinned_sentence.isChecked())
+        appearance.pinned_sentence.click()
+        self.assertNotIn("別の文。", self.window.browser.toPlainText())
+        self.assertEqual(self.window._context, "別の文。")
+        self.assertFalse(self.settings.value("profiles/ja/pinned_sentence", True, bool))
+        self.window.set_mode("tr")
+        self.assertTrue(appearance.pinned_sentence.isChecked())
+        self.window.set_mode("ja")
+        self.assertFalse(appearance.pinned_sentence.isChecked())
+
+    def test_pinned_translation_hides_source_when_disabled_and_keeps_copy(self):
+        sentence = "猫がいる。"
+        self.settings.setValue("profiles/ja/pinned_sentence", False)
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.pin.setChecked(True)
+        self.window._display(SearchResult(sentence, "ja", "en", translation="There is a cat."))
+        self.window.set_context(sentence)
+        self.assertNotIn(sentence, self.window.browser.toPlainText())
+        self.assertIn("There is a cat.", self.window.browser.toPlainText())
+        with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
+            self.window.copy_sentence()
+            clipboard.return_value.setText.assert_called_once_with(sentence)
 
     def test_pinned_audio_control_reads_full_ocr_context(self):
         self.window.audio = Mock()
