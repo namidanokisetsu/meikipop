@@ -2,9 +2,10 @@
 import sys
 
 from pynput.keyboard import GlobalHotKeys, HotKey, Key, KeyCode
+from meikipop.gui.keyboard_listener import MacListenerMixin
 
 
-class TextHotKeys(GlobalHotKeys):
+class TextHotKeys(MacListenerMixin, GlobalHotKeys):
     def __init__(self, bindings):
         self._swallowed = set()
         self._native_chords = []

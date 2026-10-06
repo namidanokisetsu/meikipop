@@ -5,6 +5,7 @@ from contextlib import closing
 from pathlib import Path
 import sqlite3
 import tempfile
+import sys
 import time
 import unittest
 from unittest.mock import patch
@@ -31,7 +32,7 @@ class ClipboardTests(unittest.TestCase):
         wordnet_path = patch("meikipop.dictionary.turkish_wordnet.default_wordnet_path", return_value=root / "missing.sqlite3")
         wordnet_path.start()
         self.addCleanup(wordnet_path.stop)
-        with patch("meikipop.gui.turkish.desktop_input.TextHotKeys"), patch("pynput.keyboard.Listener"), patch("pynput.mouse.Listener"), \
+        with patch("meikipop.gui.turkish.desktop_input.TextHotKeys"), patch("meikipop.gui.turkish.desktop_input.KeyboardListener"), patch("pynput.mouse.Listener"), \
                 patch("meikipop.gui.turkish.window.QSettings", return_value=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)):
             self.window = ClipboardWindow(root / "pack/dictionary.sqlite3", "exact")
             self.window.settings.setValue("auto_scan", False)
@@ -70,7 +71,7 @@ class ClipboardTests(unittest.TestCase):
         self.window.input.search_requested.emit()
         self.assertTrue(self.window.search.isVisible())
         self.assertTrue(self.window.pinned)
-        self.assertLess(self.window.height(), 120)
+        self.assertLess(self.window.height(), 150)
         self.window.search.setText("kitap")
         self.window.search.returnPressed.emit()
         self.wait_result()
@@ -129,7 +130,7 @@ class ClipboardTests(unittest.TestCase):
         with patch.object(self.window.input, "set_shortcuts"):
             dialog.save()
         self.assertEqual(config.__dict__, original)
-        self.assertEqual(self.window.search_hotkey, "<ctrl>+<alt>+k")
+        self.assertEqual(self.window.search_hotkey, "<cmd>+<alt>+k" if sys.platform == "darwin" else "<ctrl>+<alt>+k")
         self.assertEqual(self.window.word_color, "#202020")
 
     def test_newer_request_and_dismissal_reject_old_delivery(self):

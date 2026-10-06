@@ -1,4 +1,5 @@
 """Record one key combination while keeping enablement independent."""
+import sys
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QCheckBox, QKeySequenceEdit
@@ -23,6 +24,8 @@ class ShortcutEdit(QWidget):
     def set_value(self, value, preset):
         aliases = {"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "cmd": "Meta",
                    "esc": "Esc", "page_up": "PgUp", "page_down": "PgDown"}
+        if sys.platform == "darwin":
+            aliases.update(ctrl="Meta", cmd="Ctrl")
         display = "+".join(aliases.get(k.strip("<>"), k.strip("<>").title()) for k in value.split("+")) if value else preset
         self.enabled.setChecked(bool(value))
         self.recorder.setKeySequence(QKeySequence(display))
@@ -33,9 +36,10 @@ class ShortcutEdit(QWidget):
             raise ValueError("Record a shortcut first.")
         combination = sequence[0]
         modifiers = combination.keyboardModifiers()
-        parts = [name for flag, name in ((Qt.KeyboardModifier.ControlModifier, "<ctrl>"),
+        control, command = ("<cmd>", "<ctrl>") if sys.platform == "darwin" else ("<ctrl>", "<cmd>")
+        parts = [name for flag, name in ((Qt.KeyboardModifier.ControlModifier, control),
                  (Qt.KeyboardModifier.AltModifier, "<alt>"), (Qt.KeyboardModifier.ShiftModifier, "<shift>"),
-                 (Qt.KeyboardModifier.MetaModifier, "<cmd>")) if modifiers & flag]
+                 (Qt.KeyboardModifier.MetaModifier, command)) if modifiers & flag]
         key = int(combination.key())
         special = {Qt.Key.Key_Escape: "esc", Qt.Key.Key_Return: "enter", Qt.Key.Key_Enter: "enter",
                    Qt.Key.Key_Space: "space", Qt.Key.Key_Tab: "tab", Qt.Key.Key_Backspace: "backspace",

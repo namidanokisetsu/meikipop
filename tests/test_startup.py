@@ -1,6 +1,7 @@
 import sys
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from meikipop.utils import startup
@@ -44,7 +45,7 @@ class StartupTests(unittest.TestCase):
                 patch.object(startup.sys, "frozen", True, create=True):
             self.assertEqual(
                 startup.startup_command(),
-                '"C:\\Program Files\\meikipop\\meikipop.exe"',
+                f'"{Path(startup.sys.executable).resolve()}"',
             )
 
 

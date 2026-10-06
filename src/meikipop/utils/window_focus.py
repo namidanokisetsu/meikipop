@@ -24,6 +24,9 @@ def restore_foreground(handle):
 
 def focus_search(window):
     from PyQt6.QtWidgets import QApplication
+    if sys.platform == "darwin" and QApplication.platformName() != "offscreen":
+        from AppKit import NSApplication
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
     window.raise_()
     window.activateWindow()
     if sys.platform == "win32" and QApplication.platformName() != "offscreen":

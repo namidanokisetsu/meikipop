@@ -8,6 +8,7 @@ from pynput import keyboard, mouse
 
 from meikipop.config.config import config
 from meikipop.gui.activation import ActivationState, normalise_pynput_button, normalise_pynput_key
+from meikipop.gui.keyboard_listener import KeyboardListener
 from meikipop.pipeline import PipelineValue, REUSE_LAST_VALUE
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class InputLoop(threading.Thread):
 
     def run(self):
         logger.debug("Input thread started.")
-        self._keyboard_listener = keyboard.Listener(on_press=self._on_key_press, on_release=self._on_key_release)
+        self._keyboard_listener = KeyboardListener(on_press=self._on_key_press, on_release=self._on_key_release)
         self._mouse_listener = mouse.Listener(on_move=self._on_move, on_click=self._on_click)
         self._keyboard_listener.start()
         self._mouse_listener.start()

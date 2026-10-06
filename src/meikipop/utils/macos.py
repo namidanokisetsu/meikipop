@@ -2,6 +2,20 @@
 import sys
 
 
+class InputMonitoringPermissionError(RuntimeError):
+    pass
+
+
+def require_input_monitoring_permission() -> None:
+    if sys.platform != "darwin":
+        return
+    from Quartz import CGPreflightListenEventAccess
+    if not CGPreflightListenEventAccess():
+        raise InputMonitoringPermissionError(
+            "Allow Meikipop in System Settings > Privacy & Security > Input Monitoring, then reopen Meikipop."
+        )
+
+
 def require_screen_capture_permission(*, request_access: bool = False) -> None:
     if sys.platform != "darwin":
         return

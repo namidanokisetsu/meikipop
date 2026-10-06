@@ -257,6 +257,9 @@ class SetupDialog(QDialog):
         for label, value in (("None", ""), ("Shift", "shift"), ("Ctrl", "ctrl"), ("Alt", "alt"),
                              ("Ctrl + Shift", "ctrl+shift"), ("Ctrl + Alt", "ctrl+alt"), ("Alt + Shift", "alt+shift")):
             self.scan_key.addItem(label, value)
+        if sys.platform == "darwin":
+            self.scan_key.addItem("Command", "cmd")
+            self.scan_key.addItem("Command + Shift", "cmd+shift")
         self.scan_mouse = QComboBox()
         for label, value in (("None", ""), ("Middle mouse", "middle"), ("Mouse 4", "mouse4"), ("Mouse 5", "mouse5")):
             self.scan_mouse.addItem(label, value)
@@ -540,7 +543,7 @@ class SetupDialog(QDialog):
             validate_shortcuts((self.shortcut.text(),))
             from meikipop.gui.turkish.desktop_input import validate_pin_shortcut
             validate_pin_shortcut(self.pin_shortcut.text())
-            self._apply_shortcut(self.shortcut.text(), self.shortcut.recorder.keySequence().toString())
+            warning = self._apply_shortcut(self.shortcut.text(), self.shortcut.recorder.keySequence().toString())
             bindings = ",".join(value for value in (self.scan_key.currentData(), self.scan_mouse.currentData()) if value)
             self.settings.setValue(f"profiles/{self.profile.currentData()}/scan_bindings", bindings)
             self.settings.setValue(f"profiles/{self.profile.currentData()}/pin_shortcut", self.pin_shortcut.text())
@@ -549,7 +552,7 @@ class SetupDialog(QDialog):
             if self.parent() is not None:
                 self.parent().set_mode(self.profile.currentData())
                 self.parent().scan_settings_changed.emit()
-            self.status.setText("Saved.")
+            self.status.setText(warning if isinstance(warning, str) and warning else "Saved.")
         except (ValueError, OSError, RuntimeError) as error:
             self.status.setText(str(error))
 

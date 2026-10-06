@@ -207,7 +207,7 @@ class _GlossConverter(StructuredContentConverter):
             self.expanded, self.remaining = expanded, remaining
         return (f'<div><a name="details-{key}"></a><a href="details:{key}" '
                 f'title="{"Collapse" if opened else "Expand"}"><small>'
-                f'{"▾" if opened else "▸"} {label}</small></a>{body}</div>')
+                f'{"▾" if opened else "▸"} {label}</small></a></div>{body}')
 
     def _ruby_to_html(self, content):
         parts, base = [], []
@@ -757,8 +757,7 @@ class QuickLookupWindow(QDialog):
         self.selection.unavailable.connect(self._selection_unavailable)
         self.selection_requested.connect(self.request_selection)
         self.clipboard_requested.connect(lambda: self.lookup_selected(QApplication.clipboard().text()))
-        self.copy_shortcut = QShortcut(QKeySequence(
-            "Meta+Shift+C" if sys.platform == "darwin" else "Ctrl+Shift+C"), self)
+        self.copy_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
         self.copy_shortcut.activated.connect(self.copy_sentence)
         self.back_shortcut = QShortcut(QKeySequence.StandardKey.Back, self)
         self.back_shortcut.activated.connect(self.go_back)
@@ -1867,17 +1866,26 @@ class QuickLookupWindow(QDialog):
 
     def apply_shortcut(self, value, preset=None):
         from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
+        from meikipop.utils.macos import InputMonitoringPermissionError
         bindings = {value: self.hotkey_requested.emit} if value else {}
         validate_shortcuts([value])
         replacement = TextHotKeys(bindings) if bindings else None
+        warning = ""
         if replacement:
-            replacement.start()
+            try:
+                replacement.start()
+            except InputMonitoringPermissionError as error:
+                warning = str(error)
+                replacement = None
+                self.show_message(warning)
         previous, self._keys = self._keys, replacement
         if previous:
             previous.stop()
+            previous.join(timeout=2)
         self.settings.setValue("hotkey", value)
         if preset is not None:
             self.settings.setValue("hotkey_preset", preset)
+        return warning
 
     def restore_shortcut(self, explicit=None):
         default = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
@@ -1910,7 +1918,7 @@ class QuickLookupWindow(QDialog):
 
 
 def shortcut_preset():
-    return "Meta+Shift+D" if sys.platform == "darwin" else "Ctrl+Shift+D"
+    return "Ctrl+Shift+D"
 
 
 def audio_autoplay_mode(settings, profile):

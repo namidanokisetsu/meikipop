@@ -22,7 +22,7 @@ class ScanGestureTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
-        with patch("meikipop.gui.turkish.desktop_input.keyboard.Listener"), \
+        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener"), \
                 patch("meikipop.gui.turkish.desktop_input.mouse.Listener"):
             self.input = DesktopInput("shift,middle", "", "", 400)
         self.addCleanup(self.input.shutdown)

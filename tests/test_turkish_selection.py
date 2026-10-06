@@ -6,7 +6,7 @@ from meikipop.gui.turkish.desktop_input import DesktopInput
 
 class DesktopInputTests(unittest.TestCase):
     def test_escape_is_suppressed_only_for_visible_popup_including_key_up(self):
-        with patch("pynput.keyboard.Listener"), patch("meikipop.gui.turkish.desktop_input.TextHotKeys"), patch("pynput.mouse.Listener"):
+        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener"), patch("meikipop.gui.turkish.desktop_input.TextHotKeys"), patch("pynput.mouse.Listener"):
             inputs = DesktopInput("shift,middle", "<ctrl>+<alt>+l", "<ctrl>+<alt>+d", 400)
         try:
             inputs.filter_key(0x100, SimpleNamespace(vkCode=27))
@@ -22,7 +22,7 @@ class DesktopInputTests(unittest.TestCase):
             inputs.shutdown()
 
     def test_text_shortcuts_can_be_disabled_individually(self):
-        with patch("pynput.keyboard.Listener"), patch("meikipop.gui.turkish.desktop_input.TextHotKeys") as shortcuts, patch("pynput.mouse.Listener"):
+        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener"), patch("meikipop.gui.turkish.desktop_input.TextHotKeys") as shortcuts, patch("pynput.mouse.Listener"):
             inputs = DesktopInput("shift", "", "", 400)
             try:
                 shortcuts.assert_not_called()

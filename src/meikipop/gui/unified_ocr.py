@@ -310,7 +310,9 @@ class UnifiedOCR(QObject):
             window.dismiss_button.clicked.connect(self.dismiss)
         window.installEventFilter(self)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
+        self._starting = True
         self.reload_settings()
+        self._starting = False
 
     @property
     def enabled(self):
@@ -419,7 +421,7 @@ class UnifiedOCR(QObject):
                 self.input.activation.set_bindings(bindings)
                 self.holding = False
             if bool(bindings) != self.enabled:
-                self.set_enabled(bool(bindings))
+                self.set_enabled(bool(bindings), request_access=not getattr(self, "_starting", False))
 
     def _sync_pin_ready(self):
         if self.input and hasattr(self.input, "pin_ready"):
@@ -488,7 +490,7 @@ class UnifiedOCR(QObject):
             self._crop_retries = 0
         return QRect(self.capture_region)
 
-    def set_enabled(self, enabled):
+    def set_enabled(self, enabled, *, request_access=True):
         self.session.enable(enabled)
         self.invalidate()
         if not enabled:
@@ -503,7 +505,7 @@ class UnifiedOCR(QObject):
         try:
             if sys.platform == "darwin":
                 from meikipop.utils.macos import require_screen_capture_permission
-                require_screen_capture_permission(request_access=True)
+                require_screen_capture_permission(request_access=request_access)
             if self.input is None:
                 from meikipop.gui.turkish.desktop_input import DesktopInput
                 from meikipop.config.config import config
@@ -524,6 +526,9 @@ class UnifiedOCR(QObject):
                 self.hit_worker.start()
             self.reload_settings()
         except Exception as error:
+            if self.input:
+                self.input.shutdown()
+                self.input = None
             self.enabled = False
             self.window.scan_toggle.setChecked(False)
             self.window.show_message(str(error) or "Global scan keys are unavailable. Check input permissions in system settings.")

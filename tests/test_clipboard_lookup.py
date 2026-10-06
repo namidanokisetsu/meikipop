@@ -1,6 +1,7 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -148,7 +149,7 @@ class ClipboardLookupTests(unittest.TestCase):
         page.shortcuts["clipboard"].enabled.setChecked(True)
         with patch("meikipop.gui.clipboard_lookup.TextHotKeys") as listener:
             self.controller.save_settings_page(page)
-            self.assertIn("<ctrl>+<shift>+k", listener.call_args.args[0])
+            self.assertIn("<cmd>+<shift>+k" if sys.platform == "darwin" else "<ctrl>+<shift>+k", listener.call_args.args[0])
             page.shortcuts["search"].recorder.setKeySequence(QKeySequence("Ctrl+Shift+K"))
             page.shortcuts["search"].enabled.setChecked(True)
             with self.assertRaises(ValueError):
@@ -164,7 +165,7 @@ class ClipboardLookupTests(unittest.TestCase):
     def test_recorded_defaults_and_double_click_opt_in(self):
         from pynput import mouse
         page = self.controller.settings_page()
-        self.assertEqual(page.shortcuts["selection"].binding(), "<ctrl>+<alt>+s")
+        self.assertEqual(page.shortcuts["selection"].binding(), "<cmd>+<alt>+s" if sys.platform == "darwin" else "<ctrl>+<alt>+s")
         self.assertFalse(page.double_click.isChecked())
         with patch.object(self.controller.selection, "start") as start:
             for _ in range(2):

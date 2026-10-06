@@ -8,6 +8,7 @@ from pynput import keyboard, mouse
 
 from meikipop.gui.activation import ActivationState, normalise_pynput_key, normalise_pynput_button
 from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
+from meikipop.gui.keyboard_listener import KeyboardListener
 
 
 def validate_pin_shortcut(value):
@@ -67,7 +68,7 @@ class DesktopInput(QObject):
         self._last_click = None
         self._press_point = None
         self.double_click_seconds = double_click_ms / 1000
-        self.keys = keyboard.Listener(on_press=lambda key: self.key(key, True),
+        self.keys = KeyboardListener(on_press=lambda key: self.key(key, True),
                                       on_release=lambda key: self.key(key, False),
                                       **({"win32_event_filter": self.filter_key} if sys.platform == "win32" else {}))
         self.clicks = mouse.Listener(on_click=self.click,
@@ -92,6 +93,8 @@ class DesktopInput(QObject):
             previous.join(timeout=2)
 
     def key(self, key, down):
+        if sys.platform != "win32" and down and key == keyboard.Key.esc and self.visible.is_set():
+            self.dismissed.emit()
         token = normalise_pynput_key(key)
         if token:
             self.activation.update(token, down)

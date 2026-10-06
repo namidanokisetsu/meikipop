@@ -21,6 +21,12 @@ class TextTriggers(QObject):
     def reload(self, *_):
         enabled = self.window.settings.value(f"profiles/{self.window.preferred_foreign}/selected_text", False, type=bool)
         if enabled and self.listener is None:
+            from meikipop.utils.macos import require_input_monitoring_permission, InputMonitoringPermissionError
+            try:
+                require_input_monitoring_permission()
+            except InputMonitoringPermissionError as error:
+                self.window.show_message(str(error))
+                return
             from pynput import mouse
             self.listener = mouse.Listener(on_click=lambda x, y, button, down:
                 self.clicked.emit(x, y, down) if button == mouse.Button.left else None)
