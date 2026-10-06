@@ -219,8 +219,8 @@ Screen lookup retries a clipped paragraph with a larger crop, at most twice.
 Growth stays on the current display and retains nearby sentence context.
 **Settings → OCR → Freeze while held** captures the current display once per hold.
 Moving between words and expanding the crop reuse that screenshot. Release the scan
-key to refresh; moving to another display requires a new hold. It defaults off per
-profile, so changing subtitles continue to use live scanning.
+key to refresh; moving to another display requires a new hold. It defaults on per
+profile. Turn it off for live scanning of changing subtitles.
 
 ## Local translation
 

@@ -325,6 +325,7 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         from meikipop.ocr.frames import RecognizedFrame
         from meikipop.utils.capture import CaptureRequest
         controller = self.controller
+        controller.freeze_while_held = False
         controller.capture_region = QRect(0, 0, 400, 200)
         controller._last_capture_at = 10
         controller.worker = SimpleNamespace(queue=Queue(), stop=Mock(), join=Mock())
@@ -507,6 +508,7 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.assertEqual(capture.call_count, 1)
 
     def test_capture_restores_previous_preview_while_worker_runs(self):
+        self.controller.freeze_while_held = False
         self.window.show()
         self.controller._capture_hidden = True
         self.window.hide()

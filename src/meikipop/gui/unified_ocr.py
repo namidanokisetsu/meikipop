@@ -285,7 +285,7 @@ class UnifiedOCR(QObject):
         self._capture_revision = 0
         self._fallback_capture = False
         self._crop_retries = 0
-        self.freeze_while_held = False
+        self.freeze_while_held = True
         self._frozen_pixels = None
         self._frozen_screen = None
         self.timer = QTimer(self)
@@ -384,7 +384,7 @@ class UnifiedOCR(QObject):
         if previous != (self.ja_ocr_provider, self.tr_ocr_provider, self.screenai_directory):
             self.invalidate()
         profile = self.window.preferred_foreign
-        frozen = settings.value(f"profiles/{profile}/freeze_while_held", False, bool) if settings else False
+        frozen = settings.value(f"profiles/{profile}/freeze_while_held", True, bool) if settings else True
         if frozen != self.freeze_while_held:
             self.invalidate()
         self.freeze_while_held = frozen

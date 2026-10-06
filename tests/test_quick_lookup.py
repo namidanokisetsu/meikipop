@@ -1375,13 +1375,13 @@ class DictionaryManagerTests(unittest.TestCase):
 
     def test_frozen_scan_setting_saves_independently_per_profile(self):
         self.dialog.sync_profile("ja")
-        self.assertFalse(self.dialog.freeze_while_held.isChecked())
-        self.dialog.freeze_while_held.setChecked(True)
-        self.assertTrue(self.settings.value("profiles/ja/freeze_while_held", False, bool))
-        self.dialog.sync_profile("tr")
-        self.assertFalse(self.dialog.freeze_while_held.isChecked())
-        self.dialog.sync_profile("ja")
         self.assertTrue(self.dialog.freeze_while_held.isChecked())
+        self.dialog.freeze_while_held.setChecked(False)
+        self.assertFalse(self.settings.value("profiles/ja/freeze_while_held", True, bool))
+        self.dialog.sync_profile("tr")
+        self.assertTrue(self.dialog.freeze_while_held.isChecked())
+        self.dialog.sync_profile("ja")
+        self.assertFalse(self.dialog.freeze_while_held.isChecked())
 
     def test_new_profiles_inherit_scan_shortcut_and_preserve_explicit_disable(self):
         self.dialog.sync_profile("tr")

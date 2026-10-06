@@ -52,7 +52,7 @@ class FrozenScanTests(unittest.TestCase):
         controller = UnifiedOCR(window)
         self.addCleanup(controller.shutdown)
         controller.enabled = controller.holding = True
-        controller.freeze_while_held = True
+        self.assertTrue(controller.freeze_while_held)
         screen = self.app.primaryScreen()
         rect = screen.geometry()
         geometry = (rect.x(), rect.y(), rect.width(), rect.height())
