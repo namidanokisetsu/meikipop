@@ -288,7 +288,7 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.assertEqual(controller.hit_worker.queue.get_nowait()[2].query, "kitap")
             self.assertTrue(controller.worker.queue.empty())
             controller.busy = False
-            controller.last_point = QPoint(120, 100)
+            controller.last_point = QPoint(100, 100)
             clock.return_value = 10.3
             controller.scan()
             capture.assert_called_once()

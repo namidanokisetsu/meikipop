@@ -204,7 +204,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                     existing.execute("UPDATE metadata SET value='2' WHERE key='schema_version'")
             else:
                 os.replace(temporary, destination)
-                library_changed(directory)
+            library_changed(directory)
         finally:
             db.close()
             if os.path.exists(temporary):

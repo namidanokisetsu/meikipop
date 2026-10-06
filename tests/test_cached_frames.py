@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QApplication
 from meikipop.gui.unified_ocr import ScanWorker, HitWorker, UnifiedOCR
+from meikipop.ocr.frames import RecognizedFrame
 from meikipop.utils.capture import CaptureRequest, PixelFrame
 from meikipop.dictionary.search import SearchResult
 from test_unified_ocr import recognized, FakeWindow
@@ -81,3 +82,35 @@ class CachedFrameTests(unittest.TestCase):
                                 frozen, "tr", (), 1, 10)
         self.assertEqual(frame.paragraphs[0].words[1].text, "ev")
         self.assertEqual(frame.point(280, 100), (.7, .5))
+
+    def test_latest_pointer_and_frame_validity_replace_distance_rejection(self):
+        from dataclasses import replace
+        from meikipop.ocr.context import hit_paragraphs
+        window = FakeWindow()
+        controller = UnifiedOCR(window)
+        controller.enabled = controller.holding = True
+        screen = QApplication.primaryScreen()
+        geometry = screen.geometry()
+        request = CaptureRequest(1, screen.name(), (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
+                                 (0, 0, 400, 200), screen.devicePixelRatio(), controller.generation)
+        frame = RecognizedFrame(request, tuple(recognized()), "tr", (), 1, monotonic())
+        controller.hit_worker = SimpleNamespace(queue=Queue(), stop=Mock(), join=Mock())
+        try:
+            with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(280, 100)), \
+                    patch.object(QApplication, "activeWindow", return_value=None):
+                controller.accept_frame(controller.generation, frame, "")
+                job = controller.hit_worker.queue.get_nowait()
+                self.assertEqual(job[2].query, "ev")
+                old_hit = hit_paragraphs(frame.paragraphs, (.2, .5), "tr")
+                controller.deliver(controller.generation, SearchResult("kitap", "tr", "en"), (frame, old_hit), "")
+                window.show_entries.assert_not_called()
+                controller.deliver(controller.generation, SearchResult("ev", "tr", "en"), (frame, job[2]), "")
+                window.show_entries.assert_called_once()
+            point = QPoint(280, 100)
+            for invalid in (replace(frame, captured_at=monotonic()-3), replace(frame, language="ja"),
+                            replace(frame, request=replace(request, screen="other")),
+                            replace(frame, request=replace(request, generation=-1))):
+                self.assertFalse(controller._valid_frame(invalid, point, monotonic()))
+        finally:
+            controller.shutdown()
+            window.deleteLater()

@@ -830,14 +830,15 @@ class QuickLookupWindow(QDialog):
             self.audio.cancel()
 
     def _translate_clicked(self):
-        if self._pending_revision is not None:
+        if self._translation_busy or self._pending_revision is not None and not self.busy_delay.isActive():
             self._invalidate()
             self._restore_actions()
         else:
             self.submit(translate=True, context=bool(self._peek and self._context))
 
     def _restore_actions(self):
-        current = self._result is not None and (self._peek or self._result.text == self.search.text().strip())
+        current = (self._result is not None and getattr(self, "_result_profile", None) == self.preferred_foreign
+                   and (self._peek or self._result.text == self.search.text().strip()))
         self._display_revision = self.revision if current else None
         self.audio_button.setEnabled(bool(current and self._result.entries))
         self.sentence_audio_button.setEnabled(bool(current and self._result.text))
@@ -1400,7 +1401,8 @@ class QuickLookupWindow(QDialog):
             return False
         entries = tuple(entries or ())
         if (peek and self._peek and self._result is not None and self._result.text == text
-                and self._result.source == source and self._result.entries == entries and self.isVisible()):
+                and self._result.source == source and self._result.entries == entries
+                and self._result.kanji == tuple(kanji) and self.isVisible()):
             if self._autoplayed is not None and audio_autoplay_mode(self.settings, self.preferred_foreign) == "lookup":
                 self._autoplay()
             return True

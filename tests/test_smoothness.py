@@ -58,6 +58,22 @@ class PendingTests(QuickLookupTests):
         self.assertFalse(enabled(self.settings, "ja", "auto_translate_sentence"))
         self.assertFalse(self.window.browser.selection_lookup)
 
+    def test_keep_warm_setting_preserves_inflight_request_and_setup_edits_save(self):
+        self.window.open_settings()
+        dialog = self.window._setup
+        with patch.object(self.window, "_edited") as edited:
+            dialog.translation_warm.click()
+            edited.assert_not_called()
+        from meikipop.dictionary.translation import load_profile_settings
+        self.assertTrue(load_profile_settings(self.settings, "ja").keep_warm)
+        dialog.operation = Mock()
+        try:
+            dialog.selection_lookup.click()
+            self.assertTrue(self.settings.value("profiles/ja/selection_lookup", False, bool))
+        finally:
+            dialog.operation = None
+            dialog.hide()
+
     def test_stream_chunks_are_batched_and_cancel_restores_useful_result(self):
         self.window.show_entries((entry(),), "猫")
         original = self.window._result

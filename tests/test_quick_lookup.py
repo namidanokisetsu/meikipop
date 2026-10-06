@@ -367,6 +367,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.foreign.currentData(), "en")
 
     def test_explicit_sentence_skips_dictionary_and_translates_into_english(self):
+        self.settings.setValue("profiles/ja/auto_translate_sentence", True)
         self.window.lookup_selected("昨日は朝ご飯を食べなかった。")
         self.wait_until(lambda: self.window._result is not None)
         self.assertTrue(self.engine.calls[0][3])
@@ -374,6 +375,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("No entry", self.window.browser.toPlainText())
 
     def test_word_without_dictionary_hit_falls_back_to_translation_once(self):
+        self.settings.setValue("profiles/ja/auto_translate_miss", True)
         original = self.engine.search
         def missing(text, **options):
             result = original(text, **options)
@@ -385,6 +387,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("No entry", self.window.browser.toPlainText())
 
     def test_short_japanese_sentence_does_not_stop_at_first_dictionary_word(self):
+        self.settings.setValue("profiles/ja/auto_translate_miss", True)
         original = self.engine.search
         self.engine.search = lambda text, **options: replace(original(text, **options), matched_length=1)
         self.window.open_search("猫がいる")
@@ -936,6 +939,7 @@ class QuickLookupTests(unittest.TestCase):
             self.assertFalse(self.window.isVisible())
 
     def test_shortcut_clipboard_sentence_translates_without_dictionary_lookup(self):
+        self.settings.setValue("profiles/ja/auto_translate_sentence", True)
         with patch.object(QApplication, "activeWindow", return_value=None), \
                 patch.object(QApplication, "clipboard") as clipboard, \
                 patch.object(self.window.selection, "start"):
