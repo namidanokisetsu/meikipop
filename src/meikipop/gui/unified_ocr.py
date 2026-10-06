@@ -25,15 +25,18 @@ class ScanWorker(threading.Thread):
         self.queue = LatestValueQueue()
         self._stopped = threading.Event()
         self._generation = None
+        self._frozen = None
 
     def invalidate(self, generation):
         self._generation = generation
+        self._frozen = None
 
     def _obsolete(self, generation):
         return self.frames is not None and self._generation is not None and generation != self._generation
 
     def stop(self):
         self._stopped.set()
+        self._frozen = None
         self.queue.put(None)
 
     def refresh(self):
@@ -89,7 +92,17 @@ class ScanWorker(threading.Thread):
                             mark("capture_begin", pixels.revision)
                             if capture is None:
                                 capture = RegionCapture()
-                            pixels = capture.capture(pixels)
+                            if pixels.frozen:
+                                key = (pixels.generation, pixels.screen, pixels.geometry, pixels.scale)
+                                if self._frozen is None or self._frozen[0] != key:
+                                    snapshot = capture.capture(replace(pixels, crop=pixels.geometry))
+                                    if self._obsolete(generation):
+                                        self.frames.emit(generation, None, "")
+                                        continue
+                                    self._frozen = (key, snapshot)
+                                pixels = self._frozen[1].cropped(pixels)
+                            else:
+                                pixels = capture.capture(pixels)
                             capture_phase = False
                             mark("capture_done", pixels.request.revision)
                         if isinstance(pixels, PixelFrame):
@@ -273,6 +286,9 @@ class UnifiedOCR(QObject):
         self._capture_revision = 0
         self._fallback_capture = False
         self._crop_retries = 0
+        self.freeze_while_held = False
+        self._frozen_pixels = None
+        self._frozen_screen = None
         self.timer = QTimer(self)
         self.timer.setInterval(16)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -334,6 +350,10 @@ class UnifiedOCR(QObject):
         if previous != (self.ja_ocr_provider, self.tr_ocr_provider, self.screenai_directory):
             self.invalidate()
         profile = self.window.preferred_foreign
+        frozen = settings.value(f"profiles/{profile}/freeze_while_held", False, bool) if settings else False
+        if frozen != self.freeze_while_held:
+            self.invalidate()
+        self.freeze_while_held = frozen
         morphology = profile != "ja" and settings.value(f"profiles/{profile}/morphology", False, bool) if settings else False
         if morphology != getattr(self, "morphology", False):
             self.invalidate()
@@ -413,6 +433,8 @@ class UnifiedOCR(QObject):
         self.capture_region = None
         self.capture_screen = None
         self._crop_retries = 0
+        self._frozen_pixels = None
+        self._frozen_screen = None
 
     def refresh_library(self):
         self.invalidate()
@@ -544,6 +566,12 @@ class UnifiedOCR(QObject):
             self._hide_preview()
         now = monotonic()
         self.hit_latest(point, now)
+        if self.freeze_while_held:
+            if self.frame is not None and self._valid_frame(self.frame, point, now):
+                return
+            screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+            if self._frozen_screen is not None and self._screen_key(screen) != self._frozen_screen:
+                return
         if self.busy or now - self._last_capture_at < .25:
             return
         self._request_capture(point)
@@ -566,6 +594,11 @@ class UnifiedOCR(QObject):
             self.window.hide()
         QTimer.singleShot(60 if self._capture_hidden else 0, lambda: self.capture(generation, point))
 
+    @staticmethod
+    def _screen_key(screen):
+        geometry = screen.geometry()
+        return (screen.name(), geometry.x(), geometry.y(), geometry.width(), geometry.height(), screen.devicePixelRatio())
+
     def capture(self, generation, point):
         if (generation != self.generation or not self.enabled or not self.holding
                 or self.window.is_pinned):
@@ -584,24 +617,36 @@ class UnifiedOCR(QObject):
             screen = QApplication.screenAt(point) or QApplication.primaryScreen()
             geometry = screen.geometry()
             scale = screen.devicePixelRatio()
-            screen_key = (screen.name(), geometry.x(), geometry.y(), geometry.width(), geometry.height(), scale)
+            screen_key = self._screen_key(screen)
+            if self.freeze_while_held:
+                if self._frozen_screen is not None and self._frozen_screen != screen_key:
+                    self.busy = False
+                    return
+                self._frozen_screen = screen_key
             region = self._capture_bounds(point, geometry, screen_key)
             self._capture_revision += 1
             request = CaptureRequest(self._capture_revision, screen.name(),
                                      (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
-                                     (region.x(), region.y(), region.width(), region.height()), scale, generation)
+                                     (region.x(), region.y(), region.width(), region.height()), scale, generation,
+                                     self.freeze_while_held)
             if sys.platform == "win32" and not self._fallback_capture and self._capture_excluded:
                 self._queue_scan(generation, point, request, region)
                 self._last_capture_at = monotonic()
                 return
-            pixmap = screen.grabWindow(0)
-            if pixmap.isNull():
-                raise RuntimeError("Screen capture unavailable. Allow screen recording in system settings.")
-            scale_x, scale_y = pixmap.width() / geometry.width(), pixmap.height() / geometry.height()
-            pixels = pixmap.toImage().copy(round((region.x() - geometry.x()) * scale_x),
+            if self.freeze_while_held and self._frozen_pixels is not None:
+                snapshot, captured_at = self._frozen_pixels
+            else:
+                pixmap = screen.grabWindow(0)
+                if pixmap.isNull():
+                    raise RuntimeError("Screen capture unavailable. Allow screen recording in system settings.")
+                snapshot, captured_at = pixmap.toImage(), monotonic()
+                if self.freeze_while_held:
+                    self._frozen_pixels = (snapshot, captured_at)
+            scale_x, scale_y = snapshot.width() / geometry.width(), snapshot.height() / geometry.height()
+            pixels = snapshot.copy(round((region.x() - geometry.x()) * scale_x),
                                            round((region.y() - geometry.y()) * scale_y),
                                            round(region.width() * scale_x), round(region.height() * scale_y))
-            self._queue_scan(generation, point, pixels, region, request)
+            self._queue_scan(generation, point, pixels, region, request, captured_at)
             self._last_capture_at = monotonic()
         except Exception as error:
             self.busy = False
@@ -619,7 +664,7 @@ class UnifiedOCR(QObject):
                     self.window.show()
                     self.follow_cursor()
 
-    def _queue_scan(self, generation, point, pixels=None, region=None, request=None):
+    def _queue_scan(self, generation, point, pixels=None, region=None, request=None, captured_at=None):
         region = region if region is not None else self.capture_region
         language = self.window.preferred_foreign
         capture_request = pixels if isinstance(pixels, CaptureRequest) else request
@@ -627,11 +672,13 @@ class UnifiedOCR(QObject):
         self.worker.queue.put((generation, pixels,
                                ((point.x() - region.x()) / region.width(),
                                 (point.y() - region.y()) / region.height()), language,
-                               (self.profile_ocr_provider, self.screenai_directory), self.morphology, request, monotonic()))
+                               (self.profile_ocr_provider, self.screenai_directory), self.morphology, request,
+                               monotonic() if captured_at is None else captured_at))
 
     def _valid_frame(self, frame, point, now):
         if (frame is None or frame.request.generation != self.generation or
-                frame.language != self.window.preferred_foreign or now - frame.captured_at > 2):
+                frame.language != self.window.preferred_foreign or
+                not frame.request.frozen and now - frame.captured_at > 2):
             return False
         screen = QApplication.screenAt(point) or QApplication.primaryScreen()
         return (screen is not None and screen.name() == frame.request.screen

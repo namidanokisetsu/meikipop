@@ -298,6 +298,10 @@ class SetupDialog(QDialog):
         scanning = QWidget()
         scan_layout = QFormLayout(scanning)
         self.scan_layout = scan_layout
+        self.freeze_while_held = QCheckBox("Freeze while held")
+        self.freeze_while_held.setToolTip("Read one screenshot until you release the scan key")
+        scan_layout.addRow(self.freeze_while_held)
+        self.freeze_while_held.toggled.connect(lambda _: self.autosave(self.save_scan_settings))
         self.pin_gesture = QComboBox()
         for label, code in (("Scan key + left click", "left"), ("Scan key + middle click", "middle"),
                             ("Popup click only", "popup")):
@@ -565,6 +569,7 @@ class SetupDialog(QDialog):
                 return
         prefix = f"profiles/{self.profile.currentData()}/"
         self.settings.setValue(prefix + "pin_gesture", self.pin_gesture.currentData())
+        self.settings.setValue(prefix + "freeze_while_held", self.freeze_while_held.isChecked())
         self.settings.setValue(prefix + "ocr_provider", provider.currentData())
         self.settings.setValue("ja_ocr_provider", self.ja_ocr_provider.currentData())
         self.settings.setValue("tr_ocr_provider", self.tr_ocr_provider.currentData())
@@ -580,6 +585,8 @@ class SetupDialog(QDialog):
         from meikipop.config.config import config
         previous_loading, self._loading = self._loading, True
         code = self.profile.currentData()
+        with QSignalBlocker(self.freeze_while_held):
+            self.freeze_while_held.setChecked(self.settings.value(f"profiles/{code}/freeze_while_held", False, bool))
         with QSignalBlocker(self.selection_lookup):
             self.selection_lookup.setChecked(self.settings.value(f"profiles/{code}/selection_lookup", False, bool))
         for key, control in self.translation_routing.items():

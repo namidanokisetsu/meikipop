@@ -12,6 +12,7 @@ class CaptureRequest:
     crop: tuple
     scale: float
     generation: int
+    frozen: bool = False
 
     def physical_crop(self, physical_geometry):
         x, y, width, height = self.crop
@@ -35,6 +36,16 @@ class PixelFrame:
     def image(self):
         from PIL import Image
         return Image.frombytes("RGB", self.size, self.pixels, "raw", self.mode, self.stride)
+
+    def cropped(self, request):
+        x, y, width, height = request.crop
+        left, top, sw, sh = self.request.crop
+        sx, sy = self.size[0] / sw, self.size[1] / sh
+        a, b = round((x - left) * sx), round((y - top) * sy)
+        w, h = round(width * sx), round(height * sy)
+        image = self.image().crop((a, b, a + w, b + h))
+        physical = (self.physical_crop[0] + a, self.physical_crop[1] + b, w, h) if self.physical_crop else ()
+        return PixelFrame(request, image.size, image.tobytes(), self.captured_at, physical_crop=physical)
 
 
 def windows_screen_geometry(name):
