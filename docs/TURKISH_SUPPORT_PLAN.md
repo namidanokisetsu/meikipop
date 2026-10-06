@@ -1,4 +1,4 @@
-Updated: 2026-10-05
+Updated: 2026-10-06
 
 # Shared Japanese, Turkish and Yomitan popup
 
@@ -21,14 +21,24 @@ clients remain explicit compatibility entrypoints.
    search; edits invalidate old results immediately. Keep source labels,
    independent expansion, scrolling, pinning, resizing and Back. Show supplied
    frequency, inflection and kanji data without merging distinct source senses
-   or inventing missing kanji components.
+   or inventing missing kanji components. Profile changes also reload cached
+   settings controls. Ruby explicitly resolves the selected font for kana and
+   kanji, uses visible glyph bounds for spacing, and defaults to gray at 50%
+   with a Japanese size control. Autoplay remembers all pronunciations in a
+   scan-key hold; manual playback remains repeatable.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings
    and imported forms. Small Unicode word/sentence policies share a registry
    design inspired by [Anki Miner's language registry](https://github.com/0xzerolight/anki_miner/blob/a1955f4a/anki_miner/languages/registry.py),
    independently implemented without importing its NLP models. Original text
-   and offsets are preserved for OCR hit-testing and sentence copying.
+   and offsets are preserved for OCR hit-testing and sentence copying. Optional
+   lemma fallback reuses the Turkish Stanza adapter for other languages after
+   dictionary forms miss. Stanza has a shared
+   [processor API](https://stanfordnlp.github.io/stanza/pipeline.html) with
+   [language-specific models](https://stanfordnlp.github.io/stanza/download_models.html),
+   rather than one model for every language. Setup is explicit, imports lazy,
+   runtime offline and worker-bound; Japanese never invokes neural analysis.
 
 4. **Local OCR and context.** Windows uses MeikiOCR for Japanese and optional
    Paddle for Turkish; macOS uses native Vision with runtime language checks.
@@ -39,7 +49,10 @@ clients remain explicit compatibility entrypoints.
    Model creation and inference remain off the Qt thread. Copy sentence is an
    explicit local clipboard action using visible scanned context, with a local
    Ctrl/Cmd+Shift+C shortcut. History retains that context. No automatic text
-   upload or ChatGPT API connection is added.
+   upload or ChatGPT API connection is added. Pointer hit-testing reuses recognized
+   frames between captures. Raw QImages replace UI-thread PNG encoding; Windows
+   capture exclusion is held through a scan instead of synchronizing the compositor
+   twice per frame. Live smoothness still needs user acceptance.
 
 5. **Optional local translation.** Explicitly installed
    [Hy-MT2](https://huggingface.co/tencent/Hy-MT2-7B-GGUF) GGUF models run through
@@ -48,6 +61,8 @@ clients remain explicit compatibility entrypoints.
    Translate is pressed; downloads occur only in setup. Custom servers must
    use loopback HTTP, without proxies or redirects. Results identify the model;
    model claims do not imply verified accuracy for every passage or language.
+   Translate's dropdown offers automatic or manual source and target languages
+   independently of the dictionary profile.
 
 ## Compatibility and remaining acceptance
 

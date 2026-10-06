@@ -1,4 +1,4 @@
-Updated: 2026-10-05
+Updated: 2026-10-06
 
 # Shared popup setup
 
@@ -54,12 +54,19 @@ sit alongside the heading; language switching stays in the tray and Settings.
 Sentence reading uses system TTS even when a Japanese word-audio database is configured.
 **Settings → Audio → Autoplay** saves immediately per profile: Off, On lookup, or When pinned.
 When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
+Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
 **Settings → Appearance** offers Charcoal, Slate, Dusk and Light, plus Custom. Presets are opaque
 with contrasting text and accents. Changes apply immediately; Custom remembers its own colors
 when switching presets. Appearance remains independent per language profile.
 Japanese definition readings appear above their text. Headwords keep the full word
 and bracketed reading by default; **Appearance → Headword reading → Furigana**
 switches the heading to an above-text reading too.
+Furigana uses the selected font, sits close to the text and defaults to muted gray
+at 50% size. **Appearance → Furigana size (%)** adjusts Japanese readings.
+
+The arrow beside Translate opens compact **From** and **To** controls. Both default
+to **Automatic** within the profile's translation pair; manual selections override
+translation direction without changing the OCR/dictionary profile.
 
 **Copy sentence**, or **Ctrl+Shift+C** on Windows / **Cmd+Shift+C** on macOS,
 copies the OCR sentence while the popup is active. The copy icon's tooltip
@@ -80,6 +87,27 @@ Copy sentence changes the clipboard only when invoked.
 The provisioned local library uses the full Turkdict pack and Jitendex
 (2026-10-03), plus KANJIDIC and Jiten metadata packs. These large data files are
 outside Git. Additional local Yomitan packs can be added through the same UI.
+
+### Optional lemma fallback
+
+Exact entries and imported forms remain first. **Settings → Dictionaries → Lemma
+fallback** enables installed Stanza models for the selected non-Japanese profile.
+Japanese keeps its bundled rules. Models run in lookup workers, with original OCR
+sentence context where available; results are labeled as lemma matches.
+
+Install the optional dependencies and explicitly set up each supported language
+in the environment used to launch Meikipop, for example:
+
+```powershell
+.venv-desktop/Scripts/python -m pip install -e ".[morphology]"
+.venv-desktop/Scripts/python -m meikipop.scripts.setup_morphology tr
+```
+
+Replace `tr` for another Stanza language. Setup downloads language-specific models;
+runtime never downloads them. Missing models leave exact/form lookup available and
+report a setup error on a lemma miss. Turn the option off and on after setup to retry.
+Neural analysis is optional and can add latency on misses; isolated words can be
+ambiguous. The default workflow needs no NLP models.
 
 ## Screen lookup
 
