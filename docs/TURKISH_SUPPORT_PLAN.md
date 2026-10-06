@@ -23,7 +23,7 @@ clients remain explicit compatibility entrypoints.
 2. **One popup.** Debounced typing, Enter, explicit local translation and OCR
    use the shared result surface. A worker retains only the newest pending
    search. OCR misses hide the preview and scanning continues while held.
-   Manual search still reports misses. Launches without lookup text start in the tray.
+   Manual search translates misses. Launches without lookup text start in the tray.
    Edits invalidate old results immediately. Keep source labels,
    independent expansion, scrolling, pinning, resizing and Back. Show supplied
    frequency, inflection and kanji data without merging distinct source senses
@@ -112,8 +112,9 @@ clients remain explicit compatibility entrypoints.
    Translation settings offer automatic or manual source and target language
    strips independently of the dictionary profile. Ordinary settings save immediately.
    Sentence lookups translate automatically; unpunctuated Japanese input falls back
-   to translation after a partial dictionary match. Word-miss routing remains optional
-   and defaults off in new profiles. Streaming is batched, cancellable through startup
+   to translation after a partial dictionary match. Manual word misses always translate,
+   including without installed or enabled dictionaries; partial-match routing for explicit
+   word lookups remains optional. Streaming is batched, cancellable through startup
    and HTTP reads, and retains useful dictionary content. Keep model warm is optional,
    defaults off, and changes only the owned server on the next intentional translation.
 

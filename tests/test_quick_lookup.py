@@ -463,7 +463,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window._result.translation, "translated")
 
     def test_word_without_dictionary_hit_falls_back_to_translation_once(self):
-        self.settings.setValue("profiles/ja/auto_translate_miss", True)
+        self.settings.setValue("profiles/ja/auto_translate_miss", False)
         original = self.engine.search
         def missing(text, **options):
             result = original(text, **options)
@@ -480,6 +480,25 @@ class QuickLookupTests(unittest.TestCase):
         self.window.open_search("猫がいる")
         self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
         self.assertEqual([call[3] for call in self.engine.calls], [False, True])
+
+    def test_dictionary_free_lookup_translates_and_model_failure_does_not_loop(self):
+        from meikipop.dictionary.search import SearchEngine
+        self.settings.setValue("profiles/ja/auto_translate_miss", False)
+        def search(text, **options):
+            self.engine.calls.append((text, options.get("translate")))
+            translator = Mock()
+            translator.translate.side_effect = RuntimeError("Install translation model.")
+            engine = SearchEngine(self.temp.name, translator=translator)
+            try:
+                return engine.search(text, **options)
+            finally:
+                engine.close()
+        self.engine.search = search
+        self.window.open_search("hello")
+        self.wait_until(lambda: self.window._result is not None and
+                        self.window._result.message == "Install translation model.")
+        self.assertEqual(self.engine.calls, [("hello", False), ("hello", True)])
+        self.assertTrue(self.window.translate.isEnabled())
 
     def test_partial_match_in_explicit_word_lookup_does_not_translate_sentence(self):
         original = self.engine.search

@@ -1055,7 +1055,7 @@ class QuickLookupWindow(QDialog):
         partial_japanese = result.source == "ja" and 0 < result.matched_length < len(result.text)
         sentence_fallback = self._sentence_lookup and partial_japanese
         if (not self._peek and not self._last_request_translate and not result.translation
-                and (not result.entries or partial_japanese) and (sentence_fallback or self.settings.value(
+                and (not result.entries or sentence_fallback or partial_japanese and self.settings.value(
                     f"profiles/{self.preferred_foreign}/auto_translate_miss", False, bool))):
             remember = self._remember_request
             context = self._pending_context[1] if self._pending_context else result.text

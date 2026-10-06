@@ -230,7 +230,7 @@ class SetupDialog(QDialog):
         self.translation_warm.setToolTip("Retains model memory after use. Changes apply on the next translation.")
         translation_form.addRow(self.translation_warm)
         self.translation_routing = {}
-        for key, label in (("auto_translate_miss", "Translate after incomplete dictionary matches"),):
+        for key, label in (("auto_translate_miss", "Translate partial dictionary matches"),):
             control = QCheckBox(label)
             self.translation_routing[key] = control
             translation_form.addRow(control)

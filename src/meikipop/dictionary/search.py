@@ -139,8 +139,7 @@ class SearchEngine:
                 if not entries:
                     suggestions = self.library.suggest(text, source)
             if not entries and not suggestions:
-                active = self.library._active(foreign if pair and source == pair[1] or source == "en" and foreign != "en" else source)
-                message = "No entry found." if active else "Add a dictionary to start searching."
+                message = "No entry found."
         translation = ""
         if translate and text:
             try:
