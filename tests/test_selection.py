@@ -17,6 +17,8 @@ class SelectionTests(unittest.TestCase):
 
     def setUp(self):
         self.capture = SelectionCapture()
+        self.capture.native_reader = Mock()
+        self.capture.native_reader.request.return_value = False
         self.capture.user32 = Mock()
         self.capture.user32.GetAsyncKeyState.return_value = 0
         self.capture.user32.GetForegroundWindow.return_value = 123
@@ -88,3 +90,43 @@ class SelectionTests(unittest.TestCase):
             unavailable.assert_called_once_with(True)
             self.assertEqual(self.values, [])
             clipboard.return_value.setMimeData.assert_not_called()
+
+    def test_native_selection_never_copies_and_keeps_bounds(self):
+        from meikipop.gui.native_selection import NativeSelection
+        self.capture.native_reader.request.return_value = True
+        with patch("meikipop.gui.selection.sys.platform", "win32"), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch("pynput.keyboard.Controller") as keys:
+            self.capture.start()
+            self.capture.native_completed(self.capture.revision, NativeSelection("selected", "kitap", ((1, 2, 3, 4),)))
+            keys.assert_not_called()
+            self.assertEqual(self.values, ["kitap"])
+            self.assertEqual(self.capture.rectangles, ((1, 2, 3, 4),))
+
+    def test_native_timeout_copies_once_and_ignores_late_reply(self):
+        from meikipop.gui.native_selection import NativeSelection
+        self.capture.native_reader.request.return_value = True
+        with patch("meikipop.gui.selection.sys.platform", "win32"), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch.object(self.capture, "copy") as copy:
+            self.capture.start()
+            revision = self.capture.revision
+            self.capture.deadline = 0
+            self.capture.poll()
+            copy.assert_called_once()
+            self.capture.native_completed(revision, NativeSelection("selected", "late"))
+            self.assertEqual(self.values, [])
+
+    def test_native_focus_change_or_protected_field_never_falls_back(self):
+        from meikipop.gui.native_selection import NativeSelection
+        self.capture.native_reader.request.return_value = True
+        with patch("meikipop.gui.selection.sys.platform", "win32"), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch.object(self.capture, "copy") as copy:
+            self.capture.start()
+            self.capture.native_completed(self.capture.revision, NativeSelection("blocked"))
+            self.capture.start()
+            self.capture.user32.GetForegroundWindow.return_value = 456
+            self.capture.native_completed(self.capture.revision, NativeSelection("selected", "wrong app"))
+            copy.assert_not_called()
+            self.assertEqual(self.values, [])
