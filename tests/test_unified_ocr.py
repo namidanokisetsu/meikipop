@@ -255,20 +255,29 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.assertTrue(shifted.contains(edge))
 
     def test_pointer_retest_skips_capture_until_frame_expires(self):
+        from meikipop.ocr.frames import RecognizedFrame
+        from meikipop.utils.capture import CaptureRequest
         controller = self.controller
         controller.capture_region = QRect(0, 0, 400, 200)
         controller._last_capture_at = 10
         controller.worker = SimpleNamespace(queue=Queue(), stop=Mock(), join=Mock())
+        controller.hit_worker = SimpleNamespace(queue=Queue(), stop=Mock(), join=Mock())
+        screen = QApplication.primaryScreen()
+        geometry = screen.geometry()
+        request = CaptureRequest(1, screen.name(), (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
+                                 (0, 0, 400, 200), screen.devicePixelRatio(), controller.generation)
+        controller.frame = RecognizedFrame(request, tuple(recognized()), "tr", (), 1, 10)
         with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
                 patch.object(QApplication, "activeWindow", return_value=None), \
                 patch("meikipop.gui.unified_ocr.monotonic", return_value=10.05) as clock, \
                 patch("meikipop.gui.unified_ocr.QTimer.singleShot") as capture:
             controller.scan()
             capture.assert_not_called()
-            self.assertIsNone(controller.worker.queue.get_nowait()[1])
+            self.assertEqual(controller.hit_worker.queue.get_nowait()[2].query, "kitap")
+            self.assertTrue(controller.worker.queue.empty())
             controller.busy = False
             controller.last_point = QPoint(120, 100)
-            clock.return_value = 10.2
+            clock.return_value = 10.3
             controller.scan()
             capture.assert_called_once()
 

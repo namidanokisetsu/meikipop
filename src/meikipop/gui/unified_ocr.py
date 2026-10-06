@@ -10,16 +10,18 @@ from PyQt6.QtWidgets import QApplication
 
 from meikipop.ocr.context import hit_paragraphs, paddle_paragraphs
 from meikipop.ocr.scan_cache import ScanCache
+from meikipop.ocr.frames import RecognizedFrame
 from meikipop.utils.lastest_queue import LatestValueQueue
 from meikipop.utils.capture import CaptureRequest, PixelFrame, RegionCapture
 from meikipop.utils.timing import mark
 
 
 class ScanWorker(threading.Thread):
-    def __init__(self, completed, directory=None):
+    def __init__(self, completed, directory=None, frames=None):
         super().__init__(daemon=True, name="UnifiedOCR")
         self.completed = completed
         self.directory = directory
+        self.frames = frames
         self.queue = LatestValueQueue()
         self._stopped = threading.Event()
 
@@ -55,7 +57,7 @@ class ScanWorker(threading.Thread):
                     continue
                 generation, pixels, point, language, *options = job
                 try:
-                    if engine is None:
+                    if engine is None and self.frames is None:
                         engine = SearchEngine(self.directory)
                     selection = tuple(options[0]) if options else ()
                     provider_key = (language, *selection)
@@ -83,6 +85,13 @@ class ScanWorker(threading.Thread):
                         mark("ocr_done", generation)
                     if self._stopped.is_set():
                         return
+                    if self.frames is not None:
+                        request = pixels.request if isinstance(pixels, PixelFrame) else options[2]
+                        captured_at = pixels.captured_at if isinstance(pixels, PixelFrame) else options[3]
+                        frame = RecognizedFrame(request, tuple(replace(p, words=tuple(p.words)) for p in paragraphs or ()),
+                                                language, selection, caches[provider_key].revision, captured_at)
+                        self.frames.emit(generation, frame, "")
+                        continue
                     hit = hit_paragraphs(paragraphs, point, language)
                     if hit is None:
                         self._emit(generation, None, None, "")
@@ -99,7 +108,13 @@ class ScanWorker(threading.Thread):
                     self._emit(generation, result, hit, "")
                 except Exception as error:
                     detail = str(error).strip() or type(error).__name__
-                    self._emit(generation, None, None, detail[:300])
+                    if self.frames is not None and not self._stopped.is_set():
+                        try:
+                            self.frames.emit(generation, None, detail[:300])
+                        except RuntimeError:
+                            pass
+                    else:
+                        self._emit(generation, None, None, detail[:300])
         finally:
             if engine:
                 engine.close()
@@ -144,14 +159,74 @@ class ScanWorker(threading.Thread):
         raise RuntimeError("Screen OCR is available for Japanese and Turkish here. Other languages support text lookup.")
 
 
+class HitWorker(threading.Thread):
+    def __init__(self, completed, directory=None):
+        super().__init__(daemon=True, name="OCRDictionary")
+        self.completed, self.directory = completed, directory
+        self.queue = LatestValueQueue()
+        self.stopped = threading.Event()
+        self.refresh_needed = threading.Event()
+
+    def refresh(self):
+        self.refresh_needed.set()
+        self.queue.put("refresh")
+
+    def stop(self):
+        self.stopped.set()
+        self.queue.put(None)
+
+    def run(self):
+        from meikipop.dictionary.search import SearchEngine
+        engine = None
+        try:
+            while not self.stopped.is_set():
+                job = self.queue.get()
+                if job is None or self.stopped.is_set():
+                    return
+                generation = job[0] if job != "refresh" else -1
+                try:
+                    if engine is None:
+                        engine = SearchEngine(self.directory)
+                    if self.refresh_needed.is_set():
+                        self.refresh_needed.clear()
+                        engine.refresh()
+                    if job == "refresh":
+                        continue
+                    generation, frame, hit, morphology = job
+                    mark("hit_lookup_begin", frame.request.revision)
+                    options = {"morphology": True, "context": (hit.text, hit.start, hit.end)} if morphology else {}
+                    result = engine.search(hit.query, source=frame.language, foreign=frame.language, **options)
+                    if frame.language == "ja" and result.entries:
+                        surface = result.entries[0].term
+                        if hit.text.startswith(surface, hit.start):
+                            hit = replace(hit, end=hit.start + len(surface))
+                    mark("hit_lookup_done", frame.request.revision)
+                    if not self.stopped.is_set():
+                        self.completed.emit(generation, result, (frame, hit), "")
+                except Exception as error:
+                    if not self.stopped.is_set():
+                        try:
+                            self.completed.emit(generation, None, None, str(error)[:300])
+                        except RuntimeError:
+                            pass
+        finally:
+            if engine:
+                engine.close()
+
+
 class UnifiedOCR(QObject):
     completed = pyqtSignal(int, object, object, str)
+    frame_ready = pyqtSignal(int, object, str)
 
     def __init__(self, window):
         super().__init__(window)
         self.window = window
         self.input = None
         self.worker = None
+        self.hit_worker = None
+        self.frame = None
+        self._hit_key = None
+        self._last_dictionary_at = 0
         self.enabled = False
         self.holding = False
         self.pin_gesture = "left"
@@ -181,6 +256,7 @@ class UnifiedOCR(QObject):
         self.leave_timer.setInterval(450)
         self.leave_timer.timeout.connect(self.finish_peek)
         self.completed.connect(self.deliver)
+        self.frame_ready.connect(self.accept_frame)
         window.ocr_enabled_changed.connect(self.set_enabled)
         window.mode_changed.connect(lambda _: self.invalidate())
         window.dictionaries_changed.connect(self.refresh_library)
@@ -208,6 +284,10 @@ class UnifiedOCR(QObject):
                 self.input.visible.clear()
                 if hasattr(self.input, "pin_ready"):
                     self.input.pin_ready.clear()
+                if not getattr(self.window, "_capture_visibility", False):
+                    self.invalidate()
+                    if self.holding:
+                        self._dismissed_hold = True
         return super().eventFilter(watched, event)
 
     def reload_settings(self):
@@ -272,6 +352,7 @@ class UnifiedOCR(QObject):
                 and QApplication.activePopupWidget() is None):
             if self._capture_hidden:
                 self._capture_hidden = False
+                self.window._capture_visibility = False
                 self.window.show()
             self.window.pin.setChecked(True)
         if self.input:
@@ -292,14 +373,16 @@ class UnifiedOCR(QObject):
 
     def invalidate(self):
         self.generation += 1
+        self.frame = None
+        self._hit_key = None
         self.last_point = None
         self.capture_region = None
         self.capture_screen = None
 
     def refresh_library(self):
         self.invalidate()
-        if self.worker:
-            self.worker.refresh()
+        if self.hit_worker:
+            self.hit_worker.refresh()
 
     def _capture_bounds(self, point, geometry, screen_key):
         # A cursor-centered crop changes pixels on every tiny pointer move,
@@ -342,8 +425,11 @@ class UnifiedOCR(QObject):
                 else:
                     self.input.visible.clear()
             if self.worker is None:
-                self.worker = ScanWorker(self.completed, getattr(self.window, "directory", None))
+                self.worker = ScanWorker(self.completed, getattr(self.window, "directory", None), self.frame_ready)
                 self.worker.start()
+            if self.hit_worker is None:
+                self.hit_worker = HitWorker(self.completed, getattr(self.window, "directory", None))
+                self.hit_worker.start()
             self.reload_settings()
         except Exception as error:
             self.enabled = False
@@ -384,6 +470,7 @@ class UnifiedOCR(QObject):
         self._dismissed_hold = self.holding
         self.holding = False
         self._capture_hidden = False
+        self.window._capture_visibility = False
         self.timer.stop()
         self.follow_timer.stop()
         self.invalidate()
@@ -406,35 +493,30 @@ class UnifiedOCR(QObject):
 
     def scan(self):
         if (not self.enabled or not self.holding or self._dismissed_hold or
-                self.busy or self.window.is_pinned):
+                self.window.is_pinned):
             return
+        self._sync_pin_ready()
         point = QCursor.pos()
         if self.window.isVisible() and self.window.geometry().contains(point):
             return
-        if QApplication.activeModalWidget():
+        if QApplication.activeModalWidget() or QApplication.activePopupWidget():
             return
         if QApplication.activeWindow() is self.window:
             if not self.holding:
                 return
             # An explicit scan outside Search hands focus back to the source app.
             # Do this here too: the trigger may have been pressed inside Search.
-            self.window.hide()
+            self._hide_preview()
         now = monotonic()
-        if (self.last_point is not None and (point - self.last_point).manhattanLength() < 4
-                and now - self._last_scan_at < 1):
+        self.hit_latest(point, now)
+        if self.busy or now - self._last_capture_at < .25:
             return
         self._last_scan_at = now
         self.last_point = QPoint(point)
         self.job_point = QPoint(point)
         self.busy = True
-        self.generation += 1
         generation = self.generation
-        # Retest the pointer against the recognized frame between fresh captures.
-        # A short lifetime also keeps animated or scrolling content current.
-        if (self.capture_region is not None and now - self._last_capture_at < .15
-                and self.capture_region.adjusted(16, 16, -16, -16).contains(point)):
-            self._queue_scan(generation, point)
-            return
+        self._last_capture_at = now
         visible = self.window.isVisible()
         from meikipop.utils.capture import exclude_from_capture
         if visible and not self._capture_excluded:
@@ -451,6 +533,7 @@ class UnifiedOCR(QObject):
             self.restore_capture_visibility()
             self.busy = False
             self._capture_hidden = False
+            self.window._capture_visibility = False
             if self.input and not self.window.isVisible():
                 self.input.visible.clear()
                 self._sync_pin_ready()
@@ -476,12 +559,10 @@ class UnifiedOCR(QObject):
             if pixmap.isNull():
                 raise RuntimeError("Screen capture unavailable. Allow screen recording in system settings.")
             scale_x, scale_y = pixmap.width() / geometry.width(), pixmap.height() / geometry.height()
-            screen_key = (screen.name(), geometry.x(), geometry.y(), geometry.width(), geometry.height(), scale_x, scale_y)
-            region = self._capture_bounds(point, geometry, screen_key)
             pixels = pixmap.toImage().copy(round((region.x() - geometry.x()) * scale_x),
                                            round((region.y() - geometry.y()) * scale_y),
                                            round(region.width() * scale_x), round(region.height() * scale_y))
-            self._queue_scan(generation, point, pixels, region)
+            self._queue_scan(generation, point, pixels, region, request)
             self._last_capture_at = monotonic()
         except Exception as error:
             self.busy = False
@@ -498,13 +579,68 @@ class UnifiedOCR(QObject):
                     self.window.show()
                     self.follow_cursor()
 
-    def _queue_scan(self, generation, point, pixels=None, region=None):
+    def _queue_scan(self, generation, point, pixels=None, region=None, request=None):
         region = region if region is not None else self.capture_region
         language = self.window.preferred_foreign
         self.worker.queue.put((generation, pixels,
                                ((point.x() - region.x()) / region.width(),
                                 (point.y() - region.y()) / region.height()), language,
-                               (self.profile_ocr_provider, self.screenai_directory), self.morphology))
+                               (self.profile_ocr_provider, self.screenai_directory), self.morphology, request, monotonic()))
+
+    def _valid_frame(self, frame, point, now):
+        if (frame is None or frame.request.generation != self.generation or
+                frame.language != self.window.preferred_foreign or now - frame.captured_at > 2):
+            return False
+        screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+        return (screen is not None and screen.name() == frame.request.screen
+                and screen.devicePixelRatio() == frame.request.scale
+                and QRect(*frame.request.geometry) == screen.geometry()
+                and QRect(*frame.request.crop).contains(point))
+
+    def accept_frame(self, generation, frame, error):
+        self.busy = False
+        if (generation != self.generation or not self.enabled or not self.holding or
+                self._dismissed_hold or self.window.is_pinned):
+            mark("discard", generation, reason="obsolete_frame")
+            return
+        if error:
+            self.frame = None
+            self._hit_key = None
+            self.restore_capture_visibility()
+            self._fallback_capture = True
+            self.window.show_message(error)
+            return
+        self.frame = frame
+        mark("frame_accepted", frame.request.revision)
+        self.hit_latest(QCursor.pos(), monotonic())
+
+    def hit_latest(self, point, now):
+        if not self._valid_frame(self.frame, point, now):
+            return
+        if (self.window.isVisible() and self.window.geometry().contains(point) or
+                QApplication.activeModalWidget() or QApplication.activePopupWidget()):
+            return
+        mark("hit_test_begin", self.frame.request.revision)
+        hit = hit_paragraphs(self.frame.paragraphs, self.frame.point(point.x(), point.y()), self.frame.language)
+        mark("hit_test_done", self.frame.request.revision)
+        if hit is None:
+            self._hit_key = None
+            self._hide_preview()
+            return
+        key = (self.frame.identity, hit.text, hit.start, hit.query, self.morphology)
+        if key == self._hit_key and now - self._last_dictionary_at < 2:
+            mark("duplicate_hit", self.frame.request.revision)
+            return
+        self._hit_key, self._last_dictionary_at = key, now
+        if self.hit_worker:
+            self.hit_worker.queue.put((self.generation, self.frame, hit, self.morphology))
+
+    def _hide_preview(self):
+        self.window._capture_visibility = True
+        try:
+            self.window.hide()
+        finally:
+            self.window._capture_visibility = False
 
     def restore_capture_visibility(self):
         if self._capture_excluded:
@@ -513,21 +649,28 @@ class UnifiedOCR(QObject):
             self._capture_excluded = False
 
     def deliver(self, generation, result, hit, error):
-        self.busy = False
         if (generation != self.generation or not self.enabled or not self.holding
                 or self._dismissed_hold or self.window.is_pinned):
+            mark("discard", generation, reason="obsolete_hit")
             return
         if QApplication.activeWindow() is self.window:
             return
-        if self.job_point is not None and (QCursor.pos() - self.job_point).manhattanLength() > 12:
-            return
+        if isinstance(hit, tuple):
+            frame, hit = hit
+            point = QCursor.pos()
+            current = hit_paragraphs(frame.paragraphs, frame.point(point.x(), point.y()), frame.language)
+            if (not self._valid_frame(frame, point, monotonic()) or self.frame is None or
+                    frame.identity != self.frame.identity or current is None or
+                    (current.text, current.start, current.query) != (hit.text, hit.start, hit.query)):
+                mark("discard", frame.request.revision, reason="lexical_hit_changed")
+                return
         if error:
             self.restore_capture_visibility()
             self._fallback_capture = True
             self.window.show_message(error)
             return
         if result is None:
-            self.window.hide()
+            self._hide_preview()
             return
         if self.window.show_entries(result.entries, text=result.text, source=result.source,
                                     peek=True, kanji=result.kanji):
@@ -542,3 +685,7 @@ class UnifiedOCR(QObject):
             self.worker.stop()
             self.worker.join(timeout=1)
             self.worker = None
+        if self.hit_worker:
+            self.hit_worker.stop()
+            self.hit_worker.join(timeout=1)
+            self.hit_worker = None
