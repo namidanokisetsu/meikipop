@@ -66,11 +66,12 @@ Kanji always use compact cards with meanings and readings, without a separate la
 The top controls are Translate, Read sentence, then Read word. In pinned OCR results they
 sit alongside the heading; language switching stays in the tray and Settings.
 Sentence reading uses system TTS even when a Japanese word-audio database is configured.
-**Audio → Pronunciation** selects Online pronunciations, System voice, or Local recordings.
-Online uses Wiktionary and Lingua Libre recordings on Wikimedia Commons, then system TTS
-when unavailable. It sends the word and language, caches recordings in memory, and requires
-no account; coverage depends on contributed recordings. Existing database profiles retain
-Local recordings. Its database and priority controls appear only in that mode;
+**Audio → Source priority** enables and orders Online pronunciations, System voice, and
+Local recordings with checkboxes, dragging, or arrow buttons. Enabled sources run top to
+bottom; put System voice first to avoid network waits. Existing source choices are retained.
+Online uses Wiktionary and Lingua Libre recordings on Wikimedia Commons. It sends the word
+and language, caches recordings and misses in memory, and requires no account; coverage
+depends on contributed recordings. Database controls appear when local sources are enabled;
 `android.db` is the supported Local Audio Server format, not an Android requirement.
 Right-click Read word to choose a source or open the current recording's attribution page.
 Sentence reading always uses an installed system voice.

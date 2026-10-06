@@ -50,9 +50,11 @@ clients remain explicit compatibility entrypoints.
    Dictionary-provided disclosures remain independently collapsible after pinning,
    including nested Turkdict sections; toggles preserve the reading position and
    history restores their state.
-   Audio separates Online pronunciations, System voice and Local recordings. Online
+   Audio orders enabled Online pronunciations, System voice and Local recordings in one
+   per-profile list with checkboxes, drag/drop and arrows, preserving existing choices. Online
    retrieves language-matched Wiktionary/Lingua Libre files from Wikimedia Commons on
-   the audio worker, with bounded downloads, an in-memory cache and system TTS fallback.
+   the audio worker through one combined metadata query, with bounded downloads, cached
+   misses and fallback to the next enabled source. System voice can run before the network.
    Recording attribution remains accessible from the audio menu. Existing local database
    profiles keep their priority order; other profiles default to online word audio.
    Explicit word lookup within typed or pasted input retains the full input as

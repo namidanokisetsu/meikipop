@@ -7,31 +7,42 @@ from meikipop.audio.online import OnlineAudio
 class OnlineAudioTests(unittest.TestCase):
     def test_exact_language_and_word_filter_and_cached_recording_credit(self):
         client = OnlineAudio()
-        results = {"query": {"search": [{"title": title} for title in
-                   ("File:Ru-привет.ogg", "File:En-привет.ogg", "File:Ru-приветствие.ogg")]}}
-        info = {"query": {"pages": {"1": {"imageinfo": [{
+        recording = {
             "url": "https://upload.wikimedia.org/audio.ogg", "user": "Speaker",
             "descriptionurl": "https://commons.wikimedia.org/wiki/File:Ru-привет.ogg",
-            "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"}}}]}}}}
-        with patch.object(client, "_fetch", side_effect=[results, info, b"OggSfixture"]) as fetch:
+            "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"}}}
+        results = {"query": {"pages": {str(i): {"title": title, "imageinfo": [recording]}
+                   for i, title in enumerate(("File:En-привет.ogg", "File:Ru-приветствие.ogg", "File:Ru-привет.ogg"))}}}
+        with patch.object(client, "_fetch", side_effect=[results, b"OggSfixture"]) as fetch:
             result = client.lookup("приве\u0301т", "ru", "rus")
-            self.assertEqual(fetch.call_args_list[1].kwargs["params"]["titles"], "File:Ru-привет.ogg")
+            self.assertEqual(fetch.call_args_list[0].kwargs["params"]["generator"], "search")
             self.assertEqual(result[1:4], ("Wiktionary", b"OggSfixture", "Speaker · CC BY-SA 4.0"))
             self.assertEqual(client.lookup("привет", "ru", "rus"), result)
-            self.assertEqual(fetch.call_count, 3)
+            self.assertEqual(fetch.call_count, 2)
 
     def test_lingua_libre_fallback_and_missing_recording_cache(self):
         client = OnlineAudio()
-        empty = {"query": {"search": []}}
-        results = {"query": {"search": [{"title": "File:LL-Q7737 (rus)-Speaker-привет.wav"}]}}
-        info = {"query": {"pages": {"1": {"imageinfo": [{
+        empty = {"query": {"pages": {}}}
+        info = {"query": {"pages": {"1": {"title": "File:LL-Q256 (tur)-Speaker-ev.wav", "imageinfo": [{
             "url": "https://upload.wikimedia.org/audio.wav", "extmetadata": {}}]}}}}
-        with patch.object(client, "_fetch", side_effect=[empty, results, info, b"RIFFfixture"]):
-            self.assertEqual(client.lookup("привет", "ru", "rus")[1], "Lingua Libre")
+        with patch.object(client, "_fetch", side_effect=[info, b"RIFFfixture"]):
+            self.assertEqual(client.lookup("ev", "tr", "tur")[1], "Lingua Libre")
         with patch.object(client, "_fetch", return_value=empty) as fetch:
             self.assertIsNone(client.lookup("absent", "en", "eng"))
             self.assertIsNone(client.lookup("absent", "en", "eng"))
-            self.assertEqual(fetch.call_count, 2)
+            self.assertEqual(fetch.call_count, 1)
+
+    def test_network_failures_are_cached_but_cancellation_is_not(self):
+        import requests
+        client = OnlineAudio()
+        with patch.object(client, "_fetch", side_effect=requests.Timeout) as fetch:
+            self.assertIsNone(client.lookup("ev", "tr", "tur"))
+            self.assertIsNone(client.lookup("ev", "tr", "tur"))
+            self.assertEqual(fetch.call_count, 1)
+        client = OnlineAudio()
+        with patch.object(client, "_fetch", side_effect=InterruptedError):
+            self.assertIsNone(client.lookup("ev", "tr", "tur", cancelled=lambda: True))
+            self.assertFalse(client.cache)
 
     def test_requests_are_bounded_cancelled_and_reject_non_audio_or_foreign_hosts(self):
         from time import monotonic
