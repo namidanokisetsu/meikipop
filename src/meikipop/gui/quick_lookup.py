@@ -1143,7 +1143,8 @@ class QuickLookupWindow(QDialog):
                     block = block.next()
                 if block.isValid() and block_text:
                     from PyQt6.QtGui import QTextCursor
-                    scroll += self.browser.cursorRect(QTextCursor(block)).top() - offset
+                    scroll = (self.browser.verticalScrollBar().value()
+                              + self.browser.cursorRect(QTextCursor(block)).top() - offset)
                 self.browser.verticalScrollBar().setValue(scroll)
             self.browser.setToolTip("")
             self.fit_timer.start(0)
@@ -1219,7 +1220,6 @@ class QuickLookupWindow(QDialog):
             key = url.path()
             self._details_expanded.symmetric_difference_update((key,))
             self._render()
-            self.browser.scrollToAnchor("details-" + key)
             return
         try:
             index = int(url.path())

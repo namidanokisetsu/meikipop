@@ -42,7 +42,8 @@ clients remain explicit compatibility entrypoints.
    Pinned OCR results include compact original context, enabled by default with
    a per-profile Appearance toggle. Copy and translation retain the complete context.
    Dictionary-provided disclosures remain independently collapsible after pinning,
-   including nested Turkdict sections; history restores their state.
+   including nested Turkdict sections; toggles preserve the reading position and
+   history restores their state.
    Explicit word lookup within typed or pasted input retains the full input as
    sentence context through dictionary analysis, translation, audio, copying and Back.
 

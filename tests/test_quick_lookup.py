@@ -968,6 +968,44 @@ class QuickLookupTests(unittest.TestCase):
         self.window._link(QUrl("details:0:0:0"))
         self.assertIn("Inner text", self.window.browser.toPlainText())
 
+    def test_disclosure_clicks_preserve_viewport_at_top_and_midway(self):
+        def details(label, body):
+            return {"tag": "details", "content": [{"tag": "summary", "content": label}, body]}
+
+        browser = self.window.browser
+        for leading_lines in (0, 12):
+            with self.subTest(leading_lines=leading_lines):
+                self.window.pin.setChecked(False)
+                definition = {"type": "structured-content", "content": [
+                    *({"tag": "div", "content": f"Lead {i}"} for i in range(leading_lines)),
+                    details("Grammar", ["Plural form", details("Example", "Nested example")]),
+                    details("Etymology", "Word origin"),
+                    *({"tag": "div", "content": f"Definition {i}"} for i in range(30))]}
+                self.window.show_entries((entry("bahasa", definitions=(definition,), language="id"),),
+                                         "bahasa", source="id", peek=True)
+                self.window.pin.setChecked(True)
+                self.app.processEvents()
+                bar = browser.verticalScrollBar()
+                bar.setValue(0)
+                if leading_lines:
+                    bar.setValue(browser.cursorRect(browser.document().find("Lead 10")).top())
+                    self.assertGreater(bar.value(), 0)
+                self.assertGreater(bar.maximum(), bar.value())
+                for label in ("Grammar", "Example", "Example", "Grammar", "Etymology", "Etymology"):
+                    cursor = browser.document().find(label)
+                    cursor.setPosition(cursor.selectionStart() + 1)
+                    point = browser.cursorRect(cursor).center()
+                    self.assertTrue(browser.viewport().rect().contains(point))
+                    self.assertTrue(browser.anchorAt(point).startswith("details:"))
+                    scroll, opened = bar.value(), set(self.window._details_expanded)
+                    QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+                    self.wait_until(lambda: not self.window.render_timer.isActive())
+                    self.assertNotEqual(self.window._details_expanded, opened)
+                    self.assertEqual(bar.value(), scroll)
+                    cursor = browser.document().find(label)
+                    cursor.setPosition(cursor.selectionStart() + 1)
+                    self.assertLessEqual(abs(browser.cursorRect(cursor).center().y() - point.y()), 1)
+
     def test_japanese_disclosures_keep_shared_ruby_and_escape_summary(self):
         definition = {"type": "structured-content", "content": [
             {"tag": "ruby", "content": ["猫", {"tag": "rt", "content": "ねこ"}]},
