@@ -17,6 +17,19 @@ class Frequency:
     mode: str = "rank-based"
 
 
+def harmonic_rank(frequencies):
+    """One vote per dictionary, using its best matching positive rank."""
+    ranks = {}
+    for frequency in frequencies:
+        rank = frequency.rank
+        if frequency.mode == "rank-based" and rank is not None and math.isfinite(rank) and rank > 0:
+            ranks[frequency.source] = min(rank, ranks.get(frequency.source, rank))
+    if not ranks:
+        return None
+    smallest = min(ranks.values())
+    return smallest * (len(ranks) / math.fsum(smallest / rank for rank in ranks.values()))
+
+
 def _bank_rows(archive, prefix, cancelled=None):
     pattern = re.compile(re.escape(prefix) + r"_(\d+)\.json")
     names = sorted((name for name in archive.namelist() if pattern.fullmatch(name)),

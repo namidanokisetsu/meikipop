@@ -133,6 +133,10 @@ class SetupDialog(QDialog):
         self.apply.clicked.connect(self.save_dictionaries)
         self.apply.hide()
         dictionary_layout.addLayout(actions)
+        self.combine_frequencies = QCheckBox("Combine frequency ranks")
+        self.combine_frequencies.setToolTip("Harmonic mean across enabled rank dictionaries; best matching rank per dictionary")
+        self.combine_frequencies.toggled.connect(self.save_frequency_display)
+        dictionary_layout.addWidget(self.combine_frequencies)
         self.morphology = QCheckBox("Lemma fallback")
         self.morphology.setToolTip("Try installed Stanza models when dictionary forms do not match")
         self.morphology.toggled.connect(self.save_morphology)
@@ -450,6 +454,8 @@ class SetupDialog(QDialog):
         from meikipop.config.config import config
         code = self.profile.currentData()
         self.status.clear()
+        with QSignalBlocker(self.combine_frequencies):
+            self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
         with QSignalBlocker(self.morphology):
             self.morphology.setChecked(self.settings.value(f"profiles/{code}/morphology", False, bool))
         self.morphology.setVisible(code != "ja")
@@ -501,6 +507,11 @@ class SetupDialog(QDialog):
 
     def current_ocr_control(self):
         return {"ja": self.ja_ocr_provider, "tr": self.tr_ocr_provider}.get(self.profile.currentData(), self.other_ocr_provider)
+
+    def save_frequency_display(self, enabled):
+        self.settings.setValue(f"profiles/{self.profile.currentData()}/combine_frequencies", enabled)
+        if self.parent() is not None:
+            self.parent()._render()
 
     def save_morphology(self, enabled):
         code = self.profile.currentData()

@@ -635,6 +635,19 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("negative · past", html)
         self.assertNotIn("unstressed infinitive", html)
 
+    def test_frequency_defaults_to_one_harmonic_rank_with_optional_details(self):
+        word = replace(entry(), frequencies=(Frequency("A", 100, "100"), Frequency("A", 900, "900㋕"),
+                                            Frequency("B", 400, "400")))
+        self.window.show_entries((word,), "猫")
+        text = self.window.browser.toPlainText()
+        self.assertIn("#160", text)
+        self.assertNotIn("900", text)
+        self.assertNotIn("#400", text)
+        self.settings.setValue("profiles/ja/combine_frequencies", False)
+        self.window._render()
+        self.assertIn("#100", self.window.browser.toPlainText())
+        self.assertIn("#400", self.window.browser.toPlainText())
+
     def test_structured_preview_keeps_lists_and_hides_examples_and_extra_senses(self):
         # Mirrors Turkdict's export_prototype.Structured output (classes become styles).
         definition = {"type": "structured-content", "content": {"tag": "ol", "content": [

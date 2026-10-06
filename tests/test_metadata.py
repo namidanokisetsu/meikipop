@@ -3,7 +3,7 @@ import json
 import unittest
 import zipfile
 
-from meikipop.dictionary.metadata import frequency_rows, kanji_rows
+from meikipop.dictionary.metadata import Frequency, frequency_rows, harmonic_rank, kanji_rows
 
 
 def archive_for(files):
@@ -16,6 +16,19 @@ def archive_for(files):
 
 
 class MetadataTests(unittest.TestCase):
+    def test_harmonic_rank_weights_dictionaries_equally(self):
+        frequencies = (Frequency("A", 100, "100"), Frequency("A", 900, "900㋕"),
+                       Frequency("B", 400, "400"))
+        self.assertEqual(harmonic_rank(frequencies * 2), 160)
+        self.assertEqual(harmonic_rank(frequencies[:2]), 100)
+
+    def test_harmonic_rank_excludes_counts_labels_and_invalid_ranks(self):
+        frequencies = (Frequency("Count", 10000, "10000", mode="occurrence-based"),
+                       Frequency("Band", None, "common"), Frequency("Zero", 0, "0"),
+                       Frequency("Bad", float("nan"), ""), Frequency("Infinite", float("inf"), ""))
+        self.assertIsNone(harmonic_rank(frequencies))
+        self.assertEqual(harmonic_rank((*frequencies, Frequency("Rank", 50, "50"))), 50)
+
     def test_frequency_shapes_preserve_reading_display_and_numeric_value(self):
         rows = [["猫", "freq", 42], ["猫", "freq", "1,234"], ["猫", "freq", "common"],
                 ["猫", "freq", {"value": 12, "displayValue": "12★"}],

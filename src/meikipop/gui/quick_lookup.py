@@ -271,9 +271,11 @@ class _GlossConverter(StructuredContentConverter):
         return parts
 
 
-def _metadata(entries):
+def _metadata(entries, combine_frequencies=True):
     frequencies, inflections = OrderedDict(), OrderedDict()
+    raw_frequencies = []
     for entry in entries:
+        raw_frequencies.extend(entry.frequencies)
         for frequency in entry.frequencies:
             label = frequency.label or (f"{frequency.rank:g}" if frequency.rank is not None else "")
             if (frequency.rank is not None and frequency.mode == "rank-based"
@@ -287,8 +289,15 @@ def _metadata(entries):
     parts = []
     if frequencies:
         muted = surface_colors(config.color_background, config.color_foreground)["muted"]
-        parts.extend(f'<a href="frequency:{quote(source + ": " + label)}" style="color:{muted}">{escape(label)}</a>'
-                     for source, label in frequencies)
+        if combine_frequencies:
+            from meikipop.dictionary.metadata import harmonic_rank
+            rank = harmonic_rank(raw_frequencies)
+            if rank is not None:
+                detail = "; ".join(source + ": " + label for source, label in frequencies)
+                parts.append(f'<a href="frequency:{quote(detail)}" style="color:{muted}">#{max(1, round(rank)):,}</a>')
+        else:
+            parts.extend(f'<a href="frequency:{quote(source + ": " + label)}" style="color:{muted}">{escape(label)}</a>'
+                         for source, label in frequencies)
     if inflections:
         parts.append(escape(" · ".join(inflections)))
     return '<p class="metadata"><small>' + " · ".join(parts) + '</small></p>' if parts else ""
@@ -299,7 +308,7 @@ def _source_name(source):
 
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
-                  headword_furigana=False):
+                  headword_furigana=False, combine_frequencies=True):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
@@ -331,7 +340,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
             parts.append(f'<h2>{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
         else:
             parts.append(f'<h2>{escape(term)}{reading_html}</h2>')
-        parts.append(_metadata(entry for entries in dictionaries.values() for entry in entries))
+        parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies))
         if preview and result.source == "tr":
             alternatives = tuple(dict.fromkeys(f"{other.term} · {' · '.join(other.inflection)}"
                                  for other in result.entries if other.term != term and other.inflection))[:3]
@@ -825,7 +834,8 @@ class QuickLookupWindow(QDialog):
                                                preview=self._peek and not self.is_pinned and compact,
                                                overlay_actions=self._peek and self.is_pinned,
                                                show_source=self._peek,
-                                               headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool)))
+                                               headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
+                                               combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self.browser.setToolTip("")
             self._place_actions()
             QTimer.singleShot(0, self._fit_preview)
