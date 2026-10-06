@@ -788,7 +788,11 @@ class UnifiedOCR(QObject):
         if not self.session.accepts(generation, self.window.is_pinned):
             mark("discard", generation, reason="obsolete_hit")
             return
-        if QApplication.activeWindow() is self.window:
+        # AppKit can leave Qt's active window pointing at the hidden Search
+        # popup after another application takes focus.
+        if (QApplication.activeWindow() is self.window
+                and (sys.platform != "darwin" or self.window.isVisible())):
+            mark("discard", generation, reason="active_search")
             return
         if isinstance(hit, tuple):
             frame, hit = hit

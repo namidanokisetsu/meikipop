@@ -252,7 +252,21 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window.set_context.assert_not_called()
 
     def test_active_manual_search_cannot_be_replaced_by_ocr(self):
+        self.window.show()
         with patch.object(QApplication, "activeWindow", return_value=self.window):
+            self.controller.deliver(self.controller.generation, Mock(), Mock(), "")
+        self.window.show_entries.assert_not_called()
+
+    def test_macos_hidden_search_with_stale_active_window_accepts_ocr(self):
+        with patch("meikipop.gui.unified_ocr.sys.platform", "darwin"), \
+                patch.object(QApplication, "activeWindow", return_value=self.window):
+            self.controller.deliver(self.controller.generation, Mock(entries=(Mock(),)),
+                                    ContextHit("kitap", "kitap ev", 0, 5), "")
+        self.window.show_entries.assert_called_once()
+
+    def test_windows_active_search_guard_is_preserved_when_hidden(self):
+        with patch("meikipop.gui.unified_ocr.sys.platform", "win32"), \
+                patch.object(QApplication, "activeWindow", return_value=self.window):
             self.controller.deliver(self.controller.generation, Mock(), Mock(), "")
         self.window.show_entries.assert_not_called()
 

@@ -22,4 +22,4 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -c "import unittest; loader=unittest.defaultTestLoader; suite=unittest.TestSuite(loader.discover('tests', pattern=p) for p in ('test_macos_input.py','test_text_shortcuts.py','test_selection.py','test_scan_gestures.py','test_first_run.py','test_startup.py','test_quick_lookup.py','test_profile_themes.py')); result=unittest.TextTestRunner(verbosity=1).run(suite); raise SystemExit(not result.wasSuccessful())"
+          python -c "import unittest; loader=unittest.defaultTestLoader; suite=unittest.TestSuite(loader.discover('tests', pattern=p) for p in ('test_macos_input.py','test_text_shortcuts.py','test_selection.py','test_scan_gestures.py','test_first_run.py','test_startup.py','test_quick_lookup.py','test_profile_themes.py','test_unified_ocr.py')); result=unittest.TextTestRunner(verbosity=1).run(suite); raise SystemExit(not result.wasSuccessful())"
