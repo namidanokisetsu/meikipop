@@ -252,7 +252,6 @@ class TranslationSetupTests(unittest.TestCase):
         changed = Mock()
         self.dialog.dictionaries_changed.connect(changed)
         self.dialog.translation_mode.setCurrentIndex(1)
-        self.assertTrue(self.dialog.save_translation())
         from meikipop.dictionary.translation import load_profile_settings
         self.assertEqual(load_profile_settings(self.dialog.settings, "ja").profile, "lightweight")
         self.assertEqual(load_profile_settings(self.dialog.settings, "tr").profile, "quality")

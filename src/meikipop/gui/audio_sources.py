@@ -64,10 +64,14 @@ class AudioSources(QWidget):
             return
         order = self.order()
         position = order.index("database") if "database" in order else len(order)
+        added = False
         for source in sources:
             if "db:" + source not in order:
                 self.add("db:" + source, position)
                 position += 1
+                added = True
+        if added:
+            self.changed.emit()
 
     def move(self, delta):
         row = self.items.currentRow()

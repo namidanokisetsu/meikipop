@@ -243,6 +243,22 @@ class QuickLookupTests(unittest.TestCase):
         self.window.open_search()
         self.assertEqual(self.window.height(), 420)
 
+    def test_bounded_preview_does_not_expose_a_partial_bottom_line(self):
+        self.settings.setValue("preview_max_height", 190)
+        self.window.show_entries((entry(definitions=("feline animal " * 90,)),), "猫", peek=True)
+        self.app.processEvents()
+        self.window._fit_preview()
+        document = self.window.browser.document()
+        height = self.window.browser.viewport().height()
+        block = document.begin()
+        while block.isValid():
+            top = document.documentLayout().blockBoundingRect(block).top()
+            for index in range(block.layout().lineCount()):
+                line = block.layout().lineAt(index)
+                y = top + line.y()
+                self.assertFalse(y < height < y + line.height(), (y, height, y + line.height()))
+            block = block.next()
+
     def test_compact_preview_keeps_complete_senses_with_a_bounded_height(self):
         long_sense = "A complete definition with several clauses. " * 12
         for list_tag in ("ol", "div"):
