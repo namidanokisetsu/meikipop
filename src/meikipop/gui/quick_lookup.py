@@ -160,7 +160,8 @@ class LookupWorker(QObject):
 
 class _GlossConverter(StructuredContentConverter):
     """Prune structured previews before conversion, retaining lists and emphasis."""
-    def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term=""):
+    def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term="",
+                 details_expanded=(), detail_prefix="", definitions=()):
         super().__init__()
         self.expanded = expanded
         self.preview = preview
@@ -170,6 +171,38 @@ class _GlossConverter(StructuredContentConverter):
         self._preview_source_complete = False
         self.remaining = limit
         self.clipped = False
+        self.details_expanded = details_expanded
+        self._detail_keys = {}
+        def index_details(node):
+            if isinstance(node, (list, tuple)):
+                for child in node:
+                    index_details(child)
+            elif isinstance(node, dict):
+                if node.get("tag") == "details":
+                    self._detail_keys[id(node)] = f"{detail_prefix}:{len(self._detail_keys)}"
+                index_details(node.get("content"))
+        index_details(definitions)
+
+    def _details_to_html(self, node):
+        if self.preview:
+            self.clipped = True
+            return ""
+        key = self._detail_keys[id(node)]
+        children = node.get("content", [])
+        children = children if isinstance(children, list) else [children]
+        summary = next((child for child in children if isinstance(child, dict)
+                        and child.get("tag") == "summary"), None)
+        opened = key in self.details_expanded
+        expanded, remaining = self.expanded, self.remaining
+        self.expanded, self.remaining = True, None
+        try:
+            label = (self._node_to_html(summary.get("content")) if summary else "") or "More"
+            body = self._node_to_html([child for child in children if child is not summary]) if opened else ""
+        finally:
+            self.expanded, self.remaining = expanded, remaining
+        return (f'<div><a name="details-{key}"></a><a href="details:{key}" '
+                f'title="{"Collapse" if opened else "Expand"}"><small>'
+                f'{"▾" if opened else "▸"} {label}</small></a>{body}</div>')
 
     def _ruby_to_html(self, content):
         parts, base = [], []
@@ -208,6 +241,8 @@ class _GlossConverter(StructuredContentConverter):
                 parts.append(self._node_to_html(child))
             return "".join(parts)
         if isinstance(node, dict):
+            if node.get("tag") == "details":
+                return self._details_to_html(node)
             node = dict(node)
             tag, content = node.get("tag", ""), node.get("content")
             data = node.get("data", {})
@@ -239,7 +274,7 @@ class _GlossConverter(StructuredContentConverter):
                 if self.preview and kind in ("forms", "attribution", "extra-info"):
                     self.clipped = True
                     return ""
-                if tag == "details" or "example" in kind.lower() or turkdict_example:
+                if "example" in kind.lower() or turkdict_example:
                     self.clipped = True
                     return ""
                 # Turkdict exports numbered senses as divs rather than list items.
@@ -335,7 +370,7 @@ def _source_name(source):
 
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
-                  headword_furigana=False, combine_frequencies=True, source_text=None):
+                  headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=()):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
@@ -386,7 +421,9 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
             full, more = source in expanded and not preview, len(entries) > 2
             generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
             converter = _GlossConverter(expanded=full, limit=None if preview else 360, preview=preview,
-                                        generic_source=generic_source, term=term)
+                                        generic_source=generic_source, term=term,
+                                        details_expanded=details_expanded, detail_prefix=f"{group_index}:{index}",
+                                        definitions=tuple(definition for entry in entries for definition in entry.definitions))
             definitions = []
             for entry in entries if full else entries[:2]:
                 more = more or len(entry.definitions) > 3
@@ -466,6 +503,7 @@ class QuickLookupWindow(QDialog):
         self._history = []
         self._new_chain = True
         self._expanded = set()
+        self._details_expanded = set()
         self._kanji_expanded = False
         self._pin_anchor_click = False
         self._keys = None
@@ -1006,15 +1044,19 @@ class QuickLookupWindow(QDialog):
         if at_end:
             bar.setValue(bar.maximum())
 
-    def _display(self, result, remember=True, expanded=()):
+    def _display(self, result, remember=True, expanded=(), details_expanded=None):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
             result.text, result.source, result.target)
         previous_context = getattr(self, "_result_context", "")
         if remember and not self._new_chain and self._result is not None and not same:
             self._history.append((self._result, getattr(self, "_result_context", ""),
                                   self._result_profile, self._result_target, tuple(self._expanded),
-                                  self.browser.verticalScrollBar().value()))
+                                  self.browser.verticalScrollBar().value(), tuple(self._details_expanded)))
             self._history = self._history[-30:]
+        if details_expanded is not None:
+            self._details_expanded = set(details_expanded)
+        elif self._new_chain or self._result is None or result.entries != self._result.entries:
+            self._details_expanded.clear()
         self._new_chain = False
         self._result = result
         self._display_revision = self.revision
@@ -1049,6 +1091,7 @@ class QuickLookupWindow(QDialog):
             self._place_actions()
             from meikipop.gui.profile_appearance import DEFAULTS
             identity = (repr(self._result), self.preferred_foreign, tuple(sorted(expanded)),
+                        tuple(sorted(self._details_expanded)),
                         self._kanji_expanded, self._peek, self.is_pinned, compact,
                         tuple(getattr(config, key) for key in DEFAULTS), self.devicePixelRatioF(),
                         self.audio_actions.sizeHint().width(), show_source, source_text if show_source else None,
@@ -1066,6 +1109,7 @@ class QuickLookupWindow(QDialog):
                                                preview=self._peek and not self.is_pinned and compact,
                                                overlay_actions=(self.audio_actions.sizeHint().width() + 8) if self._peek and self.is_pinned else 0,
                                                show_source=show_source, source_text=source_text,
+                                               details_expanded=self._details_expanded,
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
@@ -1149,6 +1193,12 @@ class QuickLookupWindow(QDialog):
             self._render()
             self.browser.scrollToAnchor("kanji")
             return
+        if url.scheme() == "details" and re.fullmatch(r"\d+:\d+:\d+", url.path()):
+            key = url.path()
+            self._details_expanded.symmetric_difference_update((key,))
+            self._render()
+            self.browser.scrollToAnchor("details-" + key)
+            return
         try:
             index = int(url.path())
         except ValueError:
@@ -1179,7 +1229,8 @@ class QuickLookupWindow(QDialog):
         if not self._history:
             return
         self._invalidate()
-        result, context, profile, target, expanded, scroll = self._history.pop()
+        previous = self._history.pop()
+        result, context, profile, target, expanded, scroll = previous[:6]
         with QSignalBlocker(self.search), QSignalBlocker(self.source), QSignalBlocker(self.foreign):
             self.search.setText(result.text)
             if self.source.findData(profile) < 0:
@@ -1195,7 +1246,8 @@ class QuickLookupWindow(QDialog):
         if self._setup is not None:
             self._setup.sync_profile(profile)
         self.scan_settings_changed.emit()
-        self._display(result, remember=False, expanded=expanded)
+        self._display(result, remember=False, expanded=expanded,
+                      details_expanded=previous[6] if len(previous) > 6 else ())
         self.set_context(context)
         self.browser.verticalScrollBar().setValue(scroll)
         self.translate.setEnabled(bool(result.text))

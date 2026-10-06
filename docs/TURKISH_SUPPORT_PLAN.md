@@ -41,6 +41,8 @@ clients remain explicit compatibility entrypoints.
    Pin freezes a preview; existing dismissal and fresh-scan actions leave it.
    Pinned OCR results include compact original context, enabled by default with
    a per-profile Appearance toggle. Copy and translation retain the complete context.
+   Dictionary-provided disclosures remain independently collapsible after pinning,
+   including nested Turkdict sections; history restores their state.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
    remain specialized. Other installed languages use indexed entries/readings

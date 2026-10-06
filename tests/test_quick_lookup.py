@@ -855,6 +855,54 @@ class QuickLookupTests(unittest.TestCase):
         self.assertFalse(self.window.eventFilter(self.window.copy_button, QEvent(QEvent.Type.ToolTip)))
         self.assertIn("猫", self.window.copy_button.toolTip())
 
+    def test_pinning_keeps_dictionary_disclosures_collapsed_and_independent(self):
+        def details(label, body):
+            return {"tag": "details", "content": [{"tag": "summary", "content": label}, body]}
+        definition = {"type": "structured-content", "content": [
+            "profession", details("More", ["Outer text", details("Nested", "Inner text")]),
+            details("Other", "Other text")]}
+        self.window.show_entries((entry("meslek", "Turkish Bilingual", (definition,), "tr"),),
+                                 "meslek", source="tr", peek=True)
+        self.assertNotIn("More", self.window.browser.toPlainText())
+        self.window.pin.setChecked(True)
+        text = self.window.browser.toPlainText()
+        self.assertIn("More", text)
+        self.assertNotIn("Outer text", text)
+        self.assertNotIn("Other text", text)
+        self.window._link(QUrl("details:0:0:2"))
+        self.assertIn("Other text", self.window.browser.toPlainText())
+        self.assertNotIn("Outer text", self.window.browser.toPlainText())
+        self.window._link(QUrl("details:0:0:0"))
+        self.assertIn("Outer text", self.window.browser.toPlainText())
+        self.assertNotIn("Inner text", self.window.browser.toPlainText())
+        self.window._link(QUrl("details:0:0:1"))
+        self.assertIn("Inner text", self.window.browser.toPlainText())
+        self.window._link(QUrl("details:0:0:0"))
+        self.assertNotIn("Inner text", self.window.browser.toPlainText())
+        self.assertIn("Other text", self.window.browser.toPlainText())
+        original = self.window._result
+        self.window._display(replace(original, translation="profession"))
+        self.assertIn("Other text", self.window.browser.toPlainText())
+        self.window._display(SearchResult("ev", "tr", "en", (entry("ev", language="tr"),)))
+        self.assertFalse(self.window._details_expanded)
+        self.window.go_back()
+        self.assertIn("Other text", self.window.browser.toPlainText())
+        self.assertNotIn("Outer text", self.window.browser.toPlainText())
+        self.window._link(QUrl("details:0:0:0"))
+        self.assertIn("Inner text", self.window.browser.toPlainText())
+
+    def test_japanese_disclosures_keep_shared_ruby_and_escape_summary(self):
+        definition = {"type": "structured-content", "content": [
+            {"tag": "ruby", "content": ["猫", {"tag": "rt", "content": "ねこ"}]},
+            {"tag": "details", "content": [{"tag": "summary", "content": "<More &>"}, "Hidden sense"]}]}
+        result = SearchResult("猫", "ja", "en", (entry(definitions=(definition,)),))
+        closed = render_result(result, expanded=("Dictionary",))
+        opened = render_result(result, expanded=("Dictionary",), details_expanded={"0:0:0"})
+        self.assertIn("&lt;More &amp;&gt;", closed)
+        self.assertIn("ねこ", closed)
+        self.assertNotIn("Hidden sense", closed)
+        self.assertIn("Hidden sense", opened)
+
     def test_turkdict_source_is_shown_once_only_after_pinning(self):
         definition = {"type": "structured-content", "content": [
             {"tag": "div", "content": ["Tureng"], "style": {"fontWeight": "bold", "fontSize": "0.75em"}},

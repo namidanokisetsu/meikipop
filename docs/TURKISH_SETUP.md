@@ -98,6 +98,8 @@ Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 Pinned OCR results show the original sentence in compact text above the entry.
 **Settings → Appearance → Show sentence when pinned** toggles it per profile;
 it defaults on and does not change what Copy sentence copies.
+Dictionary sections labeled **More** stay collapsed when pinned; click their label
+to open or close them independently. Back restores opened sections.
 
 **Settings → Shortcuts** configures one text-lookup shortcut and optional automatic selection.
 Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected
