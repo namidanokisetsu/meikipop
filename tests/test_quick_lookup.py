@@ -792,8 +792,8 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.audio_actions.layout().indexOf(self.window.audio_button), 2)
         self.assertEqual(self.window.actions_row.layout().indexOf(self.window.audio_button), -1)
         self.assertTrue(self.window.pin.isHidden())
-        self.assertEqual(self.window.actions_row.layout().indexOf(self.window.copy_button), 2)
-        self.assertEqual(self.window.actions_row.layout().indexOf(self.window.dismiss_button), 3)
+        self.assertEqual(self.window.actions_row.layout().indexOf(self.window.copy_button), 3)
+        self.assertEqual(self.window.actions_row.layout().indexOf(self.window.dismiss_button), 4)
         self.window.sentence_audio_button.click()
         self.window.audio.play_text.assert_called_once_with("公園で猫が寝ている。", "ja", self.window.revision,
                                                             self.settings, profile="ja")

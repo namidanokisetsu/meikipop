@@ -171,8 +171,12 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertTrue(window.anki_button.isEnabled())
         self.assertFalse(window.anki_button.isHidden())
         self.assertEqual(window.anki_button.text(), "Add to Anki")
-        layout = window.anki_button.parentWidget().layout()
-        self.assertIs(layout.itemAt(layout.count() - 1).widget(), window.anki_button)
+        layout = window.actions_row.layout()
+        self.assertEqual(layout.indexOf(window.anki_button), layout.indexOf(window.copy_button) - 1)
+        window._set_peek(True)
+        self.assertFalse(window.anki_button.isVisible())
+        window.pin.setChecked(True)
+        self.assertTrue(window.anki_button.isVisible())
         with patch.object(window, "open_settings") as open_settings:
             from unittest.mock import Mock
             window._setup = Mock()
