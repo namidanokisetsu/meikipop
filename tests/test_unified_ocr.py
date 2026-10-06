@@ -360,16 +360,16 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.assertTrue(monitor.contains(third))
         self.assertTrue(third.contains(QPoint(-900, 500)))
 
-    def test_cursor_follow_is_independent_of_inference_and_stops_when_pinned(self):
+    def test_preview_stays_anchored_while_pointer_moves_and_inference_runs(self):
         self.window.show()
         self.controller.busy = True
         with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(-100, -100)), \
                 patch.object(QApplication, "activeWindow", return_value=None):
             self.controller.follow_cursor()
-            self.window._place.assert_called_once_with()
+            self.window._place.assert_not_called()
             self.window.pin.setChecked(True)
             self.controller.follow_cursor()
-            self.window._place.assert_called_once_with()
+            self.window._place.assert_not_called()
             self.controller.hold_changed(False)
             self.controller.finish_peek()
         self.assertTrue(self.window.isVisible())

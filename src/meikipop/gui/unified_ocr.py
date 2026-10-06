@@ -266,18 +266,9 @@ class UnifiedOCR(QObject):
         self._sync_pin_ready()
 
     def follow_cursor(self):
+        # Keep the native pin hook ready without chasing every pointer movement.
+        # A new lookup result places the popup beside its word.
         self._sync_pin_ready()
-        if (not self.enabled or not (self.holding or self.auto_scan) or self.window.is_pinned or
-                not self.window.isVisible() or not getattr(self.window, "_peek", False)):
-            return
-        if self.input and hasattr(self.input, "pin_pending") and self.input.pin_pending.is_set():
-            return
-        point = QCursor.pos()
-        if (QApplication.activeModalWidget() or QApplication.activeWindow() is self.window or
-                self.window.geometry().contains(point) or point == self._follow_point):
-            return
-        self._follow_point = QPoint(point)
-        self.window._place()
 
     def invalidate(self):
         self.generation += 1

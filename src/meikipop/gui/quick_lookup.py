@@ -629,6 +629,7 @@ class QuickLookupWindow(QDialog):
                 border:0;padding:3px;selection-background-color:{config.color_highlight_word};
                 selection-color:{config.color_background};}}
             QLineEdit {{border-bottom:1px solid {colors['border']};}}
+            QTextBrowser {{border-radius:0;padding:0;}}
             QComboBox QAbstractItemView {{background:{config.color_background};color:{config.color_foreground};}}
             QPushButton,QToolButton {{background:transparent;color:{config.color_foreground};
                 border:0;border-radius:4px;padding:3px 5px;}}
@@ -854,6 +855,21 @@ class QuickLookupWindow(QDialog):
         chrome = self.height() - self.browser.viewport().height()
         desired = math.ceil(document.size().height()) + chrome + 2
         maximum = max(190, self.settings.value("preview_max_height", 340, type=int))
+        if desired > maximum:
+            limit = maximum - chrome - 2
+            bottoms = []
+            block = document.begin()
+            while block.isValid():
+                top = document.documentLayout().blockBoundingRect(block).top()
+                text_layout = block.layout()
+                for index in range(text_layout.lineCount()):
+                    line = text_layout.lineAt(index)
+                    bottom = math.ceil(top + line.y() + line.height())
+                    if bottom <= limit:
+                        bottoms.append(bottom)
+                block = block.next()
+            if bottoms:
+                desired = max(bottoms) + chrome + 2
         self.resize(self.width(), min(maximum, max(self.minimumSizeHint().height(), desired)))
         if self.isVisible():
             self._place()
@@ -1139,6 +1155,8 @@ class QuickLookupWindow(QDialog):
         self.set_context("")
         self.status.setText("")
         self.status.hide()
+        if peek:
+            self._fit_preview()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, bool(peek))
         if not self.is_pinned:
             self._place()
