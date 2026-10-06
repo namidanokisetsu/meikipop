@@ -199,6 +199,8 @@ def show_setup(window):
         window._setup_wizard = wizard
     wizard.show()
     wizard.raise_()
+    from meikipop.utils.window_focus import activate_application
+    activate_application()
     wizard.activateWindow()
 
 

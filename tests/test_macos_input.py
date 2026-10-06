@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLineEdit
 from pynput import keyboard
 
 from meikipop.gui.keyboard_listener import KeyboardListener
@@ -38,7 +38,9 @@ class ShortcutRecordingTests(unittest.TestCase):
             settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
             field = ShortcutEdit("<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d")
             field.show()
-            field.recorder.setFocus()
+            self.app.processEvents()
+            QTest.mouseClick(field.recorder.findChild(QLineEdit), Qt.MouseButton.LeftButton)
+            self.assertIs(self.app.focusWidget(), field.recorder)
             QTest.keyClick(field.recorder, Qt.Key.Key_K, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
             expected = {"<cmd>" if sys.platform == "darwin" else "<ctrl>", "<shift>", "k"}
             self.assertEqual(set(field.binding().split("+")), expected)

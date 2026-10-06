@@ -1870,6 +1870,8 @@ class QuickLookupWindow(QDialog):
         self._setup.sync_profile(self.preferred_foreign)
         self._setup.show()
         self._setup.raise_()
+        from meikipop.utils.window_focus import activate_application
+        activate_application()
         self._setup.activateWindow()
 
     def refresh_library(self):
