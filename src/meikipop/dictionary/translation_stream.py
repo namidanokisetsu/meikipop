@@ -1,6 +1,42 @@
 """Bounded SSE decoder for local chat-completion streams."""
 import codecs
 import json
+import io
+import socket
+from time import monotonic
+
+
+class ResponseSocket:
+    """Poll cancellation below buffering, where read timeouts are retryable."""
+    def __init__(self, sock, cancelled):
+        self.sock, self.cancelled = sock, cancelled
+
+    def makefile(self, mode):
+        return io.BufferedReader(_SocketReader(self.sock.dup(), self.cancelled))
+
+
+class _SocketReader(io.RawIOBase):
+    def __init__(self, sock, cancelled):
+        self.sock, self.cancelled = sock, cancelled
+        self.deadline = monotonic() + 120
+        self.sock.settimeout(.1)
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        while not self.cancelled.is_set():
+            if monotonic() >= self.deadline:
+                raise TimeoutError("Local translation timed out.")
+            try:
+                return self.sock.recv_into(buffer)
+            except socket.timeout:
+                continue
+        raise OSError("Translation cancelled.")
+
+    def close(self):
+        self.sock.close()
+        super().close()
 
 
 def events(chunks, cancelled):

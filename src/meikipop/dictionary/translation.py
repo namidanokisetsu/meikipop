@@ -185,7 +185,6 @@ class LocalTranslator:
                         self._socket.shutdown(socket.SHUT_RDWR)
                     except OSError:
                         pass
-                connection.close()
 
     def cache_key(self):
         return self.settings_override or load_settings(self.directory)
@@ -237,6 +236,10 @@ class LocalTranslator:
             request.update(samplers=["penalties", "temperature", "top_k", "top_p"], repeat_last_n=8192)
         endpoint = urlsplit(settings.endpoint)
         connection = http.client.HTTPConnection(endpoint.hostname, endpoint.port, timeout=120)
+        from .translation_stream import ResponseSocket
+        connection.response_class = lambda sock, **kwargs: http.client.HTTPResponse(
+            ResponseSocket(sock, self._cancelled), **kwargs)
+        response = None
         try:
             if self._cancelled.is_set():
                 raise RuntimeError("Translation cancelled.")
@@ -292,6 +295,8 @@ class LocalTranslator:
                 self._connection = None
                 self._socket = None
                 connection.close()
+                if response is not None:
+                    response.close()
         self.last_provider = settings.provider
         self.last_model = MODEL_NAMES[settings.profile] if settings.provider == "server" else settings.model
         mark("translation_done", request_id)

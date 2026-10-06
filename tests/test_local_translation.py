@@ -47,6 +47,28 @@ class TranslationTests(unittest.TestCase):
                 self.assertEqual(self.translator.translate("Merhaba.", "tr", "en"), "A translated sentence.")
         self.assertEqual(self.translator.last_model, "Hy-MT2-7B Q8_0")
 
+    def test_json_response_to_stream_request_is_not_retried(self):
+        self.manual()
+        progress = Mock()
+        with self.server():
+            self.response.getheader.return_value = "application/json"
+            self.assertEqual(self.translator.translate("cat", "en", "ja", on_text=progress), "A translated sentence.")
+        self.connection.request.assert_called_once()
+        self.assertTrue(json.loads(self.connection.request.call_args.kwargs["body"])["stream"])
+
+    def test_custom_stream_rejection_requires_explicit_nonstream_preference(self):
+        self.manual(provider="custom")
+        with self.server(status=400), self.assertRaisesRegex(RuntimeError, "Turn off Stream"):
+            self.translator.translate("cat", "en", "ja", on_text=Mock())
+        self.connection.request.assert_called_once()
+
+    def test_cancel_before_startup_does_not_clear_request_cancellation(self):
+        cancelled = threading.Event()
+        cancelled.set()
+        with self.server(), self.assertRaisesRegex(RuntimeError, "cancelled"):
+            self.translator.translate("cat", "en", "ja", cancelled=cancelled)
+        self.connection.request.assert_not_called()
+
     def test_settings_are_atomic_and_change_translation_cache_key(self):
         first = self.translator.cache_key()
         value = save_settings(TranslationSettings(profile="lightweight"), self.directory)
