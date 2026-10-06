@@ -1,4 +1,4 @@
-"""Language-aware local search without model work in the typing path."""
+"""Indexed local search with optional offline lemma fallback after dictionary forms."""
 from collections import OrderedDict
 from dataclasses import dataclass, replace
 import json
@@ -32,17 +32,22 @@ class SearchEngine:
         self.translator = translator or LocalTranslator()
         self.cache = OrderedDict()
         self.deconjugator = None
+        self._analyzer = None
+        self._analysis_errors = {}
 
     def close(self):
         self.library.close()
+        self._analyzer = None
 
     def refresh(self):
         self.library.refresh()
         self.cache.clear()
+        self._analysis_errors.clear()
 
     def refresh_if_changed(self):
         if self.library.refresh_if_changed():
             self.cache.clear()
+            self._analysis_errors.clear()
 
     def detect(self, text, foreign="ja", languages=None):
         if re.search(r"[\u3040-\u30ff\uff66-\uff9f]", text):
@@ -80,7 +85,8 @@ class SearchEngine:
     def languages(self):
         return tuple(dict.fromkeys(meta["language"] for _, meta, _ in self.library.packs if meta["enabled"]))
 
-    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None):
+    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
+               morphology=False, context=None):
         text = text.strip()
         if len(text) > 2000:
             raise ValueError("Enter at most 2,000 characters.")
@@ -92,7 +98,8 @@ class SearchEngine:
         translator_key = getattr(self.translator, "cache_key", lambda: None)() if translate else None
         requested_target = language_code(target) if target else None
         pair = tuple(language_code(code) for code in pair) if pair else None
-        cache_key = (text, source, foreign, translate, translator_key, requested_target, pair)
+        cache_key = (text, source, foreign, translate, translator_key, requested_target, pair,
+                     morphology, context if morphology else None)
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)
             return self.cache[cache_key]
@@ -114,10 +121,17 @@ class SearchEngine:
         if text and not translate:
             if source == "en" or pair and source == pair[1]:
                 entries = self.library.reverse(text, foreign if pair else target)
+                if not entries and morphology and foreign != "ja":
+                    entries = self._lemma_lookup(text, foreign, context)
+                    if entries:
+                        source, target = foreign, source
+                        matched_length = len(text)
                 if not entries:
                     suggestions = self.library.suggest(text, target)
             else:
                 entries = self._japanese(text) if source == "ja" else self.library.lookup(text, source)
+                if not entries and morphology and source != "ja":
+                    entries = self._lemma_lookup(text, source, context)
                 matched_length = self._matched_length if source == "ja" else len(text) if entries else 0
                 if not entries:
                     suggestions = self.library.suggest(text, source)
@@ -139,6 +153,35 @@ class SearchEngine:
         if len(self.cache) > 128:
             self.cache.popitem(last=False)
         return result
+
+    def _lemma_lookup(self, text, language, context):
+        if not self.library._active(language):
+            return ()
+        if language in self._analysis_errors:
+            raise RuntimeError(self._analysis_errors[language])
+        try:
+            from meikipop.language.stanza_analyzer import StanzaAnalyzer, default_model_dir
+            if self._analyzer is None or self._analyzer[0] != language:
+                if not (default_model_dir(language) / "resources.json").is_file():
+                    raise FileNotFoundError("models not installed")
+                self._analyzer = (language, StanzaAnalyzer(language=language))
+            original, start, end = context or (text, 0, len(text))
+            tokens = [token for token in self._analyzer[1].analyze(original)
+                      if start <= token.start < token.end <= end]
+        except Exception as error:
+            message = f"Lemma fallback unavailable for {language}. Set up its Stanza models or turn off Lemma fallback in Settings."
+            self._analysis_errors[language] = message
+            raise RuntimeError(message) from error
+        if not tokens or tokens[0].start != start or tokens[-1].end != end:
+            return ()
+        candidate = original[start:end]
+        for token in reversed(tokens):
+            if token.lemma and token.lemma != "_":
+                candidate = candidate[:token.start-start] + token.lemma + candidate[token.end-start:]
+        if candidate == text:
+            return ()
+        return tuple(replace(entry, route="lemma", inflection=("lemma",))
+                     for entry in self.library.lookup(candidate, language, tolerant=False))
 
     def _japanese(self, text):
         self._matched_length = 0

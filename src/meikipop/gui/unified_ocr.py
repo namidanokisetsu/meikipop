@@ -67,7 +67,9 @@ class ScanWorker(threading.Thread):
                         self._emit(generation, None, None, "")
                         continue
                     engine.refresh_if_changed()
-                    result = engine.search(hit.query, source=language, foreign=language)
+                    morphology = bool(options[1]) if len(options) > 1 else False
+                    analysis = {"morphology": True, "context": (hit.text, hit.start, hit.end)} if morphology else {}
+                    result = engine.search(hit.query, source=language, foreign=language, **analysis)
                     # A Japanese lookup can cover several recognized character boxes.
                     if language == "ja" and result.entries:
                         surface = result.entries[0].term
@@ -199,6 +201,10 @@ class UnifiedOCR(QObject):
         if previous != (self.ja_ocr_provider, self.tr_ocr_provider, self.screenai_directory):
             self.invalidate()
         profile = self.window.preferred_foreign
+        morphology = profile != "ja" and settings.value(f"profiles/{profile}/morphology", False, bool) if settings else False
+        if morphology != getattr(self, "morphology", False):
+            self.invalidate()
+        self.morphology = morphology
         previous_profile_provider = getattr(self, "profile_ocr_provider", None)
         default = self.ja_ocr_provider if profile == "ja" else self.tr_ocr_provider if profile == "tr" else "vision" if sys.platform == "darwin" else "paddle"
         self.profile_ocr_provider = settings.value(f"profiles/{profile}/ocr_provider", default) if settings else default
@@ -482,7 +488,7 @@ class UnifiedOCR(QObject):
         self.worker.queue.put((generation, pixels,
                                ((point.x() - region.x()) / region.width(),
                                 (point.y() - region.y()) / region.height()), language,
-                               (self.profile_ocr_provider, self.screenai_directory)))
+                               (self.profile_ocr_provider, self.screenai_directory), self.morphology))
 
     def restore_capture_visibility(self):
         if self._capture_excluded:

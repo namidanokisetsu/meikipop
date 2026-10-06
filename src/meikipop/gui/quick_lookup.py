@@ -58,10 +58,11 @@ class LookupWorker(QObject):
     def start(self):
         self._thread.start()
 
-    def request(self, revision, text, source, foreign, translate=False, target=None, pair=None, translation_settings=None):
+    def request(self, revision, text, source, foreign, translate=False, target=None, pair=None, translation_settings=None,
+                morphology=False):
         self.cancel()
         with self._condition:
-            self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings)
+            self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings, morphology)
             self._condition.notify()
 
     def cancel(self):
@@ -116,10 +117,12 @@ class LookupWorker(QObject):
                         codes = sorted({meta["language"] for _, meta, _ in engine.library.packs})
                         self._emit(self.languages, codes)
                     if pending is not None:
-                        revision, text, source, foreign, translate, target, pair, translation_settings = pending
+                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology = pending
                         options = {"target": target} if target else {}
                         if pair:
                             options.update(pair=pair, translation_settings=translation_settings)
+                        if morphology:
+                            options["morphology"] = True
                         result = engine.search(text, source=source, foreign=foreign, translate=translate, **options)
                         self._emit(self.completed, revision, result)
                 except Exception as error:
@@ -799,7 +802,9 @@ class QuickLookupWindow(QDialog):
                        self.preferred_foreign, translate=bool(translate),
                        target=target,
                        pair=(self.preferred_foreign, self.foreign.currentData()),
-                       translation_settings=translation_settings)
+                       translation_settings=translation_settings,
+                       morphology=not translate and self.preferred_foreign != "ja" and
+                       self.settings.value(f"profiles/{self.preferred_foreign}/morphology", False, bool))
 
     def deliver(self, revision, result):
         if revision != self.revision or self._shutting_down:

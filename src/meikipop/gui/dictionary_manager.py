@@ -133,6 +133,10 @@ class SetupDialog(QDialog):
         self.apply.clicked.connect(self.save_dictionaries)
         self.apply.hide()
         dictionary_layout.addLayout(actions)
+        self.morphology = QCheckBox("Lemma fallback")
+        self.morphology.setToolTip("Try installed Stanza models when dictionary forms do not match")
+        self.morphology.toggled.connect(self.save_morphology)
+        dictionary_layout.addWidget(self.morphology)
         tabs.addTab(dictionaries, "Dictionaries")
 
         translation = QWidget()
@@ -438,6 +442,9 @@ class SetupDialog(QDialog):
         from meikipop.config.config import config
         code = self.profile.currentData()
         self.status.clear()
+        with QSignalBlocker(self.morphology):
+            self.morphology.setChecked(self.settings.value(f"profiles/{code}/morphology", False, bool))
+        self.morphology.setVisible(code != "ja")
         bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
         self.pin_shortcut.set_value(self.settings.value(f"profiles/{code}/pin_shortcut", "c"),
                                     self.settings.value(f"profiles/{code}/pin_shortcut_preset", "C"))
@@ -481,6 +488,18 @@ class SetupDialog(QDialog):
 
     def current_ocr_control(self):
         return {"ja": self.ja_ocr_provider, "tr": self.tr_ocr_provider}.get(self.profile.currentData(), self.other_ocr_provider)
+
+    def save_morphology(self, enabled):
+        code = self.profile.currentData()
+        self.settings.setValue(f"profiles/{code}/morphology", enabled)
+        self.dictionaries_changed.emit()
+        if self.parent() is not None:
+            self.parent().scan_settings_changed.emit()
+        self.status.clear()
+        if enabled:
+            from meikipop.language.stanza_analyzer import default_model_dir
+            if not (default_model_dir(code) / "resources.json").is_file():
+                self.status.setText(f"Install models: python -m meikipop.scripts.setup_morphology {code}")
 
     def sync_profile(self, code):
         with QSignalBlocker(self.profile):

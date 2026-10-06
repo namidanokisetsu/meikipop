@@ -87,6 +87,17 @@ class QuickLookupTests(unittest.TestCase):
         self.window.deliver(revision, SearchResult("old", "ja", "en", (entry("OLD"),)))
         self.assertNotIn("OLD", self.window.browser.toPlainText())
 
+    def test_morphology_option_follows_profile_for_dictionary_lookup_only(self):
+        self.settings.setValue("profiles/tr/morphology", True)
+        self.window.set_mode("tr")
+        self.window.search.setText("kitaplarımdan")
+        with patch.object(self.window.worker, "request") as request:
+            self.window.submit(translate=False)
+            self.assertTrue(request.call_args.kwargs["morphology"])
+            self.window.set_mode("ja")
+            self.window.submit(translate=False)
+            self.assertFalse(request.call_args.kwargs["morphology"])
+
     def test_autoplay_remembers_all_words_until_scan_hold_ends(self):
         self.settings.setValue("profiles/ja/audio_autoplay_mode", "lookup")
         with patch.object(self.window, "play_audio") as play:

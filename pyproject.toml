@@ -41,6 +41,7 @@ meikipop-translation = "meikipop.scripts.translation_server:main"
 
 [project.optional-dependencies]
 turkish = ["stanza==1.14.0", "torch==2.8.0"]
+morphology = ["stanza==1.14.0", "torch==2.8.0"]
 # MeikiOCR and PaddleX install cv2 under two distribution names. Keep their
 # wheels on the same release so Python wrappers match the native extension.
 # Paddle 3.3.x has a PIR/oneDNN regression; 3.2.2 accelerates the same v6 models.

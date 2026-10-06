@@ -62,6 +62,15 @@ class ScanWorkerTests(unittest.TestCase):
         self.assertEqual([call.args[2].text for call in sink.emit.call_args_list], ["kitap ev", "kitap ev"])
         engine.refresh.assert_not_called()
 
+    def test_optional_morphology_receives_original_ocr_context(self):
+        worker, _ = self.make_worker([(1, image_bytes(), (.2, .5), "tr", ("paddle", ""), True), None])
+        engine = Mock()
+        with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
+                patch.object(worker, "provider", return_value=lambda image: recognized()):
+            worker.run()
+        engine.search.assert_called_once_with("kitap", source="tr", foreign="tr", morphology=True,
+                                              context=("kitap ev", 0, 5))
+
     def test_receiver_deleted_during_inference_does_not_crash_worker(self):
         worker, sink = self.make_worker([(1, image_bytes(), (0.2, 0.5), "tr"), None])
         sink.emit.side_effect = RuntimeError("wrapped C++ object has been deleted")
