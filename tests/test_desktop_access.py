@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QDialog
 
 from meikipop.gui.desktop_access import DesktopAccess
@@ -20,6 +21,12 @@ class DesktopAccessTests(unittest.TestCase):
         self.window = Mock()
         self.access = DesktopAccess(self.window, self.app)
         self.dialog = QDialog()
+        widgets = patch.object(QApplication, 'topLevelWidgets', return_value=[self.dialog])
+        widgets.start()
+        self.addCleanup(widgets.stop)
+        popup = patch.object(QApplication, 'activePopupWidget', return_value=None)
+        popup.start()
+        self.addCleanup(popup.stop)
 
     def tearDown(self):
         self.app.applicationStateChanged.disconnect(self.access.state_changed)
@@ -47,7 +54,10 @@ class DesktopAccessTests(unittest.TestCase):
 
     def test_minimized_dialog_is_restored(self):
         self.dialog.showMinimized()
+        QTest.qWait(20)
+        self.assertTrue(self.dialog.isMinimized())
         self.access.reopen()
+        QTest.qWait(20)
         self.assertFalse(self.dialog.isMinimized())
         self.window.open_settings.assert_not_called()
 
