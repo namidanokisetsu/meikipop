@@ -889,6 +889,34 @@ class QuickLookupTests(unittest.TestCase):
                     self.assertGreaterEqual(self.window.x(), area.left())
                     self.assertLessEqual(self.window.geometry().right(), area.right())
 
+    def test_macos_pin_survives_focus_loss_while_native_activation_is_pending(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        with patch("meikipop.gui.quick_lookup.sys.platform", "darwin"), \
+                patch.object(QApplication, "platformName", return_value="cocoa"), \
+                patch("meikipop.utils.window_focus.activate_application") as activate, \
+                patch("meikipop.gui.quick_lookup.QTimer.singleShot") as timer, \
+                patch.object(self.window, "isActiveWindow", return_value=False):
+            self.window.pin.setChecked(True)
+            self.window._dismiss_if_inactive()
+        activate.assert_called_once_with()
+        self.assertTrue(self.window.isVisible())
+        self.assertTrue(self.window.is_pinned)
+        callback = next(call.args[1] for call in timer.call_args_list if call.args[0] == 300)
+        callback()
+        self.assertFalse(self.window._opening_search)
+        with patch("meikipop.gui.quick_lookup.sys.platform", "darwin"), \
+                patch.object(self.window, "isActiveWindow", return_value=False):
+            self.window._dismiss_if_inactive()
+        self.assertTrue(self.window.isVisible())
+
+    def test_windows_pinned_ocr_still_dismisses_on_focus_loss(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        with patch("meikipop.gui.quick_lookup.sys.platform", "win32"), \
+                patch.object(self.window, "isActiveWindow", return_value=False):
+            self.window.pin.setChecked(True)
+            self.window._dismiss_if_inactive()
+        self.assertFalse(self.window.isVisible())
+
     def test_escape_hides_and_invalidates_pending_results(self):
         self.window.open_search()
         self.window.search.setText("猫")

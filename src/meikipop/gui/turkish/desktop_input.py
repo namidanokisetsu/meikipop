@@ -139,6 +139,9 @@ class DesktopInput(QObject):
             self.keys.suppress_event()
 
     def _request_pin(self, button):
+        if button == self.pin_gesture and self.activation.active:
+            from meikipop.utils.timing import mark
+            mark("pin_click", ready=self.pin_ready.is_set(), visible=self.visible.is_set())
         return button == self.pin_gesture and self._request_ready_pin()
 
     def filter_mouse(self, message, data):
@@ -160,14 +163,17 @@ class DesktopInput(QObject):
         return True
 
     def click(self, x, y, button, down):
-        if down and sys.platform != "win32":
-            self._request_pin(getattr(button, "name", ""))
+        pin_requested = (down and sys.platform != "win32"
+                         and self._request_pin(getattr(button, "name", "")))
         token = normalise_pynput_button(button)
         if token:
             self.activation.update(token, down)
             self.hold_changed.emit(self.activation.active)
         if down:
-            self.clicked.emit()
+            # macOS observes the pin click without suppressing it. Do not also
+            # dismiss the popup through its ordinary outside-click callback.
+            if not pin_requested:
+                self.clicked.emit()
             if button == mouse.Button.left:
                 self._press_point = (x, y)
         if button == mouse.Button.left and not down:

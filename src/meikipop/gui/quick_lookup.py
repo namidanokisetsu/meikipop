@@ -1692,6 +1692,11 @@ class QuickLookupWindow(QDialog):
                 self._normal_size = self.size()
         if checked:
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+            if sys.platform == "darwin" and QApplication.platformName() != "offscreen":
+                from meikipop.utils.window_focus import activate_application
+                self._opening_search = True
+                activate_application()
+                QTimer.singleShot(300, lambda: setattr(self, "_opening_search", False))
             self.activateWindow()
             self.browser.setFocus(Qt.FocusReason.MouseFocusReason)
             if self._peek and self._result is not None:
@@ -1824,7 +1829,9 @@ class QuickLookupWindow(QDialog):
         if self.geometry().contains(QCursor.pos()):
             return
         setup_open = self._setup is not None and self._setup.isVisible()
-        if (not self._peek or self.is_pinned) and not self.isActiveWindow() and not setup_open \
+        # A macOS source pin click also reaches the source application, which
+        # can retain focus. Explicit outside clicks still dismiss pinned OCR.
+        if (not self._peek or (self.is_pinned and sys.platform != "darwin")) and not self.isActiveWindow() and not setup_open \
                 and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None:
             self.hide()
 

@@ -73,7 +73,7 @@ class ScanGestureTests(unittest.TestCase):
         self.assertTrue(self.input.filter_mouse(0x207, None))
         self.requested.assert_called_once_with()
 
-    def test_non_windows_pin_is_opt_in_and_preserves_normal_click_callback(self):
+    def test_non_windows_pin_does_not_also_dismiss_popup_and_normal_click_still_works(self):
         clicked = Mock()
         self.input.clicked.connect(clicked)
         self.ready()
@@ -81,8 +81,11 @@ class ScanGestureTests(unittest.TestCase):
             self.input.click(10, 20, mouse.Button.left, True)
             self.input.click(10, 20, mouse.Button.left, False)
         self.requested.assert_called_once_with()
-        clicked.assert_called_once_with()
+        clicked.assert_not_called()
         self.input.clicks.suppress_event.assert_not_called()
+        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"):
+            self.input.click(10, 20, mouse.Button.left, True)
+        clicked.assert_called_once_with()
 
     @unittest.skipUnless(sys.platform == "win32", "Windows native hook")
     def test_pin_key_consumes_press_repeats_and_release_only_for_ready_preview(self):
