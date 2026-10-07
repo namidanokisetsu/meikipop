@@ -35,8 +35,11 @@ clients remain explicit compatibility entrypoints.
    Edits invalidate old results immediately. Keep source labels,
    independent expansion, scrolling, pinning, resizing and Back. Optional per-profile
    Snap scrolling follows headword/dictionary blocks, with overlapping screenfuls
-   for long blocks and one advance per trackpad gesture; it defaults off. Show supplied
-   frequency, inflection and kanji data without merging distinct source senses
+   for long blocks and one advance per trackpad gesture; it defaults off.
+   Dictionary-specific Start collapsed defaults retain only a source heading in expanded
+   results, including pinned OCR; compact OCR previews keep their definitions. Manual
+   expansion is local to the result and Back restores it.
+   Show supplied frequency, inflection and kanji data without merging distinct source senses
    or inventing missing kanji components. Profile changes also reload cached
    settings controls. Ruby explicitly resolves the selected font for kana and
    kanji, uses visible glyph bounds for spacing, and defaults to gray at 50%

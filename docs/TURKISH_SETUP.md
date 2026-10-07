@@ -87,8 +87,11 @@ sit at the top right; Back and a compact nested-lookup trail sit at the bottom l
 with Copy and Close at the right. Back restores the previous result and sentence context.
 Dictionary sections have independent previews and expansion controls. **Appearance → Snap scrolling**
 optionally steps between dictionary blocks, paging through long blocks with overlap.
-It defaults off for each language; the scrollbar remains freely draggable. Left-click a preview
-or use the scan gesture to freeze and resize it. Above-text previews expand upward;
+It defaults off for each language; the scrollbar remains freely draggable.
+In **Dictionaries**, select a definition dictionary and enable **Start collapsed** to
+show only its heading in expanded results, including pinned OCR. **+** opens the full
+entry; compact OCR previews retain their definitions. The choice persists across reimports.
+Left-click a preview or use the scan gesture to freeze and resize it. Above-text previews expand upward;
 other previews grow down when space allows, switching upward near the bottom edge. Escape, outside click, Close, or a new
 scan leave the result. Entering a preview pauses its dismissal grace; leaving rearms it.
 Search also supports edge and corner resizing. Imported frequency, inflection and kanji information uses compact labels.

@@ -129,6 +129,11 @@ class SetupDialog(QDialog):
         self.packs.setAccessibleName("Installed dictionaries, in priority order")
         self.packs.setToolTip("Checked dictionaries are enabled. Higher dictionaries appear first.")
         dictionary_layout.addWidget(self.packs, 1)
+        self.start_collapsed = QCheckBox("Start collapsed")
+        self.start_collapsed.setToolTip("Show only this dictionary's heading in expanded results")
+        self.start_collapsed.toggled.connect(self.save_dictionary_display)
+        self.packs.currentItemChanged.connect(self.update_dictionary_display)
+        dictionary_layout.addWidget(self.start_collapsed)
         actions = QHBoxLayout()
         self.import_button = QPushButton("Import ZIPs…")
         self.import_button.clicked.connect(self.choose_dictionaries)
@@ -464,6 +469,8 @@ class SetupDialog(QDialog):
                                        f'  ·  {int(metadata.get("entries", 0)):,}')
                 item.setData(Qt.ItemDataRole.UserRole, path.name)
                 item.setData(Qt.ItemDataRole.UserRole + 1, metadata["language"])
+                item.setData(Qt.ItemDataRole.UserRole + 2, metadata["title"])
+                item.setData(Qt.ItemDataRole.UserRole + 3, int(metadata.get("entries", 0)) > 0)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(prior.get(path.name, Qt.CheckState.Checked if metadata["enabled"]
                                             else Qt.CheckState.Unchecked))
@@ -476,6 +483,32 @@ class SetupDialog(QDialog):
         finally:
             del blocker
             library.close()
+        self.update_dictionary_display()
+
+    def update_dictionary_display(self, *_):
+        item = self.packs.currentItem()
+        valid = (item is not None and item.data(Qt.ItemDataRole.UserRole + 1) == self.profile.currentData()
+                 and item.data(Qt.ItemDataRole.UserRole + 3))
+        self.start_collapsed.setEnabled(bool(valid))
+        self.start_collapsed.setVisible(bool(valid))
+        with QSignalBlocker(self.start_collapsed):
+            sources = self.settings.value(f"profiles/{self.profile.currentData()}/collapsed_dictionaries", [], type=list)
+            self.start_collapsed.setChecked(bool(valid) and item.data(Qt.ItemDataRole.UserRole + 2) in sources)
+
+    def save_dictionary_display(self, collapsed):
+        item = self.packs.currentItem()
+        if self._loading or item is None or not self.start_collapsed.isEnabled():
+            return
+        key = f"profiles/{self.profile.currentData()}/collapsed_dictionaries"
+        sources = set(self.settings.value(key, [], type=list))
+        source = item.data(Qt.ItemDataRole.UserRole + 2)
+        if collapsed:
+            sources.add(source)
+        else:
+            sources.discard(source)
+        self.settings.setValue(key, sorted(sources))
+        if self.parent() is not None:
+            self.parent().set_dictionary_collapsed(source, collapsed)
 
     def choose_profile(self):
         from meikipop.language.support import support_summary
@@ -635,6 +668,7 @@ class SetupDialog(QDialog):
         self.scan_mouse.setCurrentIndex(max(0, next((self.scan_mouse.findData(b) for b in bindings if self.scan_mouse.findData(b) >= 0), 0)))
         for index in range(self.packs.count()):
             self.packs.item(index).setHidden(self.packs.item(index).data(Qt.ItemDataRole.UserRole + 1) != code)
+        self.update_dictionary_display()
         self.scan_layout.setRowVisible(self.ja_ocr_provider, code == "ja")
         self.scan_layout.setRowVisible(self.tr_ocr_provider, code == "tr")
         self.scan_layout.setRowVisible(self.other_ocr_provider, code not in ("ja", "tr"))

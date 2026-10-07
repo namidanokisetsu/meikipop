@@ -129,6 +129,82 @@ class QuickLookupTests(unittest.TestCase):
         finally:
             dialog.deleteLater()
 
+    def test_collapsed_dictionaries_keep_headings_and_compact_ocr_definitions(self):
+        definition = {"type": "structured-content", "content": {"tag": "div", "content": [
+            {"tag": "div", "data": {"class": "level1"}, "content": f"Meaning {index}"}
+            for index in range(9)]}}
+        mono = entry(source="Monolingual", definitions=(definition,))
+        result = SearchResult("猫", "ja", "en", (entry(), mono))
+        closed = render_result(result, expanded=("Dictionary", "Monolingual"), collapsed=("Monolingual",))
+        self.assertIn("Monolingual", closed)
+        self.assertIn('href="expand:1" title="Expand"', closed)
+        self.assertIn("cat", closed)
+        self.assertNotIn("Meaning", closed)
+        preview = render_result(SearchResult("猫", "ja", "en", (mono,)), preview=True, collapsed=("Monolingual",))
+        self.assertIn("Meaning 0", preview)
+
+    def test_pin_respects_dictionary_defaults_and_expansion_stays_local(self):
+        self.settings.setValue("profiles/ja/collapsed_dictionaries", ["Monolingual"])
+        mono = entry(source="Monolingual", definitions=("first meaning", "second meaning", "third meaning", "last meaning"))
+        self.window.show_entries((entry(), mono), "猫", peek=True)
+        self.window.pin.setChecked(True)
+        self.assertIn("cat", self.window.browser.toPlainText())
+        self.assertNotIn("first meaning", self.window.browser.toPlainText())
+        self.window._link(QUrl("expand:1"))
+        self.assertIn("last meaning", self.window.browser.toPlainText())
+        self.window._render()
+        self.assertIn("last meaning", self.window.browser.toPlainText())
+        self.assertEqual(self.settings.value("profiles/ja/collapsed_dictionaries", [], type=list), ["Monolingual"])
+        self.window._link(QUrl("expand:1"))
+        self.assertNotIn("first meaning", self.window.browser.toPlainText())
+        self.window.set_compact_preview(False)
+        self.assertNotIn("first meaning", self.window.browser.toPlainText())
+
+    def test_back_restores_manual_dictionary_expansion_and_new_lookup_uses_defaults(self):
+        self.settings.setValue("profiles/ja/collapsed_dictionaries", ["Dictionary"])
+        self.window._display(SearchResult("猫", "ja", "en", (entry(),)))
+        self.window._link(QUrl("expand:0"))
+        self.assertIn("cat", self.window.browser.toPlainText())
+        self.window._display(SearchResult("犬", "ja", "en", (entry("犬", definitions=("dog",)),)))
+        self.assertNotIn("dog", self.window.browser.toPlainText())
+        self.window.go_back()
+        self.assertIn("cat", self.window.browser.toPlainText())
+        self.window._link(QUrl("expand:0"))
+        self.window._display(SearchResult("犬", "ja", "en", (entry("犬", definitions=("dog",)),)))
+        self.window.go_back()
+        self.assertNotIn("cat", self.window.browser.toPlainText())
+
+    def test_dictionary_collapse_setting_is_independent_of_enablement_and_profile(self):
+        from meikipop.dictionary.library import import_yomitan
+        archive = Path(self.temp.name) / "monolingual.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("index.json", json.dumps(dict(title="Monolingual", format=3, sourceLanguage="ja")))
+            zf.writestr("term_bank_1.json", json.dumps([["猫", "ねこ", "", "", 1, ["mono definition"]]]))
+        import_yomitan(archive, self.temp.name)
+        self.window.show_entries((entry(source="Monolingual", definitions=("mono definition",)),), "猫")
+        dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+        try:
+            self.assertFalse(dialog.start_collapsed.isEnabled())
+            dialog.packs.setCurrentRow(0)
+            self.assertTrue(dialog.start_collapsed.isEnabled())
+            dialog.start_collapsed.setChecked(True)
+            self.assertEqual(self.settings.value("profiles/ja/collapsed_dictionaries", [], type=list), ["Monolingual"])
+            self.assertEqual(dialog.packs.currentItem().checkState(), Qt.CheckState.Checked)
+            self.assertNotIn("mono definition", self.window.browser.toPlainText())
+            dialog.sync_profile("tr")
+            self.assertFalse(dialog.start_collapsed.isEnabled())
+            self.assertEqual(self.settings.value("profiles/tr/collapsed_dictionaries", [], type=list), [])
+            dialog.sync_profile("ja")
+            self.assertTrue(dialog.start_collapsed.isChecked())
+            import_yomitan(archive, self.temp.name)
+            dialog.reload()
+            self.assertTrue(dialog.start_collapsed.isChecked())
+            dialog.start_collapsed.setChecked(False)
+            self.assertEqual(self.settings.value("profiles/ja/collapsed_dictionaries", [], type=list), [])
+            self.assertIn("mono definition", self.window.browser.toPlainText())
+        finally:
+            dialog.deleteLater()
+
     def test_morphology_option_follows_profile_for_dictionary_lookup_only(self):
         self.settings.setValue("profiles/tr/morphology", False)
         self.model_status.return_value = "Installed"

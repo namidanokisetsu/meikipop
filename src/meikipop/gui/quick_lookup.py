@@ -417,7 +417,7 @@ def _compact_context(text, font, width):
 
 def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
-                  definition_furigana=False, show_pitch=True):
+                  definition_furigana=False, show_pitch=True, collapsed=()):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
@@ -478,6 +478,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
                 continue
             index, entries = sources.index(source), dictionaries[source]
             full, more = source in expanded and not preview, len(entries) > 2
+            hidden = source in collapsed and not preview
             generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
             converter = _GlossConverter(expanded=full, limit=None if preview else 360, preview=preview,
                                         generic_source=generic_source, term=term,
@@ -485,13 +486,14 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
                                         definition_furigana=definition_furigana,
                                         definitions=tuple(definition for entry in entries for definition in entry.definitions))
             definitions = []
-            for entry in entries if full else entries[:2]:
+            visible_entries = () if hidden else (entries if full else entries[:2])
+            for entry in visible_entries:
                 more = more or len(entry.definitions) > 3
                 definitions.extend(converter.glosses(entry.definitions if full else entry.definitions[:3]))
             more = more or converter.clipped
-            toggle = (f'<a href="expand:{index}" title="{"Collapse" if full else "Expand"}">'
-                      f'&nbsp;{"−" if full else "+"}&nbsp;</a>'
-                      if more or full else "")
+            toggle = (f'<a href="expand:{index}" title="{"Collapse" if full and not hidden else "Expand"}">'
+                      f'&nbsp;{"−" if full and not hidden else "+"}&nbsp;</a>'
+                      if hidden or more or full else "")
             if source not in anchored:
                 parts.append(f'<a name="dictionary-{index}"></a>')
                 anchored.add(source)
@@ -573,6 +575,7 @@ class QuickLookupWindow(QDialog):
         self._history = []
         self._new_chain = True
         self._expanded = set()
+        self._collapsed = set()
         self._details_expanded = set()
         self._kanji_expanded = False
         self._pin_anchor_click = False
@@ -1147,7 +1150,19 @@ class QuickLookupWindow(QDialog):
         if at_end:
             bar.setValue(bar.maximum())
 
-    def _display(self, result, remember=True, expanded=(), details_expanded=None):
+    def collapsed_dictionaries(self):
+        return set(self.settings.value(f"profiles/{self.preferred_foreign}/collapsed_dictionaries", [], type=list))
+
+    def set_dictionary_collapsed(self, source, collapsed):
+        if collapsed:
+            self._collapsed.add(source)
+            self._expanded.discard(source)
+        else:
+            self._collapsed.discard(source)
+            self._expanded.add(source)
+        self._render()
+
+    def _display(self, result, remember=True, expanded=(), details_expanded=None, collapsed=None):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
             result.text, result.source, result.target)
         previous_context = getattr(self, "_result_context", "")
@@ -1155,12 +1170,16 @@ class QuickLookupWindow(QDialog):
             self._history.append((self._result, getattr(self, "_result_context", ""),
                                   self._result_profile, self._result_target, tuple(self._expanded),
                                   self.browser.verticalScrollBar().value(), tuple(self._details_expanded),
-                                  self._result_input, self._result_screenshot))
+                                  self._result_input, self._result_screenshot, tuple(self._collapsed)))
             self._history = self._history[-30:]
         if details_expanded is not None:
             self._details_expanded = set(details_expanded)
         elif self._new_chain or self._result is None or result.entries != self._result.entries:
             self._details_expanded.clear()
+        if collapsed is not None:
+            self._collapsed = set(collapsed)
+        elif self._new_chain or not same:
+            self._collapsed = self.collapsed_dictionaries()
         self._new_chain = False
         self._result = result
         self._display_revision = self.revision
@@ -1210,7 +1229,8 @@ class QuickLookupWindow(QDialog):
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
                         self.settings.value("profiles/ja/definition_furigana", True, bool),
                         self.settings.value("profiles/ja/show_pitch", True, bool),
-                        self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool))
+                        self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool),
+                        tuple(sorted(self._collapsed)))
             if identity == self._render_identity:
                 mark("render_reused", self.revision)
                 return
@@ -1227,6 +1247,7 @@ class QuickLookupWindow(QDialog):
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
                                                definition_furigana=self.settings.value("profiles/ja/definition_furigana", True, bool),
                                                show_pitch=self.settings.value("profiles/ja/show_pitch", True, bool),
+                                               collapsed=self._collapsed,
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
             self._document_revision = self.revision
@@ -1327,8 +1348,13 @@ class QuickLookupWindow(QDialog):
             if not 0 <= index < len(sources):
                 return
             source = sources[index]
-            if source in self._expanded:
+            if source in self._collapsed:
+                self._collapsed.remove(source)
+                self._expanded.add(source)
+            elif source in self._expanded:
                 self._expanded.remove(source)
+                if source in self.collapsed_dictionaries():
+                    self._collapsed.add(source)
             else:
                 self._expanded.add(source)
             self._render()
@@ -1374,7 +1400,8 @@ class QuickLookupWindow(QDialog):
             self._setup.sync_profile(profile)
         self.scan_settings_changed.emit()
         self._display(result, remember=False, expanded=expanded,
-                      details_expanded=previous[6] if len(previous) > 6 else ())
+                      details_expanded=previous[6] if len(previous) > 6 else (),
+                      collapsed=previous[9] if len(previous) > 9 else None)
         self.set_context(context)
         self._result_screenshot = previous[8] if len(previous) > 8 else None
         self.browser.verticalScrollBar().setValue(scroll)
