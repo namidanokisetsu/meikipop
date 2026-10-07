@@ -5,6 +5,8 @@ import tempfile
 from urllib.request import Request, urlopen
 import zipfile
 
+from meikipop.utils.progress import content_length, download_progress
+
 
 def extract_component(archive, destination):
     destination = Path(destination).resolve()
@@ -30,6 +32,8 @@ def install_screenai(progress, cancelled):
         digest = hashlib.sha256()
         with urlopen(Request(url, headers={"User-Agent": "Meikipop"}), timeout=30) as response, archive.open("wb") as output:
             total = 0
+            size = content_length(response)
+            progress(download_progress("Screen AI", total, size))
             while chunk := response.read(1024 * 1024):
                 if cancelled.is_set():
                     raise InterruptedError("Download cancelled.")
@@ -38,7 +42,7 @@ def install_screenai(progress, cancelled):
                     raise ValueError("OCR download exceeds 1 GB.")
                 output.write(chunk)
                 digest.update(chunk)
-                progress(f"Downloading Screen AI · {total // (1024 * 1024)} MB")
+                progress(download_progress("Screen AI", total, size))
         extracted = stage / "component"
         extract_component(archive, extracted)
         if not find_in_directory(extracted):

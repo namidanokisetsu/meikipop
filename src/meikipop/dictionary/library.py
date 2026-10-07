@@ -96,12 +96,30 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             with closing(sqlite3.connect(destination)) as existing:
                 version = existing.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
             if version and version[0] == "3":
+                if progress:
+                    progress(f"Importing {title} · 100%")
                 return destination
         banks = sorted((n for n in zf.namelist() if re.fullmatch(r"term_bank_\d+\.json", n)),
                        key=lambda n: int(n[10:-5]))
         metadata_banks = [n for n in zf.namelist() if re.fullmatch(r"(?:term_meta|kanji)_bank_\d+\.json", n)]
         if not banks and not metadata_banks:
             raise ValueError("No definitions, forms, frequency, pitch or kanji banks found.")
+        total_steps = len(banks) + len(metadata_banks) + 1
+        if source_language == "ja":
+            total_steps += sum(name.startswith("term_meta_") for name in metadata_banks)
+        completed_banks, last_percent = 0, 0
+        if progress:
+            progress(f"Importing {title} · 0%")
+
+        def bank_progress(current, total):
+            nonlocal completed_banks, last_percent
+            percent = int(100 * (completed_banks + (current / total if total else 1)) / total_steps)
+            if progress and percent != last_percent:
+                progress(f"Importing {title} · {percent}%")
+            last_percent = percent
+            if current == total:
+                completed_banks += 1
+
         fd, temporary = tempfile.mkstemp(prefix=".import-", suffix=".sqlite3.tmp", dir=directory)
         os.close(fd)
         db = sqlite3.connect(temporary)
@@ -120,7 +138,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 CREATE TABLE pitches(key TEXT, reading_key TEXT, reading TEXT, data TEXT);
                 CREATE VIRTUAL TABLE gloss_search USING fts5(gloss, content='');
             """)
-            for number, name in enumerate(banks, 1):
+            for name in banks:
                 if cancelled and cancelled():
                     raise InterruptedError("Dictionary import cancelled.")
                 with zf.open(name) as stream:
@@ -129,8 +147,10 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                     raise ValueError(f"Invalid term bank: {name}")
                 terms, forms, glosses = [], [], []
                 for row_number, row in enumerate(rows):
-                    if row_number % 1000 == 0 and cancelled and cancelled():
-                        raise InterruptedError("Dictionary import cancelled.")
+                    if row_number % 1000 == 0:
+                        if cancelled and cancelled():
+                            raise InterruptedError("Dictionary import cancelled.")
+                        bank_progress(row_number, len(rows))
                     if (not isinstance(row, list) or len(row) < 6 or
                             not isinstance(row[0], str) or not isinstance(row[1], str) or
                             not isinstance(row[5], list)):
@@ -159,31 +179,30 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 db.executemany("INSERT INTO terms VALUES(?,?,?,?,?,?,?,?,?)", terms)
                 db.executemany("INSERT INTO forms VALUES(?,?,?,?)", forms)
                 db.executemany("INSERT INTO gloss_search(rowid,gloss) VALUES(?,?)", glosses)
-                if progress:
-                    progress(f"{title}: {number}/{len(banks)}")
+                bank_progress(len(rows), len(rows))
             from .metadata import frequency_rows, kanji_rows
             frequency_count = kanji_count = 0
-            for term, reading, rank, label in frequency_rows(zf, source_language, cancelled):
+            for term, reading, rank, label in frequency_rows(zf, source_language, cancelled, bank_progress):
                 db.execute("INSERT INTO frequencies VALUES(?,?,?,?)",
                            (key(term, source_language), key(reading, source_language), rank, label))
                 frequency_count += 1
                 if frequency_count % 10000 == 0 and cancelled and cancelled():
                     raise InterruptedError("Dictionary import cancelled.")
-            for character, data in kanji_rows(zf, cancelled):
+            for character, data in kanji_rows(zf, cancelled, bank_progress):
                 db.execute("INSERT OR REPLACE INTO kanji VALUES(?,?)",
                            (character, json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
                 kanji_count += 1
             from .pitch import pitch_rows
             pitch_count = 0
             if source_language == "ja":
-                for term, reading, data in pitch_rows(zf, cancelled):
+                for term, reading, data in pitch_rows(zf, cancelled, bank_progress):
                     db.execute("INSERT INTO pitches VALUES(?,?,?,?)", (key(term), key(reading), reading,
                                json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
                     pitch_count += 1
             if not (count or redirects or frequency_count or kanji_count or pitch_count):
                 raise ValueError("Dictionary contains no usable definitions, forms, frequencies, pitch or kanji.")
             if progress:
-                progress(f"{title}: indexing…")
+                progress(f"Indexing {title} · {last_percent}%")
             db.executescript("""
                 CREATE INDEX term_key ON terms(key);
                 CREATE INDEX term_reading ON terms(reading_key);
@@ -227,6 +246,8 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             library_changed(directory)
             if warnings is not None:
                 warnings.extend(sorted(zf.checksum_warnings))
+            if progress:
+                progress(f"Importing {title} · 100%")
         finally:
             db.close()
             if os.path.exists(temporary):

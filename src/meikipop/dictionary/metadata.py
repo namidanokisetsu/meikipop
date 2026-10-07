@@ -30,7 +30,7 @@ def harmonic_rank(frequencies):
     return smallest * (len(ranks) / math.fsum(smallest / rank for rank in ranks.values()))
 
 
-def _bank_rows(archive, prefix, cancelled=None):
+def _bank_rows(archive, prefix, cancelled=None, progress=None):
     pattern = re.compile(re.escape(prefix) + r"_(\d+)\.json")
     names = sorted((name for name in archive.namelist() if pattern.fullmatch(name)),
                    key=lambda name: int(pattern.fullmatch(name)[1]))
@@ -42,11 +42,16 @@ def _bank_rows(archive, prefix, cancelled=None):
         if not isinstance(rows, list):
             raise ValueError(f"Invalid dictionary metadata bank: {name}")
         for index, row in enumerate(rows):
-            if index % 1000 == 0 and cancelled and cancelled():
-                raise InterruptedError("Dictionary import cancelled.")
+            if index % 1000 == 0:
+                if cancelled and cancelled():
+                    raise InterruptedError("Dictionary import cancelled.")
+                if progress:
+                    progress(index, len(rows))
             if not isinstance(row, list):
                 raise ValueError(f"Invalid metadata row in {name}")
             yield row
+        if progress:
+            progress(len(rows), len(rows))
 
 
 def _frequency_value(data):
@@ -71,14 +76,14 @@ def _frequency_value(data):
     return number, label if label is not None else str(data)
 
 
-def frequency_rows(archive, language="ja", cancelled=None):
+def frequency_rows(archive, language="ja", cancelled=None, progress=None):
     """Yield (term, reading, numeric_value_or_None, display_label).
 
     The importer owns language-specific keys. Original reading/text are retained
     so different readings of the same written word keep their own frequencies.
     The index's frequencyMode distinguishes counts from ranks at presentation.
     """
-    for row in _bank_rows(archive, "term_meta_bank", cancelled):
+    for row in _bank_rows(archive, "term_meta_bank", cancelled, progress):
         if len(row) != 3 or not isinstance(row[0], str) or not isinstance(row[1], str):
             raise ValueError("Invalid term metadata row")
         term, mode, data = row
@@ -96,9 +101,9 @@ def frequency_rows(archive, language="ja", cancelled=None):
         yield term, reading, value, label
 
 
-def kanji_rows(archive, cancelled=None):
+def kanji_rows(archive, cancelled=None, progress=None):
     """Yield (character, serializable data), accepting v3 and legacy v1 banks."""
-    for row in _bank_rows(archive, "kanji_bank", cancelled):
+    for row in _bank_rows(archive, "kanji_bank", cancelled, progress):
         if len(row) < 4 or not all(isinstance(value, str) for value in row[:4]) or not row[0]:
             raise ValueError("Invalid kanji metadata row")
         character, onyomi, kunyomi, tags = row[:4]

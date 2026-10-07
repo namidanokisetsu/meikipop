@@ -72,7 +72,7 @@ class LanguageSetup(QObject):
         def progress(text):
             nonlocal last_update
             now = monotonic()
-            if now - last_update >= 0.1:
+            if now - last_update >= 0.1 or text.endswith((" 0%", " 100%")):
                 last_update = now
                 self.progress.emit(text)
 

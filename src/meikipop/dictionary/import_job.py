@@ -15,7 +15,7 @@ def import_batch(paths, directory, language, progress, cancelled):
         if cancelled.is_set():
             break
         try:
-            progress(f"Importing {Path(path).name}…")
+            progress(f"Importing {Path(path).name} · 0%")
             with DictionaryArchive(path) as archive:
                 metadata = json.loads(archive.read("index.json"))
             source = metadata.get("sourceLanguage") or language
@@ -43,7 +43,7 @@ def _worker(paths, directory, language, recommended, messages, cancelled):
     def progress(text):
         nonlocal last_update
         now = monotonic()
-        if now - last_update < 0.1:
+        if now - last_update < 0.1 and not text.endswith((" 0%", " 100%")):
             return
         last_update = now
         try:

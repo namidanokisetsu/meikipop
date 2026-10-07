@@ -37,8 +37,8 @@ def _markers(value):
     return tuple(dict.fromkeys(values))
 
 
-def pitch_rows(archive, cancelled=None):
-    for row in _bank_rows(archive, "term_meta_bank", cancelled):
+def pitch_rows(archive, cancelled=None, progress=None):
+    for row in _bank_rows(archive, "term_meta_bank", cancelled, progress):
         if len(row) != 3 or row[1] != "pitch":
             continue
         term, _, data = row

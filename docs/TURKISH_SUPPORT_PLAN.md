@@ -12,6 +12,8 @@ clients remain explicit compatibility entrypoints.
 1. **Indexed library.** Import local Yomitan definition, forms, frequency, pitch and
    kanji archives into immutable SQLite packs. Imports are atomic and
    cancellable; per-pack enablement and ordering are separate preferences.
+   Imports show percentages through bank processing and indexing; 100% follows
+   publication. Downloads show percentages when their total size is known.
    Explicit recommended downloads reuse this importer. Removal closes readers
    and deletes every stored revision of the selected pack.
    Structured Turkdict content and multiple Japanese dictionaries share the

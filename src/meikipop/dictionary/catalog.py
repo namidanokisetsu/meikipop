@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 
 from .library import import_yomitan, language_code
 from meikipop.language.support import DICTIONARY_LANGUAGES
+from meikipop.utils.progress import content_length, download_progress
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,8 @@ def install_recommended(dictionary, directory, progress, cancelled):
         archive = Path(folder) / "dictionary.zip"
         with urlopen(request, timeout=30) as response, archive.open("wb") as output:
             total = 0
+            size = content_length(response)
+            progress(download_progress(dictionary.title, total, size))
             while chunk := response.read(1024 * 1024):
                 if cancelled.is_set():
                     raise InterruptedError("Download cancelled.")
@@ -43,6 +46,6 @@ def install_recommended(dictionary, directory, progress, cancelled):
                 if total > 2 * 1024**3:
                     raise ValueError("Dictionary download exceeds 2 GB.")
                 output.write(chunk)
-                progress(f"Downloading {dictionary.title} · {total // (1024 * 1024)} MB")
+                progress(download_progress(dictionary.title, total, size))
         return import_yomitan(archive, directory, language=dictionary.language,
                              progress=progress, cancelled=cancelled.is_set)
