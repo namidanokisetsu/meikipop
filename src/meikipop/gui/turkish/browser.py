@@ -56,9 +56,11 @@ class DictionaryBrowser(QTextBrowser):
             self.lookup_selection()
 
     def mouseReleaseEvent(self, event):
-        super().mouseReleaseEvent(event)
+        # A link handler can scroll or replace the document during Qt's release.
+        anchor = self.anchorAt(event.position().toPoint())
         self.selecting = False
+        super().mouseReleaseEvent(event)
         if (self.selection_lookup and not self._selection_emitted and event.button() == Qt.MouseButton.LeftButton
-                and not self.anchorAt(event.position().toPoint())):
+                and not anchor):
             self.lookup_selection()
         self._selection_emitted = False

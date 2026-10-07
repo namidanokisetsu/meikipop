@@ -485,8 +485,8 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
                 more = more or len(entry.definitions) > 3
                 definitions.extend(converter.glosses(entry.definitions if full else entry.definitions[:3]))
             more = more or converter.clipped
-            toggle = (f' <a href="expand:{index}" title="{"Collapse" if full else "Expand"}">'
-                      f'{"−" if full else "+"}</a>'
+            toggle = (f'<a href="expand:{index}" title="{"Collapse" if full else "Expand"}">'
+                      f'&nbsp;{"−" if full else "+"}&nbsp;</a>'
                       if more or full else "")
             if source not in anchored:
                 parts.append(f'<a name="dictionary-{index}"></a>')

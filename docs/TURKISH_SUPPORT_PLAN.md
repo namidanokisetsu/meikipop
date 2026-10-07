@@ -57,7 +57,8 @@ clients remain explicit compatibility entrypoints.
    to the popup width; copy, translation and audio retain the complete context.
    Dictionary-provided disclosures remain independently collapsible after pinning,
    including nested Turkdict sections; toggles preserve the reading position and
-   history restores their state.
+   history restores their state. Embedded Turkish source headings share the popup's
+   source style; expansion links stay separate from selection lookup after scrolling.
    Audio orders enabled Online pronunciations, System voice and Local recordings in one
    per-profile list with checkboxes, drag/drop and arrows, preserving existing choices. Online
    retrieves language-matched Wiktionary/Lingua Libre files from Wikimedia Commons on
