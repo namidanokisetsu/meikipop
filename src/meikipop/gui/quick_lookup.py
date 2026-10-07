@@ -600,6 +600,7 @@ class QuickLookupWindow(QDialog):
         self.resize(480, 340)
         self._normal_size = QSize(480, 340)
         self._lookup_anchor = None
+        self._result_screenshot = None
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         self.frame = QFrame()
@@ -723,7 +724,7 @@ class QuickLookupWindow(QDialog):
         self.status.setWordWrap(True)
         self.status.hide()
         layout.addWidget(self.status)
-        toolbar.addWidget(self.anki_button)
+        toolbar.insertWidget(0, self.anki_button)
         toolbar.addWidget(self.copy_button)
         toolbar.addWidget(close)
         layout.addWidget(self.actions_row)
@@ -1079,12 +1080,15 @@ class QuickLookupWindow(QDialog):
             return
         if self._last_request_translate and self._translation_base is not None:
             base = self._translation_base
+            screenshot = self._result_screenshot
             if result.translation:
                 result = replace(result, entries=base.entries, suggestions=base.suggestions,
                                  kanji=base.kanji, matched_length=base.matched_length)
             else:
                 result = replace(base, message=result.message)
         self._display(result, remember=self._remember_request)
+        if self._last_request_translate and self._translation_base is not None:
+            self._result_screenshot = screenshot
         if self._pending_context and self._pending_context[0] == revision:
             self.set_context(self._pending_context[1])
             self._pending_context = None
@@ -1133,7 +1137,7 @@ class QuickLookupWindow(QDialog):
             self._history.append((self._result, getattr(self, "_result_context", ""),
                                   self._result_profile, self._result_target, tuple(self._expanded),
                                   self.browser.verticalScrollBar().value(), tuple(self._details_expanded),
-                                  self._result_input))
+                                  self._result_input, self._result_screenshot))
             self._history = self._history[-30:]
         if details_expanded is not None:
             self._details_expanded = set(details_expanded)
@@ -1145,6 +1149,8 @@ class QuickLookupWindow(QDialog):
         self._result_profile = self.preferred_foreign
         self._result_target = self.foreign.currentData()
         self._result_context = previous_context if same else ""
+        if not same:
+            self._result_screenshot = None
         self._result_input = self.search.text().strip()
         self._expanded = set(expanded)
         self._kanji_expanded = False
@@ -1352,6 +1358,7 @@ class QuickLookupWindow(QDialog):
         self._display(result, remember=False, expanded=expanded,
                       details_expanded=previous[6] if len(previous) > 6 else ())
         self.set_context(context)
+        self._result_screenshot = previous[8] if len(previous) > 8 else None
         self.browser.verticalScrollBar().setValue(scroll)
         self.translate.setEnabled(bool(result.text))
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
@@ -1613,7 +1620,11 @@ class QuickLookupWindow(QDialog):
         if self._anki_dialog is not None:
             self._anki_dialog.deleteLater()
         self._anki_dialog = AnkiExportDialog(self._result.entries, self._result_context,
-                                             self.browser.selected_text(), options, self)
+                                             self.browser.selected_text(), options, self,
+                                             translation=self._result.translation,
+                                             screenshot=self._result_screenshot,
+                                             directory=self.directory,
+                                             audio_clip=getattr(self.audio, "current_clip", None))
         self._anki_dialog.show()
 
     def play_audio(self, *, sentence=False, translation=False, source=None):
@@ -1647,6 +1658,7 @@ class QuickLookupWindow(QDialog):
                 self._autoplay()
             return True
         self._invalidate()
+        self._result_screenshot = None
         self._history.clear()
         self._new_chain = True
         entries = tuple(entries or ())

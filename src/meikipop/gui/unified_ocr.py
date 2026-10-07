@@ -122,9 +122,13 @@ class ScanWorker(threading.Thread):
                     if self.frames is not None:
                         request = pixels.request if isinstance(pixels, PixelFrame) else options[2]
                         captured_at = pixels.captured_at if isinstance(pixels, PixelFrame) else options[3]
+                        snapshot = pixels if isinstance(pixels, PixelFrame) else PixelFrame(
+                            request, image.size, image.tobytes(), captured_at)
+                        if request.frozen and isinstance(pixels, PixelFrame) and self._frozen is not None:
+                            snapshot = self._frozen[1]
                         frame = RecognizedFrame(request, tuple(replace(p, words=tuple(p.words)) for p in paragraphs or ()),
                                                 language, selection, caches[provider_key].revision, captured_at,
-                                                image.size, pixels.physical_crop if isinstance(pixels, PixelFrame) else ())
+                                                image.size, pixels.physical_crop if isinstance(pixels, PixelFrame) else (), snapshot)
                         self.frames.emit(generation, frame, "")
                         continue
                     hit = hit_paragraphs(paragraphs, point, language)
@@ -815,6 +819,7 @@ class UnifiedOCR(QObject):
             mark("hit_delivery", frame.request.revision if frame is not None else generation,
                  popup_revision=getattr(self.window, "revision", 0))
             self.window.set_context(*hit.sentence)
+            self.window._result_screenshot = frame.snapshot if frame is not None else None
             self._sync_pin_ready()
 
     def shutdown(self):

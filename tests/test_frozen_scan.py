@@ -41,6 +41,10 @@ class FrozenScanTests(unittest.TestCase):
         self.assertTrue(all(call.args[0].crop == request.geometry for call in backend.capture.call_args_list))
         first, second, third = [call.args[1] for call in frames.emit.call_args_list]
         self.assertEqual(first.captured_at, second.captured_at)
+        self.assertIs(first.snapshot, second.snapshot)
+        self.assertEqual(first.snapshot.request.crop, request.geometry)
+        self.assertEqual(first.snapshot.image().size, (80, 40))
+        self.assertIsNot(first.snapshot, third.snapshot)
         self.assertEqual(second.physical_crop, (0, 0, 40, 40))
         self.assertEqual(third.request.generation, 2)
         self.assertIsNone(worker._frozen)

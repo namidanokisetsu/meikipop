@@ -161,6 +161,37 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertIn("chosen sense", calls[0]["glossary"])
         self.assertNotEqual(threads[0], threading.get_ident())
 
+    def test_export_includes_captured_pixels_and_editable_translation(self):
+        from io import BytesIO
+        from PIL import Image
+        from meikipop.utils.capture import CaptureRequest, PixelFrame
+        request = CaptureRequest(1, "screen", (0, 0, 2, 2), (0, 0, 2, 2), 1, 1)
+        snapshot = PixelFrame(request, (2, 2), bytes([255, 0, 0]) * 4, 10)
+        entry = Entry("1", "cat", "", "Words", "en", ("cat",))
+        options = AnkiSettings(True, fields={"Front": "expression", "Image": "picture", "Translation": "sentence_translation"})
+        dialog = AnkiExportDialog([entry], "cat here", "", options, screenshot=snapshot, translation="initial")
+        self.widgets.append(dialog)
+        dialog.translation.setPlainText("edited <translation>")
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.return_value = 123
+            dialog.submit()
+            self.wait_until(lambda: dialog._saved)
+        values = client.return_value.add.call_args.args[0]
+        self.assertEqual(values["sentence_translation"], "edited &lt;translation&gt;")
+        media = values["_media"]["picture"]
+        self.assertEqual(Image.open(BytesIO(media["data"])).getpixel((0, 0)), (255, 0, 0))
+
+    def test_field_suggestions_preserve_manual_skips_until_match_is_requested(self):
+        panel = AnkiSettingsPanel(self.settings)
+        self.widgets.append(panel)
+        panel.load("ja")
+        panel._set_fields(["word", "READING", "sentenceFurigana"], {"READING": ""})
+        self.assertEqual(panel._field_controls["word"].currentData(), "expression")
+        self.assertEqual(panel._field_controls["READING"].currentData(), "")
+        panel.auto_map.click()
+        self.assertEqual(panel._field_controls["READING"].currentData(), "reading")
+        self.assertEqual(panel._field_controls["sentenceFurigana"].currentData(), "sentence_furigana")
+
     def test_popup_is_opt_in_and_old_results_cannot_be_exported(self):
         window = QuickLookupWindow(self.temp.name, FakeEngine, self.settings)
         self.widgets.append(window)
@@ -172,7 +203,7 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertFalse(window.anki_button.isHidden())
         self.assertEqual(window.anki_button.text(), "Add to Anki")
         layout = window.actions_row.layout()
-        self.assertEqual(layout.indexOf(window.anki_button), layout.indexOf(window.copy_button) - 1)
+        self.assertEqual(layout.indexOf(window.anki_button), 0)
         window._set_peek(True)
         self.assertFalse(window.anki_button.isVisible())
         window.pin.setChecked(True)

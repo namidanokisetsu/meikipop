@@ -1,5 +1,5 @@
 """Immutable recognized pixels and source offsets, independent of the pointer."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -12,6 +12,7 @@ class RecognizedFrame:
     captured_at: float
     pixel_size: tuple = ()
     physical_crop: tuple = ()
+    snapshot: object = field(default=None, compare=False, repr=False)
 
     @property
     def identity(self):

@@ -6,7 +6,7 @@ from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from meikipop.anki import AnkiClient, AnkiSettings, endpoint_address, note_values
+from meikipop.anki import AnkiClient, AnkiSettings, endpoint_address, note_values, suggest_fields
 from meikipop.dictionary.library import Entry
 from meikipop.dictionary.pitch import Pitch
 
@@ -57,6 +57,44 @@ class AnkiTests(unittest.TestCase):
         self.assertIn("ꜜ", note["fields"]["Pitch"])
         self.assertFalse(note["options"]["allowDuplicate"])
         self.assertEqual(note["options"]["duplicateScope"], "deck")
+
+    def test_field_matching_follows_kikitori_and_leaves_unrelated_fields_empty(self):
+        fields = ["word", "READING", "sentence", "sentenceFurigana", "sentenceTranslation",
+                  "chosenDefinition", "definition", "picture", "wordAudio", "sentenceAudio",
+                  "pitchPositions", "pitchCategories", "freqSort", "supplement", "miscInfo", "Readng"]
+        mapping = suggest_fields(fields)
+        self.assertEqual(mapping["word"], "expression")
+        self.assertEqual(mapping["READING"], "reading")
+        self.assertEqual(mapping["Readng"], "reading")
+        self.assertEqual(mapping["sentenceFurigana"], "sentence_furigana")
+        self.assertEqual(mapping["sentenceTranslation"], "sentence_translation")
+        self.assertEqual(mapping["wordAudio"], "word_audio")
+        self.assertEqual(mapping["picture"], "picture")
+        self.assertEqual(mapping["chosenDefinition"], "glossary")
+        for field in ("sentenceAudio", "supplement", "miscInfo"):
+            self.assertEqual(mapping[field], "")
+        self.assertEqual(suggest_fields(["Sentence-Furigana", "Word Reading"]),
+                         {"Sentence-Furigana": "sentence_furigana", "Word Reading": "reading"})
+
+    def test_media_uploads_to_mapped_fields_before_one_note_write(self):
+        options = replace(self.options, fields={"Front": "expression", "Back": "picture"})
+        client = AnkiClient(options)
+        with patch.object(client, "call", side_effect=[["Front", "Back"], "image.png", 123]) as call:
+            client.add({"expression": "cat", "_media": {"picture": {"filename": "image.png", "data": b"png"}}})
+        self.assertEqual([item.args[0] for item in call.call_args_list], ["modelFieldNames", "storeMediaFile", "addNote"])
+        self.assertEqual(call.call_args.kwargs["note"]["fields"]["Back"], '<img src="image.png">')
+        with patch.object(client, "call", side_effect=[["Front", "Back"], ValueError("Media failed")]) as call:
+            with self.assertRaisesRegex(ValueError, "Media failed"):
+                client.add({"expression": "cat", "_media": {"picture": {"filename": "image.png", "data": b"png"}}})
+        self.assertNotIn("addNote", [item.args[0] for item in call.call_args_list])
+
+    def test_kikitori_furigana_translation_and_pitch_values(self):
+        entry = Entry("1", "猫", "ねこ", "Words", "ja", ("cat",), pitches=(Pitch("Accent", "ねこ", 1),))
+        values = note_values([entry], "猫がいる。", translation="A cat <here>.")
+        self.assertEqual(values["sentence_furigana"], " 猫[ねこ]がいる。")
+        self.assertEqual(values["sentence_translation"], "A cat &lt;here&gt;.")
+        self.assertEqual(values["pitch_positions"], "1")
+        self.assertEqual(values["pitch_categories"], "atamadaka")
 
     def test_mapping_changes_and_disabled_integration_never_write(self):
         for options in (replace(self.options, enabled=False), replace(self.options, fields={"Front": "sentence"}),

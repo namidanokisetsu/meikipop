@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
 )
 
-from meikipop.anki import AnkiClient, FIELD_SOURCES, load_settings, note_values
+from meikipop.anki import (AnkiClient, FIELD_SOURCES, load_settings, media_value, note_values,
+                           sentence_readings, suggest_fields)
 from meikipop.gui.shortcut_edit import ShortcutEdit
 
 
@@ -57,6 +58,9 @@ class AnkiSettingsPanel(QWidget):
         self.reload = QPushButton("Reload decks and fields")
         self.reload.setToolTip("Open Anki with AnkiConnect installed")
         form.addRow(self.reload)
+        self.auto_map = QPushButton("Match fields")
+        self.auto_map.clicked.connect(self._match_fields)
+        form.addRow(self.auto_map)
         self.mapping = QFormLayout()
         mapping_widget = QWidget()
         mapping_widget.setLayout(self.mapping)
@@ -133,15 +137,23 @@ class AnkiSettingsPanel(QWidget):
         while self.mapping.rowCount():
             self.mapping.removeRow(0)
         self._field_controls = {}
+        suggestions = suggest_fields(fields)
         for index, name in enumerate(fields):
             control = QComboBox()
             for value, label in FIELD_SOURCES.items():
                 control.addItem(label, value)
-            default = "expression" if index == 0 else "glossary" if index == 1 else ""
-            control.setCurrentIndex(max(0, control.findData(mapping.get(name, default))))
+            control.setCurrentIndex(max(0, control.findData(mapping.get(name, suggestions[name]))))
             self.mapping.addRow(name, control)
             self._field_controls[name] = control
             control.currentIndexChanged.connect(self._save)
+
+    def _match_fields(self):
+        if self._task is not None:
+            return
+        self._loading = True
+        self._set_fields(list(self._field_controls), {})
+        self._loading = False
+        self._save()
 
     def _save(self, *_):
         if self._loading:
@@ -233,12 +245,14 @@ class AnkiSettingsPanel(QWidget):
 
 
 class AnkiExportDialog(QDialog):
-    def __init__(self, entries, sentence, selection, options, parent=None):
+    def __init__(self, entries, sentence, selection, options, parent=None, *,
+                 translation="", screenshot=None, directory=None, audio_clip=None):
         super().__init__(parent)
         self.setWindowTitle("Add to Anki")
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.resize(480, 400)
         self.options, self._task, self._saved = options, None, False
+        self.screenshot, self.directory, self.audio_clip = screenshot, directory, audio_clip
         self.groups = {}
         for entry in entries:
             self.groups.setdefault((entry.term, entry.reading, entry.source), []).append(entry)
@@ -260,6 +274,19 @@ class AnkiExportDialog(QDialog):
         self.sentence.setMaximumHeight(80)
         self.sentence.setPlainText(sentence)
         layout.addWidget(self.sentence)
+        self.translation = QTextEdit()
+        self.translation.setAcceptRichText(False)
+        self.translation.setAccessibleName("Sentence translation")
+        self.translation.setPlaceholderText("Sentence translation")
+        self.translation.setMaximumHeight(65)
+        self.translation.setPlainText(translation)
+        self.translation.setVisible("sentence_translation" in options.fields.values())
+        layout.addWidget(self.translation)
+        self.include_picture = QCheckBox("Include screenshot")
+        self.include_picture.setChecked(screenshot is not None)
+        self.include_picture.setEnabled(screenshot is not None)
+        self.include_picture.setVisible("picture" in options.fields.values())
+        layout.addWidget(self.include_picture)
         self.status = QLabel(f"{options.deck} · {options.model}")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
@@ -285,11 +312,37 @@ class AnkiExportDialog(QDialog):
     def submit(self):
         if self._task is not None or self._saved:
             return
-        values = note_values(self.groups[self.entry.currentIndex()], self.sentence.toPlainText())
-        values["glossary"] = self.definition.toHtml()
-        self._task = AnkiTask(lambda: AnkiClient(self.options).add(values), None, self)
+        entries = tuple(self.groups[self.entry.currentIndex()])
+        sentence, translation, definition = self.sentence.toPlainText(), self.translation.toPlainText(), self.definition.toHtml()
+        screenshot = self.screenshot if self.include_picture.isChecked() else None
+        def export():
+            furigana = None
+            if entries[0].language == "ja" and sentence and "sentence_furigana" in self.options.fields.values():
+                from meikipop.dictionary.search import SearchEngine
+                engine = SearchEngine(self.directory)
+                try:
+                    furigana = sentence_readings(sentence, entries, engine)
+                finally:
+                    engine.close()
+            values = note_values(entries, sentence, translation=translation, furigana=furigana)
+            values["glossary"] = definition
+            media = {}
+            if screenshot is not None and "picture" in self.options.fields.values():
+                from io import BytesIO
+                buffer = BytesIO()
+                screenshot.image().save(buffer, format="PNG")
+                media["picture"] = media_value(buffer.getvalue(), "png")
+            clip = self.audio_clip
+            if clip is not None and clip.key == (entries[0].term, entries[0].reading or ""):
+                from pathlib import Path
+                suffix = Path(clip.filename).suffix.lstrip(".").lower()
+                if suffix in ("mp3", "ogg", "wav", "m4a", "flac", "opus"):
+                    media["word_audio"] = media_value(clip.data, suffix)
+            values["_media"] = media
+            return AnkiClient(self.options).add(values)
+        self._task = AnkiTask(export, None, self)
         self._task.finished.connect(self._finished)
-        for widget in (self.add, self.entry, self.definition, self.sentence, self.close_button):
+        for widget in (self.add, self.entry, self.definition, self.sentence, self.translation, self.include_picture, self.close_button):
             widget.setEnabled(False)
         self.status.setText("Adding…")
         self._task.thread.start()
@@ -298,8 +351,9 @@ class AnkiExportDialog(QDialog):
         task, self._task = self._task, None
         task.deleteLater()
         _, note_id, error = response
-        for widget in (self.entry, self.definition, self.sentence, self.close_button):
+        for widget in (self.entry, self.definition, self.sentence, self.translation, self.close_button):
             widget.setEnabled(True)
+        self.include_picture.setEnabled(self.screenshot is not None)
         self.add.setEnabled(bool(error))
         self._saved = not error
         self.status.setText(error or "Added to Anki.")
