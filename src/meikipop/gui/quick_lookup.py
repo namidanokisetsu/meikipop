@@ -274,6 +274,7 @@ class _GlossConverter(StructuredContentConverter):
                     self._preview_source_complete = True
                     self.clipped = True
                     return ""
+                return f'<p class="source"><small>{escape(heading_text.strip())}</small></p>'
             # Turkdict's exporter retains this presentation signature for
             # examples, translations and sense context, but no CSS class name.
             turkdict_example = (tag == "div" and style.get("fontSize") == "0.9em"
