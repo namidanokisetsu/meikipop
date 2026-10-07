@@ -163,6 +163,14 @@ class LibraryTests(unittest.TestCase):
         self.library.refresh()
         self.assertFalse(self.library.lookup("araç", "tr"))
 
+    def test_new_revision_wins_when_windows_timestamps_tie(self):
+        from unittest.mock import patch
+        with patch("meikipop.dictionary.library.time_ns", return_value=100):
+            self.pack("Words", [self.row("car", ["old"])])
+            self.pack("Words", [self.row("car", ["new"])], revision="2")
+        self.library = Library(self.directory)
+        self.assertEqual(self.library.lookup("car", "tr")[0].definitions, ("new",))
+
     def test_typo_candidates_include_late_alphabet_replacements(self):
         self.pack("Words", [self.row("kitap", ["book"]), self.row("yüz", ["face"])])
         self.library = Library(self.directory)

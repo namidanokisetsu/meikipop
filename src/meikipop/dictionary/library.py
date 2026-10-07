@@ -212,7 +212,17 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 CREATE INDEX frequency_key ON frequencies(key,reading_key);
                 CREATE INDEX pitch_key ON pitches(key,reading_key);
             """)
-            metadata = dict(schema_version="3", imported_at_ns=str(time_ns()), title=title, language=source_language,
+            imported_at = time_ns()
+            # Windows timestamps can tie across fast imports. Keep revisions ordered.
+            for previous in directory.glob("*.sqlite3"):
+                try:
+                    with closing(sqlite3.connect(previous.resolve().as_uri() + "?mode=ro", uri=True)) as old:
+                        stamp = old.execute("SELECT value FROM metadata WHERE key='imported_at_ns'").fetchone()
+                        if stamp:
+                            imported_at = max(imported_at, int(stamp[0]) + 1)
+                except (sqlite3.Error, OSError, ValueError):
+                    pass
+            metadata = dict(schema_version="3", imported_at_ns=str(imported_at), title=title, language=source_language,
                             target_language=str(index.get("targetLanguage", "")),
                             frequency_mode=str(index.get("frequencyMode", "rank-based")),
                             revision=str(index.get("revision", "")), sha256=sha,
