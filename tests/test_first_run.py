@@ -43,6 +43,8 @@ class FirstRunTests(unittest.TestCase):
         self.settings.setValue("profiles/ja/translation_model", "existing.gguf")
         self.settings.setValue("setup/pending", True)
         self.wizard.language.setCurrentIndex(self.wizard.language.findData("tr"))
+        for task, check in self.wizard.choices:
+            check.setChecked(False)
         self.wizard.accept()
         self.window.set_mode.assert_called_once_with("tr")
         self.window.apply_shortcut.assert_called_once_with("")
@@ -57,11 +59,21 @@ class FirstRunTests(unittest.TestCase):
         self.assertFalse(self.settings.value("setup/completed", False, bool))
         self.assertIn("unavailable", self.wizard.error.text())
 
-    def test_manual_setup_skips_download_page(self):
-        self.wizard.restart()
-        self.wizard.manual.setChecked(True)
-        self.assertEqual(self.wizard.nextId(), 2)
+    def test_unchecking_everything_starts_without_downloads(self):
+        for task, check in self.wizard.choices:
+            check.setChecked(False)
+        with patch("meikipop.gui.language_setup.LanguageSetup") as setup:
+            self.wizard.accept()
+        setup.assert_not_called()
         self.assertIsNone(self.wizard.operation)
+        self.assertTrue(self.settings.value("setup/completed", False, bool))
+
+    def test_dictionary_is_optional_and_translation_uses_selected_size(self):
+        for task, check in self.wizard.choices:
+            check.setChecked(task.kind == "translation")
+        self.wizard.translation.setCurrentIndex(1)
+        tasks = self.wizard.selected_tasks()
+        self.assertEqual([(task.kind, task.value) for task in tasks], [("translation", "quality")])
 
     def test_automatic_setup_starts_once_after_language_selection(self):
         self.window.directory = self.directory.name

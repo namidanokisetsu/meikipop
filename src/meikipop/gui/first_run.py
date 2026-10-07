@@ -1,18 +1,17 @@
-"""First-launch setup using the same library and model controls as Settings."""
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QLabel, QPushButton,
-                            QProgressBar, QVBoxLayout, QWizard, QWizardPage)
+﻿"""One-page first-launch setup with individually optional downloads."""
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout,
+                            QLabel, QPushButton, QProgressBar, QVBoxLayout, QWidget)
 
 from meikipop.gui.shortcut_edit import ShortcutEdit
 
 
 def needs_setup(settings):
-    # Existing installations keep their preferences and are not forced through setup.
     return settings.value("setup/pending", False, bool) or (
         not settings.value("setup/completed", False, bool) and not settings.allKeys())
 
 
-class SetupWizard(QWizard):
+class SetupWizard(QDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window = window
@@ -20,84 +19,105 @@ class SetupWizard(QWizard):
         self.downloads_done = False
         self.download_language = ""
         self.setWindowTitle("Welcome to Meikipop")
-        self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.resize(620, 440)
-        self.setButtonText(QWizard.WizardButton.FinishButton, "Start Meikipop")
+        self.resize(540, 460)
         from meikipop.gui.quick_lookup import LANGUAGE_NAMES, shortcut_preset
-        language = self.add_page("Your language", "Choose a language to get started. You can add more later.")
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        layout.addLayout(form)
         self.language = QComboBox()
         for code, name in LANGUAGE_NAMES.items():
             self.language.addItem(name, code)
         self.language.setCurrentIndex(max(0, self.language.findData(window.preferred_foreign)))
-        language.layout().addWidget(self.language)
+        form.addRow("Language", self.language)
+        layout.addWidget(QLabel("Choose what to install. Everything is optional."))
+        self.resources = QWidget()
+        self.resource_layout = QVBoxLayout(self.resources)
+        self.resource_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.resources)
+        self.choices = []
         self.translation = QComboBox()
-        self.translation.addItem("Lightweight translation (1.9 GB)", "lightweight")
-        self.translation.addItem("Quality translation (8 GB)", "quality")
-        language.layout().addWidget(self.translation)
-        self.manual = QCheckBox("Skip downloads and set up manually")
-        language.layout().addWidget(self.manual)
-        self.plan_summary = QLabel()
-        self.plan_summary.setWordWrap(True)
-        language.layout().addWidget(self.plan_summary)
-        self.language.currentIndexChanged.connect(self.update_plan)
-        self.update_plan()
-
-        self.download_page = DownloadPage(self)
-        self.addPage(self.download_page)
-        models = self.add_page("Manual setup", "Add your own dictionaries or change models whenever you like.")
-        self.add_button(models, "Choose dictionaries", 0)
-        self.add_button(models, "Translation models", 1)
-        self.add_button(models, "Base-form models", 0)
-        self.add_button(models, "Screen recognition", 3)
-        note = QLabel("Downloads are optional. You can return to these controls in Settings.")
-        note.setWordWrap(True)
-        models.layout().addWidget(note)
-
-        shortcuts = self.add_page("Make it yours", "Choose how to open dictionary search.")
-        form = QFormLayout()
+        self.translation.addItem("Lightweight (1.9 GB)", "lightweight")
+        self.translation.addItem("Quality (8 GB)", "quality")
+        form.addRow("Translation model", self.translation)
         self.shortcut = ShortcutEdit(window.settings.value("hotkey", ""), shortcut_preset())
         form.addRow("Search shortcut", self.shortcut)
-        shortcuts.layout().addLayout(form)
+        self.bar = QProgressBar()
+        self.bar.hide()
+        layout.addWidget(self.bar)
         self.error = QLabel()
+        self.error.setTextFormat(Qt.TextFormat.PlainText)
         self.error.setWordWrap(True)
-        shortcuts.layout().addWidget(self.error)
-        self.add_page("Ready", "Open Meikipop from your apps or its tray icon. Settings keeps your dictionaries, models and shortcuts in one place.")
+        layout.addWidget(self.error)
+        layout.addStretch()
+        buttons = QHBoxLayout()
+        self.settings_button = QPushButton("Settings")
+        self.settings_button.clicked.connect(self.open_settings)
+        buttons.addWidget(self.settings_button)
+        buttons.addStretch()
+        self.skip = QPushButton("Stop downloads")
+        self.skip.clicked.connect(self.skip_downloads)
+        self.skip.hide()
+        buttons.addWidget(self.skip)
+        self.start = QPushButton("Start Meikipop")
+        self.start.clicked.connect(self.accept)
+        self.start.setDefault(True)
+        buttons.addWidget(self.start)
+        layout.addLayout(buttons)
+        self.language.currentIndexChanged.connect(self.update_plan)
+        self.translation.currentIndexChanged.connect(self._selection_changed)
+        self.update_plan()
+
+    def _selection_changed(self):
+        self.downloads_done = False
+        self.translation.setEnabled(any(task.kind == "translation" and check.isChecked()
+                                        for task, check in self.choices))
 
     def update_plan(self):
-        if self.operation is None:
-            self.downloads_done = False
         from meikipop.gui.language_setup import language_plan
-        from meikipop.language.support import TRANSLATION_LANGUAGES
-        code = self.language.currentData()
-        self.translation.setEnabled(code in TRANSLATION_LANGUAGES)
-        self.plan_summary.setText("Next installs: " + ", ".join(task.label for task in language_plan(code)) + ".")
+        while self.resource_layout.count():
+            self.resource_layout.takeAt(0).widget().deleteLater()
+        self.choices = []
+        for task in language_plan(self.language.currentData(), self.translation.currentData()):
+            check = QCheckBox(task.label)
+            check.setChecked(task.kind != "translation")
+            check.toggled.connect(self._selection_changed)
+            self.resource_layout.addWidget(check)
+            self.choices.append((task, check))
+        self._selection_changed()
 
-    def nextId(self):
-        if self.currentId() == 0 and self.manual.isChecked():
-            return 2
-        return super().nextId()
+    def selected_tasks(self):
+        from dataclasses import replace
+        return [replace(task, value=self.translation.currentData()) if task.kind == "translation" else task
+                for task, check in self.choices if check.isChecked()]
 
     def begin_downloads(self):
         if self.operation is not None or self.downloads_done:
             return
         from meikipop.dictionary.library import default_library_path
-        from meikipop.gui.language_setup import LanguageSetup, language_plan
+        from meikipop.gui.language_setup import LanguageSetup
+        tasks = self.selected_tasks()
+        if not tasks:
+            self.downloads_done = True
+            return
         self.select_language()
         self.download_language = self.language.currentData()
-        tasks = language_plan(self.download_language, self.translation.currentData())
         self.operation = LanguageSetup(tasks, self.window.directory or default_library_path())
-        self.download_page.skip.setEnabled(True)
         self.window._language_setup = self.operation
-        self.download_page.bar.setRange(0, len(tasks))
+        self.bar.setRange(0, len(tasks))
+        self.bar.setValue(0)
+        self.bar.show()
+        self.skip.show()
+        self.skip.setEnabled(True)
+        for control in (self.start, self.language, self.resources, self.translation, self.shortcut, self.settings_button):
+            control.setEnabled(False)
         self.operation.stage.connect(self.download_stage)
-        self.operation.progress.connect(self.download_page.status.setText)
+        self.operation.progress.connect(self.error.setText)
         self.operation.finished.connect(self.download_finished)
-        self.button(QWizard.WizardButton.BackButton).setEnabled(False)
         self.operation.thread.start()
 
     def download_stage(self, index, label):
-        self.download_page.bar.setValue(index)
-        self.download_page.status.setText(label)
+        self.bar.setValue(index)
+        self.error.setText(label)
 
     def download_finished(self, completed, errors):
         from dataclasses import replace
@@ -121,37 +141,25 @@ class SetupWizard(QWizard):
         self.downloads_done = True
         cancelled = self.operation.cancelled.is_set()
         self.operation = None
-        self.download_page.bar.setValue(self.download_page.bar.maximum())
-        self.download_page.status.setText("\n".join(errors) if errors else (
-            "Downloads skipped. Installed items were kept." if cancelled else "Your language is ready."))
-        self.download_page.skip.setEnabled(False)
-        self.button(QWizard.WizardButton.BackButton).setEnabled(True)
-        self.download_page.completeChanged.emit()
-        if cancelled and self.isVisible():
-            self.next()
+        self.skip.hide()
+        self.bar.setValue(self.bar.maximum())
+        for control in (self.start, self.language, self.resources, self.shortcut, self.settings_button):
+            control.setEnabled(True)
+        self.translation.setEnabled(any(task.kind == "translation" and check.isChecked()
+                                        for task, check in self.choices))
+        self.error.setText("\n".join(errors) if errors else "Installed items were kept." if cancelled else "Ready.")
+        if not errors and not cancelled and self.isVisible():
+            self.accept()
 
     def skip_downloads(self):
         if self.operation is not None:
             self.operation.cancelled.set()
-            self.download_page.status.setText("Stopping downloads…")
-            self.download_page.skip.setEnabled(False)
+            self.error.setText("Stopping downloads...")
+            self.skip.setEnabled(False)
 
     def reject(self):
         self.skip_downloads()
         super().reject()
-
-    def add_page(self, title, subtitle):
-        page = QWizardPage()
-        page.setTitle(title)
-        page.setSubTitle(subtitle)
-        QVBoxLayout(page)
-        self.addPage(page)
-        return page
-
-    def add_button(self, page, title, tab):
-        button = QPushButton(title)
-        button.clicked.connect(lambda: self.open_settings(tab))
-        page.layout().addWidget(button)
 
     def select_language(self):
         code = self.language.currentData()
@@ -161,29 +169,22 @@ class SetupWizard(QWizard):
         self.window.update_languages(())
         self.window.set_mode(code)
 
-    def open_settings(self, tab):
+    def open_settings(self):
         self.select_language()
         self.window.open_settings()
-        dialog = self.window._setup
-        dialog.tabs.setCurrentIndex(tab)
-
-    def validateCurrentPage(self):
-        if self.currentId() == 3:
-            try:
-                from meikipop.gui.text_shortcuts import validate_shortcuts
-                validate_shortcuts([self.shortcut.text()])
-            except ValueError as error:
-                self.error.setText(str(error))
-                return False
-        return True
 
     def accept(self):
+        if self.operation is not None:
+            return
         try:
             self.window.apply_shortcut(self.shortcut.text())
         except (ValueError, OSError, RuntimeError) as error:
-            self.back()
             self.error.setText(str(error))
             return
+        if not self.downloads_done:
+            self.begin_downloads()
+            if self.operation is not None:
+                return
         self.select_language()
         self.window.settings.setValue("setup/completed", True)
         self.window.settings.remove("setup/pending")
@@ -202,26 +203,3 @@ def show_setup(window):
     from meikipop.utils.window_focus import activate_application
     activate_application()
     wizard.activateWindow()
-
-
-class DownloadPage(QWizardPage):
-    def __init__(self, wizard):
-        super().__init__()
-        self.owner = wizard
-        self.setTitle("Installing your language")
-        self.setSubTitle("You can skip downloads and use manual setup.")
-        layout = QVBoxLayout(self)
-        self.bar = QProgressBar()
-        self.status = QLabel("Preparing…")
-        self.status.setWordWrap(True)
-        self.skip = QPushButton("Skip remaining downloads")
-        self.skip.clicked.connect(wizard.skip_downloads)
-        layout.addWidget(self.bar)
-        layout.addWidget(self.status)
-        layout.addWidget(self.skip)
-
-    def initializePage(self):
-        QTimer.singleShot(0, self.owner.begin_downloads)
-
-    def isComplete(self):
-        return self.owner.downloads_done
