@@ -8,6 +8,7 @@ from PyQt6.QtGui import QWheelEvent
 from PyQt6.QtWidgets import QApplication
 
 from meikipop.dictionary.library import Entry
+from meikipop.dictionary.kanji import KanjiEntry
 from meikipop.dictionary.search import SearchResult
 from meikipop.gui.quick_lookup import LocalDictionaryBrowser, render_result
 
@@ -149,6 +150,14 @@ class SectionScrollTests(unittest.TestCase):
                         for index, (term, reading) in enumerate((("猫", "ねこ"), ("生", "き"), ("生", "せい"))))
         self.browser.setHtml(render_result(SearchResult("生", "ja", "en", entries),
                                            expanded=("Source",), headword_furigana=True))
+        self.app.processEvents()
+        self.assertEqual(len(self.scroller.section_tops()), 3)
+        self.assertEqual(len(set(self.scroller.section_tops())), 3)
+
+    def test_translation_and_kanji_are_reachable_sections(self):
+        result = SearchResult("猫", "ja", "en", (Entry("cat", "猫", "ねこ", "Source", "ja", ("cat",)),),
+                              translation="translated sentence", kanji=(KanjiEntry("猫", meanings=("cat",)),))
+        self.browser.setHtml(render_result(result))
         self.app.processEvents()
         self.assertEqual(len(self.scroller.section_tops()), 3)
         self.assertEqual(len(set(self.scroller.section_tops())), 3)

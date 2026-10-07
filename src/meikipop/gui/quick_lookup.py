@@ -450,6 +450,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
             parts.append("<hr>")
         first_source = next(source for source in sources if source in dictionaries)
         section = f'<a name="scroll-section-{group_index}-{sources.index(first_source)}"></a>'
+        parts.append(section)
         display_term = term
         if (result.source == "ru" and reading and unicodedata.normalize("NFC", reading.replace("\u0301", ""))
                 == unicodedata.normalize("NFC", term)):
@@ -459,9 +460,9 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
                         f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
                         if reading and reading != term else "")
         if result.source == "ja" and headword_furigana and reading and reading != term:
-            parts.append(f'<h2>{section}{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
+            parts.append(f'<h2>{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
         else:
-            parts.append(f'<h2>{section}{escape(display_term)}{reading_html}</h2>')
+            parts.append(f'<h2>{escape(display_term)}{reading_html}</h2>')
         parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies))
         if show_pitch and result.source == "ja":
             from meikipop.dictionary.pitch import render_pitches

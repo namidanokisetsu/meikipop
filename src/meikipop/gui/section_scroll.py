@@ -44,6 +44,8 @@ class SectionScroller(QObject):
             positions = set()
             block = document.begin()
             while block.isValid():
+                if any(name.startswith(SECTION_PREFIX) for name in block.charFormat().anchorNames()):
+                    positions.add(block.position())
                 iterator = block.begin()
                 while not iterator.atEnd():
                     fragment = iterator.fragment()
