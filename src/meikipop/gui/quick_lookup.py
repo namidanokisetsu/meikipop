@@ -1711,7 +1711,7 @@ class QuickLookupWindow(QDialog):
     def copy_sentence(self):
         if self._context:
             QApplication.clipboard().setText(self._context)
-            self.copy_button.setToolTip("Copied\n\n" + self._context)
+            self.hide()
 
     def _pin_changed(self, checked):
         if checked:

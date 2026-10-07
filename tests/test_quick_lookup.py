@@ -207,9 +207,6 @@ class QuickLookupTests(unittest.TestCase):
         self.window.audio = Mock()
         self.window.sentence_audio_button.click()
         self.assertEqual(self.window.audio.play_text.call_args.args[0], sentence)
-        with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
-            self.window.copy_sentence()
-            clipboard.return_value.setText.assert_called_once_with(sentence)
         self.window.translate.click()
         self.wait_until(lambda: bool(self.window._result.translation))
         self.assertEqual(self.engine.calls[-1][0], sentence)
@@ -219,6 +216,11 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window._result.text, "meslek")
         self.assertEqual(self.window.search.text(), sentence)
         self.assertEqual(self.window._context, sentence)
+
+        with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
+            self.window.copy_sentence()
+            clipboard.return_value.setText.assert_called_once_with(sentence)
+        self.assertFalse(self.window.isVisible())
 
     def test_input_selection_shortcut_and_menu_use_japanese_word_and_context(self):
         sentence = "公園で猫が寝ている。"
@@ -756,15 +758,15 @@ class QuickLookupTests(unittest.TestCase):
                 self.assertLess(definition.bottom(), browser.viewport().height())
         self.assertGreater(lengths[-1], lengths[-2])
         self.assertEqual(self.window._result_context, sentence.strip())
-        with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
-            self.window.copy_sentence()
-            clipboard.return_value.setText.assert_called_once_with(sentence.strip())
         self.window.audio = Mock()
         self.window.play_audio(sentence=True)
         self.assertEqual(self.window.audio.play_text.call_args.args[0], sentence.strip())
         with patch.object(self.window, "translation_worker") as worker:
             self.window.submit(translate=True, context=True)
             self.assertEqual(worker.request.call_args.args[1], sentence.strip())
+        with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
+            self.window.copy_sentence()
+            clipboard.return_value.setText.assert_called_once_with(sentence.strip())
 
     def test_pinned_translation_hides_source_when_disabled_and_keeps_copy(self):
         sentence = "猫がいる。"
@@ -1041,14 +1043,16 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
         self.assertEqual(self.window._context, "猫がいる。")
 
-    def test_copy_click_pins_before_copy_and_dismiss_does_not_pin(self):
+    def test_copy_click_closes_after_copy_and_dismiss_does_not_pin(self):
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.set_context("猫がいる。")
         with patch.object(QApplication, "clipboard") as clipboard:
             clipboard.return_value.setText.side_effect = lambda _: self.assertTrue(self.window.is_pinned)
             QTest.mouseClick(self.window.copy_button, Qt.MouseButton.LeftButton)
             clipboard.return_value.setText.assert_called_once_with("猫がいる。")
-        self.window.pin.setChecked(False)
+        self.assertFalse(self.window.is_pinned)
+        self.assertFalse(self.window.isVisible())
+        self.window.show_entries((entry(),), "猫", peek=True)
         QTest.mouseClick(self.window.dismiss_button, Qt.MouseButton.LeftButton)
         self.assertFalse(self.window.is_pinned)
         self.assertFalse(self.window.isVisible())

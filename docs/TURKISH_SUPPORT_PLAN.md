@@ -99,7 +99,8 @@ clients remain explicit compatibility entrypoints.
    sentence context.
    Model creation and inference remain off the Qt thread. Copy sentence is an
    explicit local clipboard action using visible scanned context, with a local
-   Ctrl/Cmd+Shift+C shortcut. History retains that context. No automatic text
+   Ctrl/Cmd+Shift+C shortcut. Copy sentence closes the popup; selected-text copying
+   keeps it open. History retains that context. No automatic text
    upload for dictionary/translation lookup or ChatGPT API connection is added.
    Online pronunciation mode sends only the requested word and language to Wikimedia.
    Pointer hit-testing reuses recognized

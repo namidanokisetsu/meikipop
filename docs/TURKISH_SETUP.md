@@ -176,7 +176,7 @@ retain automatic lookup. Native selection and copying remain available. Ordinary
 downloads, imports and removals require their action buttons.
 Automatic lookup on double-click or drag selection is disabled by default and configured per profile.
 These previews leave keyboard focus in the original app. Selected-text lookup preserves the clipboard.
-Copy sentence changes the clipboard only when invoked.
+Copy sentence closes the popup; copying selected text keeps it open.
 
 The provisioned local library uses the full Turkdict pack and Jitendex
 (2026-10-03), plus KANJIDIC and Jiten metadata packs. These large data files are
