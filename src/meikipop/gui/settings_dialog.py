@@ -249,11 +249,11 @@ class SettingsDialog(QDialog):
         opacity_layout = QHBoxLayout(self.opacity_slider_container)
         opacity_layout.setContentsMargins(0, 0, 0, 0)
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(50, 255)
-        self.opacity_slider.setValue(config.background_opacity)
-        self.opacity_label = QLabel(f"{config.background_opacity}")
+        self.opacity_slider.setRange(0, 100)
+        self.opacity_slider.setValue(round(config.background_opacity * 100 / 255))
+        self.opacity_label = QLabel(f"{self.opacity_slider.value()}%")
         self.opacity_label.setMinimumWidth(30)
-        self.opacity_slider.valueChanged.connect(lambda val: self.opacity_label.setText(str(val)))
+        self.opacity_slider.valueChanged.connect(lambda val: self.opacity_label.setText(f"{val}%"))
         self.opacity_slider.valueChanged.connect(self._mark_as_custom)
         opacity_layout.addWidget(self.opacity_slider)
         opacity_layout.addWidget(self.opacity_label)
@@ -452,7 +452,7 @@ class SettingsDialog(QDialog):
             for key, value in theme_data.items():
                 setattr(config, key, value)
             self._update_color_buttons()
-            self.opacity_slider.setValue(config.background_opacity)
+            self.opacity_slider.setValue(round(config.background_opacity * 100 / 255))
 
     def _update_color_buttons(self):
         for key, btn in self.color_widgets.items():
@@ -520,7 +520,7 @@ class SettingsDialog(QDialog):
         selected_friendly_name = self.popup_position_combo.currentText()
         config.popup_position_mode = self.popup_mode_map.get(selected_friendly_name, "flip_vertically")
         config.theme_name = self.theme_combo.currentText()
-        config.background_opacity = self.opacity_slider.value()
+        config.background_opacity = round(self.opacity_slider.value() * 255 / 100)
         config.font_family = self.font_family_combo.currentFont().family()
         config.font_size_header = self.font_size_header_spin.value()
         config.font_size_definitions = self.font_size_def_spin.value()

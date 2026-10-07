@@ -10,7 +10,7 @@ from meikipop.gui.activation import normalise_activation_bindings
 logger = logging.getLogger(__name__)
 
 APP_NAME = "meikipop"
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.1.2"
 MAX_DICT_ENTRIES = 10
 IS_LINUX = sys.platform.startswith('linux')
 IS_WINDOWS = sys.platform.startswith('win')
@@ -52,7 +52,7 @@ class Config:
             'audio_preferred_sources': 'jpod,shinmeikai8,daijisen,nhk16,forvo,taas,ozk5,forvo_ext,forvo_ext2',
         },
         'Theme': {
-            'theme_name': 'Nazeka',
+            'theme_name': 'Green',
             'font_family': '',
             'font_size_definitions': 14,
             'font_size_header': 18,
@@ -65,11 +65,11 @@ class Config:
             'show_kanji': True,
             'show_examples': True,
             'show_components': True,
-            'color_background': '#2E2E2E',
-            'color_foreground': '#F0F0F0',
-            'color_highlight_word': '#88D8FF',
-            'color_highlight_reading': '#90EE90',
-            'background_opacity': 245,
+            'color_background': '#000000',
+            'color_foreground': '#E8E8E8',
+            'color_highlight_word': '#80D69B',
+            'color_highlight_reading': '#A8CFB5',
+            'background_opacity': 204,
             'popup_position_mode': 'visual_novel_mode'
         }
     }

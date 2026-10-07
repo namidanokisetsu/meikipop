@@ -40,6 +40,8 @@ def load_appearance(settings, profile):
             value = settings.value(f"profiles/{profile}/{key}", default, type=type(default))
         if key == "theme_name":
             value = name
+        if key == "background_opacity":
+            value = settings.value(f"profiles/{profile}/{key}", value, type=int)
         if key.startswith("font_size"):
             value = round(value * scale)
         setattr(config, key, value)
@@ -74,9 +76,11 @@ class ProfileAppearance(QWidget):
                 ("font_size_header", "Word size", 10, 72),
                 ("font_size_definitions", "Definition size", 10, 48),
                 ("furigana_scale", "Furigana size (%)", 30, 100),
-                ("scale", "Scale (%)", 70, 200), ("background_opacity", "Opacity", 80, 255)):
+                ("scale", "Scale (%)", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
             widget = QSpinBox()
             widget.setRange(minimum, maximum)
+            if key == "background_opacity":
+                widget.setSuffix("%")
             self.controls[key] = widget
             form.addRow(label, widget)
         for key, label in (("color_background", "Background"), ("color_foreground", "Text"),
@@ -118,11 +122,13 @@ class ProfileAppearance(QWidget):
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
             value = (custom if name == "Custom" else THEMES[name]).get(key, value)
+            if key == "background_opacity":
+                value = round(self.settings.value(f"profiles/{self.profile()}/{key}", value, type=int) * 100 / 255)
             if key.startswith("color"):
                 self.set_color(key, value)
             else:
                 widget.setValue(int(value))
-            if key.startswith("color") or key == "background_opacity":
+            if key.startswith("color"):
                 self.form.setRowVisible(widget, name == "Custom")
         self._loading = False
 
@@ -143,9 +149,9 @@ class ProfileAppearance(QWidget):
             if key.startswith("color"):
                 self.set_color(key, value)
             elif key in self.controls:
-                self.controls[key].setValue(int(value))
+                self.controls[key].setValue(round(value * 100 / 255) if key == "background_opacity" else int(value))
         for key, widget in self.controls.items():
-            if key.startswith("color") or key == "background_opacity":
+            if key.startswith("color"):
                 self.form.setRowVisible(widget, name == "Custom")
         self._loading = False
         self.save()
@@ -165,6 +171,8 @@ class ProfileAppearance(QWidget):
             if key == "furigana_scale" and self.profile() != "ja":
                 continue
             value = widget.text() if key.startswith("color") else widget.value()
+            if key == "background_opacity":
+                value = round(value * 255 / 100)
             self.settings.setValue(prefix + key, value)
             if self.theme.currentText() == "Custom" and (key.startswith("color") or key == "background_opacity"):
                 self.settings.setValue(prefix + "custom/" + key, value)

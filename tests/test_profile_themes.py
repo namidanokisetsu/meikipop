@@ -30,21 +30,41 @@ class ProfileThemeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_percentage_opacity_applies_to_presets_and_round_trips(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            settings.setValue('profiles/ja/theme_name', 'Green')
+            widget = ProfileAppearance(settings, lambda: 'ja', lambda: load_appearance(settings, 'ja'))
+            try:
+                self.assertEqual(widget.controls['background_opacity'].value(), 80)
+                self.assertEqual(widget.controls['background_opacity'].suffix(), '%')
+                self.assertFalse(widget.form.isRowVisible(widget.controls['color_background']))
+                self.assertTrue(widget.form.isRowVisible(widget.controls['background_opacity']))
+                widget.controls['background_opacity'].setValue(50)
+                load_appearance(settings, 'ja')
+                self.assertEqual(config.background_opacity, 128)
+                widget.reload()
+                self.assertEqual(widget.controls['background_opacity'].value(), 50)
+                self.assertEqual(widget.theme.currentText(), 'Green')
+            finally:
+                widget.deleteLater()
+
     def test_presets_keep_text_and_metadata_readable(self):
-        self.assertEqual(set(THEMES), {"Monochrome Dark", "Light", "Custom"})
+        self.assertEqual(set(THEMES), {"Green", "Monochrome Dark", "Light", "Custom"})
         for name, theme in THEMES.items():
             if not theme:
                 continue
             with self.subTest(theme=name):
                 bg = theme['color_background']
-                self.assertEqual(theme['background_opacity'], 255)
+                self.assertEqual(theme['background_opacity'], 204 if name == 'Green' else 255)
                 self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 7)
                 for key in ('color_highlight_word', 'color_highlight_reading'):
                     self.assertGreaterEqual(contrast(bg, theme[key]), 4.5)
                 for key in ('color_background', 'color_foreground', 'color_highlight_word', 'color_highlight_reading'):
                     red, green, blue, _ = QColor(theme[key]).getRgb()
-                    self.assertEqual(red, green)
-                    self.assertEqual(green, blue)
+                    if name != 'Green':
+                        self.assertEqual(red, green)
+                        self.assertEqual(green, blue)
                 if name == 'Monochrome Dark':
                     self.assertEqual(bg, '#000000')
                     self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 20)
