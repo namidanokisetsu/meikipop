@@ -744,6 +744,7 @@ class UnifiedOCR(QObject):
         self.frame = frame
         mark("frame_accepted", frame.request.revision)
         point = QCursor.pos()
+        self.hit_latest(point, monotonic())
         if self._crop_retries < 2 and self._valid_frame(frame, point, monotonic()):
             from meikipop.ocr.boundaries import expanded_crop
             crop = expanded_crop(frame, (point.x(), point.y()))
@@ -751,8 +752,6 @@ class UnifiedOCR(QObject):
                 self._crop_retries += 1
                 self.capture_region = QRect(*crop)
                 self._request_capture(point)
-                return
-        self.hit_latest(QCursor.pos(), monotonic())
 
     def hit_latest(self, point, now):
         if not self._valid_frame(self.frame, point, now):

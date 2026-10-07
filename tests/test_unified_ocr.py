@@ -231,16 +231,18 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.assertFalse(self.controller._dismissed_hold)
             scan.assert_called_once()
 
-    def test_boundary_recovery_has_two_retries_and_resets_on_invalidation(self):
+    def test_boundary_recovery_looks_up_each_frame_before_two_retries(self):
         frame = SimpleNamespace(request=SimpleNamespace(revision=1))
+        events = []
         with patch.object(self.controller, "_valid_frame", return_value=True), \
                 patch("meikipop.ocr.boundaries.expanded_crop", return_value=(0, 0, 1800, 720)), \
-                patch.object(self.controller, "_request_capture") as capture, \
-                patch.object(self.controller, "hit_latest") as hit:
+                patch.object(self.controller, "_request_capture", side_effect=lambda *args: events.append("capture")) as capture, \
+                patch.object(self.controller, "hit_latest", side_effect=lambda *args: events.append("hit")) as hit:
             for _ in range(4):
                 self.controller.accept_frame(self.controller.generation, frame, "")
             self.assertEqual(capture.call_count, 2)
-            self.assertEqual(hit.call_count, 2)
+            self.assertEqual(hit.call_count, 4)
+            self.assertEqual(events, ["hit", "capture", "hit", "capture", "hit", "hit"])
             self.controller.invalidate()
             self.assertEqual(self.controller._crop_retries, 0)
 

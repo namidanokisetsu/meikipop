@@ -111,7 +111,8 @@ clients remain explicit compatibility entrypoints.
    plus the 16 ms scheduling tick; capture and recognition add their own latency. Cached
    live frames expire after two seconds and cannot cross sessions, screens or profiles.
    Japanese hit-testing bridges small gaps between adjacent characters on the same line.
-   Clipped paragraphs trigger at most two bounded crop expansions. Per-profile
+   Clipped paragraphs trigger at most two bounded crop expansions while the first
+   available word lookup proceeds. Per-profile
    Freeze while held reuses one full-display screenshot, including expanded crops, until
    release or invalidation; it defaults on and can be disabled for live scanning. Scan transitions and
    capture ownership live in the pure `gui/lookup_session.py` controller so old callbacks

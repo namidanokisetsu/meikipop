@@ -21,6 +21,37 @@ class CachedFrameTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_boundary_recovery_delivers_first_word_without_pointer_movement(self):
+        window = FakeWindow()
+        controller = UnifiedOCR(window)
+        controller.enabled = controller.holding = True
+        screen = self.app.primaryScreen()
+        geometry = screen.geometry()
+        request = CaptureRequest(1, screen.name(), (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
+                                 (0, 0, 400, 200), screen.devicePixelRatio(), controller.generation, True)
+        frame = RecognizedFrame(request, tuple(recognized()), "tr", (), 1, monotonic())
+        results = Queue()
+        hit_worker = HitWorker(SimpleNamespace(emit=lambda *args: results.put(args)))
+        controller.hit_worker = hit_worker
+        book = Entry("book", "kitap", "", "Fixture", "tr", ("book",))
+        engine = Mock()
+        engine.search.return_value = SearchResult("kitap", "tr", "en", (book,))
+        with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
+                patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(80, 100)), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch("meikipop.ocr.boundaries.expanded_crop", return_value=(0, 0, 600, 300)), \
+                patch.object(controller, "_request_capture") as capture:
+            hit_worker.start()
+            try:
+                controller.accept_frame(controller.generation, frame, "")
+                capture.assert_called_once_with(QPoint(80, 100))
+                controller.deliver(*results.get(timeout=2))
+                window.show_entries.assert_called_once()
+                window.set_context.assert_called_once_with("kitap ev", 0, 5)
+            finally:
+                controller.shutdown()
+                window.deleteLater()
+
     def test_cached_words_are_independent_of_slow_fresh_recognition(self):
         window = FakeWindow()
         controller = UnifiedOCR(window)
