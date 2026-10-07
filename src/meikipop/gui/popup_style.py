@@ -101,3 +101,19 @@ def popup_position(x, y, popup_size, screen_geo, mode):
     final_y = max(screen_geo.top(), min(final_y, screen_geo.bottom() - popup_size.height()))
 
     return int(final_x), int(final_y)
+
+
+def expanded_geometry(previous, requested, area, anchor=None):
+    from PyQt6.QtCore import QRect
+    width, height = min(requested.width(), area.width()), min(requested.height(), area.height())
+    x, y = previous.x(), previous.y()
+    # Keep an above-text preview above the text; otherwise grow down if it fits.
+    above = anchor is not None and previous.bottom() < anchor.y()
+    if above:
+        y = previous.bottom() + 1 - height
+    elif y + height > area.bottom() + 1:
+        edge = min(previous.bottom() + 1, anchor.y() - 15) if anchor is not None else previous.bottom() + 1
+        y = edge - height
+    x = max(area.left(), min(x, area.right() + 1 - width))
+    y = max(area.top(), min(y, area.bottom() + 1 - height))
+    return QRect(x, y, width, height)

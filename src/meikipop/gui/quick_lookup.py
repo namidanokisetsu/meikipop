@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 
 from meikipop.config.config import config
 from meikipop.dictionary.search import SearchEngine, SearchResult
-from meikipop.gui.popup_style import frame_stylesheet, popup_position, surface_colors
+from meikipop.gui.popup_style import expanded_geometry, frame_stylesheet, popup_position, surface_colors
 from meikipop.gui.action_icons import action_icon
 from meikipop.gui.ruby import RubyBrowser, ruby_html
 from meikipop.language.profiles import configured_profiles, default_partner
@@ -599,6 +599,7 @@ class QuickLookupWindow(QDialog):
         self.setMinimumSize(340, 190)
         self.resize(480, 340)
         self._normal_size = QSize(480, 340)
+        self._lookup_anchor = None
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         self.frame = QFrame()
@@ -1251,7 +1252,10 @@ class QuickLookupWindow(QDialog):
         height = min(maximum, max(self.minimumSizeHint().height(), desired))
         if self.height() != height:
             mark("geometry", self.revision)
-            self.resize(self.width(), height)
+            if self.isVisible() and not self._needs_place:
+                self._resize_expanded(QSize(self.width(), height))
+            else:
+                self.resize(self.width(), height)
         if self.isVisible() and self._needs_place:
             self._place()
             self._needs_place = False
@@ -1377,6 +1381,8 @@ class QuickLookupWindow(QDialog):
     def _place(self):
         mark("place", self.revision)
         point = QCursor.pos()
+        if self._peek:
+            self._lookup_anchor = point
         tray = self.tray_geometry() if not self._peek and not self._manual_at_cursor and self.tray_geometry else None
         if tray and not tray.isNull():
             point = tray.center()
@@ -1402,12 +1408,22 @@ class QuickLookupWindow(QDialog):
             self._normal_size = self.size()
         elif not peek and self._peek and not self.is_pinned:
             self.setMinimumHeight(190)
-            self.resize(self._normal_size)
+            self._resize_expanded()
         self._peek = bool(peek)
         self.setSizeGripEnabled(self.is_pinned or not self._peek)
         self._place_actions()
         self.search.setVisible(not self._peek)
         self.actions_row.setVisible(self.is_pinned or not self._peek)
+
+    def _resize_expanded(self, requested=None):
+        requested = requested or self._normal_size
+        previous = self.geometry()
+        screen = QApplication.screenAt(previous.center()) or QApplication.primaryScreen()
+        if screen is None:
+            self.resize(requested)
+            return
+        self.setGeometry(expanded_geometry(previous, requested, screen.availableGeometry(),
+                                           self._lookup_anchor if self._peek else None))
 
     def _place_actions(self):
         if self._shutting_down:
@@ -1690,7 +1706,7 @@ class QuickLookupWindow(QDialog):
         if self._peek:
             if checked:
                 self.setMinimumHeight(190)
-                self.resize(self._normal_size)
+                self._resize_expanded()
             else:
                 self._normal_size = self.size()
         if checked:
