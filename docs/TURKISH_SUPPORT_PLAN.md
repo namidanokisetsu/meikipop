@@ -110,6 +110,7 @@ clients remain explicit compatibility entrypoints.
    through a scan. Stationary capture requests are spaced by 250 ms when the worker is free,
    plus the 16 ms scheduling tick; capture and recognition add their own latency. Cached
    live frames expire after two seconds and cannot cross sessions, screens or profiles.
+   Japanese hit-testing bridges small gaps between adjacent characters on the same line.
    Clipped paragraphs trigger at most two bounded crop expansions. Per-profile
    Freeze while held reuses one full-display screenshot, including expanded crops, until
    release or invalidation; it defaults on and can be disabled for live scanning. Scan transitions and

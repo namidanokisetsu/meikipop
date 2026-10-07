@@ -22,12 +22,33 @@ def sentence_at(text, start, end=None, language="ja"):
     return get_profile(language).sentence_span(text, start, end)
 
 
+def _in_character_gap(box, neighbour, point, vertical):
+    if neighbour is None:
+        return False
+    if vertical:
+        a = (box.center_y, box.height, box.center_x, box.width)
+        b = (neighbour.center_y, neighbour.height, neighbour.center_x, neighbour.width)
+        along, across = point[1], point[0]
+    else:
+        a = (box.center_x, box.width, box.center_y, box.height)
+        b = (neighbour.center_x, neighbour.width, neighbour.center_y, neighbour.height)
+        along, across = point
+    direction = 1 if b[0] > a[0] else -1
+    near, far = a[0] + direction * a[1] / 2, b[0] - direction * b[1] / 2
+    gap, distance = direction * (far - near), direction * (along - near)
+    # Fill the nearer half of a small gap on the same reading line.
+    return (0 < gap <= min(a[1], b[1]) / 2 and 0 <= distance <= gap / 2
+            and max(a[2] - a[3] / 2, b[2] - b[3] / 2) <= across
+            <= min(a[2] + a[3] / 2, b[2] + b[3] / 2))
+
+
 def hit_paragraphs(paragraphs, point, language="ja"):
     """Use source offsets (including spaces), with interpolation for OCR word boxes."""
     x, y = point
+    unspaced = get_profile(language).word_mode == "unspaced"
     for paragraph in paragraphs or ():
         offset = 0
-        for word in paragraph.words:
+        for index, word in enumerate(paragraph.words):
             # OCR engines can normalize spaces; align against their actual full text.
             start = word.source_start if word.source_start is not None else paragraph.full_text.find(word.text, offset)
             if start < offset or not paragraph.full_text.startswith(word.text, start):
@@ -37,9 +58,14 @@ def hit_paragraphs(paragraphs, point, language="ja"):
             if not box or not word.text:
                 continue
             left, top = box.center_x - box.width / 2, box.center_y - box.height / 2
-            if not (left <= x <= left + box.width and top <= y <= top + box.height):
+            inside = left <= x <= left + box.width and top <= y <= top + box.height
+            neighbours = (paragraph.words[index - 1] if index else None,
+                          paragraph.words[index + 1] if index + 1 < len(paragraph.words) else None)
+            if not inside and not (unspaced and any(
+                    _in_character_gap(box, other.box, point, paragraph.is_vertical)
+                    for other in neighbours if other is not None)):
                 continue
-            if get_profile(language).word_mode == "unspaced":
+            if unspaced:
                 fraction = ((y - top) / box.height if paragraph.is_vertical and box.height else
                             (x - left) / box.width if box.width else 0)
                 start += min(len(word.text) - 1, max(0, int(fraction * len(word.text))))

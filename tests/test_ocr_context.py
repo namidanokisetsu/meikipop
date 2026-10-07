@@ -40,6 +40,40 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(hit.query, '読む。')
         self.assertEqual(hit.start, 2)
 
+    def test_japanese_small_character_gaps_select_nearest_without_cursor_nudge(self):
+        for vertical in (False, True):
+            boxes = [BoundingBox(.5, center, .2, .18) if vertical else
+                     BoundingBox(center, .5, .18, .2) for center in (.3, .5)]
+            paragraph = Paragraph('日本', [Word('日', '', boxes[0]), Word('本', '', boxes[1])],
+                                  BoundingBox(.5, .5, .8, .8), vertical)
+            for position, expected in ((.395, 0), (.405, 1), (.415, 1)):
+                with self.subTest(vertical=vertical, position=position):
+                    point = (.5, position) if vertical else (position, .5)
+                    hit = hit_paragraphs([paragraph], point, 'ja')
+                    self.assertIsNotNone(hit)
+                    self.assertEqual(hit.start, expected)
+                    self.assertEqual(hit.query, paragraph.full_text[expected:])
+
+    def test_character_gap_hit_keeps_original_offsets(self):
+        words = [Word('本', '', BoundingBox(.3, .5, .18, .2), 2),
+                 Word('本', '', BoundingBox(.5, .5, .18, .2), 3)]
+        paragraph = Paragraph('前。本本', words, BoundingBox(.4, .5, .4, .2), False)
+        hit = hit_paragraphs([paragraph], (.405, .5), 'ja')
+        self.assertEqual(hit.start, 3)
+        self.assertEqual(hit.sentence[0], '本本')
+
+    def test_character_gaps_do_not_bridge_lines_large_spaces_or_spaced_words(self):
+        first = BoundingBox(.3, .5, .18, .2)
+        cases = [(BoundingBox(.5, .5, .18, .2), (.4, .65), 'ja'),
+                 (BoundingBox(.5, .8, .18, .2), (.4, .5), 'ja'),
+                 (BoundingBox(.7, .5, .18, .2), (.5, .5), 'ja'),
+                 (BoundingBox(.5, .5, .18, .2), (.405, .5), 'tr')]
+        for second, point, language in cases:
+            with self.subTest(second=second, point=point, language=language):
+                paragraph = Paragraph('日本', [Word('日', '', first), Word('本', '', second)],
+                                      BoundingBox(.5, .5, .8, .8), False)
+                self.assertIsNone(hit_paragraphs([paragraph], point, language))
+
     def test_paddle_adapter_preserves_original_context(self):
         paragraphs = paddle_paragraphs([dict(rec_texts=['Bu araç yeni.'], text_word=[['Bu','araç','yeni.']],
                                              text_word_boxes=[[[0,0,20,20],[30,0,70,20],[80,0,120,20]]])], 120, 20)
