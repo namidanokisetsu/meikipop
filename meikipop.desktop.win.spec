@@ -12,7 +12,9 @@ for package in ("stanza", "paddle", "paddleocr", "paddlex", "imagesize", "mss", 
     datas += data
     binaries += binary
     hiddenimports += hidden
-for distribution in ("meikipop", "stanza", "torch", "paddlepaddle", "paddleocr", "paddlex"):
+# PaddleX checks OCR extras through distribution metadata, including in bundles.
+for distribution in ("meikipop", "stanza", "torch", "paddlepaddle", "paddleocr", "paddlex",
+                     "imagesize", "opencv-contrib-python", "pyclipper", "pypdfium2", "python-bidi", "shapely"):
     datas += copy_metadata(distribution, recursive=True)
 
 a = Analysis([str(root / "src/meikipop/scripts/quick_lookup.py")],

@@ -102,6 +102,29 @@ class FirstRunTests(unittest.TestCase):
 
 
 class ModelInstallerTests(unittest.TestCase):
+    def test_frozen_failure_retains_the_cause_instead_of_bootloader_footer(self):
+        from meikipop.scripts.setup_morphology import _run
+        output = "Traceback:\nModuleNotFoundError: No module named 'dependency'\n[PYI-10044:ERROR] Failed to execute script 'quick_lookup'\n"
+        with patch("meikipop.scripts.setup_morphology.subprocess.Popen") as popen:
+            popen.return_value.communicate.return_value = (output, None)
+            popen.return_value.returncode = 1
+            with self.assertLogs("meikipop.scripts.setup_morphology", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "ModuleNotFoundError: No module named 'dependency'"):
+                    _run(["--setup-morphology", "tr"])
+        self.assertIn("Traceback", captured.output[0])
+
+    def test_model_worker_validates_loaded_models_and_returns_readable_errors(self):
+        from meikipop.scripts.quick_lookup import main
+        with patch("meikipop.language.stanza_analyzer.setup_models") as download, \
+                patch("meikipop.language.stanza_analyzer.StanzaAnalyzer") as analyzer, \
+                patch("sys.stderr") as stderr:
+            self.assertEqual(main(["--setup-morphology", "tr"]), 0)
+            download.assert_called_once_with(language="tr")
+            analyzer.assert_called_once_with(language="tr")
+            analyzer.side_effect = RuntimeError("Cannot load downloaded model")
+            self.assertEqual(main(["--setup-morphology", "tr"]), 1)
+            self.assertIn("RuntimeError: Cannot load downloaded model", "".join(call.args[0] for call in stderr.write.call_args_list))
+
     def test_frozen_morphology_uses_bundled_worker(self):
         from meikipop.scripts.setup_morphology import install
         with patch("sys.frozen", True, create=True), patch("meikipop.scripts.setup_morphology._run") as run:

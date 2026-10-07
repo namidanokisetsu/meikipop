@@ -1,6 +1,7 @@
 """Explicit model setup for optional shared-popup lemmatization."""
 import argparse
 from importlib.metadata import PackageNotFoundError, version
+import logging
 import os
 from pathlib import Path
 import subprocess
@@ -36,7 +37,8 @@ def _run(arguments, cancelled=None):
     if cancelled and cancelled.is_set():
         raise InterruptedError("Model setup cancelled.")
     if process.returncode:
-        detail = output.strip().splitlines()
+        logging.getLogger(__name__).error("Model setup failed (%s):\n%s", arguments, output)
+        detail = [line.strip() for line in output.splitlines() if line.strip() and not line.lstrip().startswith("[PYI-")]
         raise RuntimeError(detail[-1] if detail else "Model setup failed.")
 
 

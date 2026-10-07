@@ -13,17 +13,40 @@ def main(argv=None):
     parser.add_argument("--setup", action="store_true", help="Open setup")
     parser.add_argument("--setup-morphology", metavar="LANGUAGE", help=argparse.SUPPRESS)
     parser.add_argument("--setup-ocr", choices=("paddle", "meikiocr"), help=argparse.SUPPRESS)
+    parser.add_argument("--setup-dictionary", metavar="LANGUAGE", help=argparse.SUPPRESS)
     parser.add_argument("--check-runtime", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     background = args.background or (not args.text and sys.platform != "darwin")
 
+    if args.setup_dictionary:
+        import threading
+        from meikipop.dictionary.catalog import recommendations
+        from meikipop.dictionary.import_job import background_import
+        from meikipop.dictionary.library import default_library_path
+        dictionaries = recommendations(args.setup_dictionary)
+        if not dictionaries:
+            raise ValueError("No recommended dictionary for this language.")
+        status, changed = background_import([], args.library or default_library_path(), args.setup_dictionary,
+                                            dictionaries[0], print, threading.Event())
+        print(status)
+        return 0 if changed else 1
+
     if args.setup_ocr:
         from meikipop.scripts.setup_ocr import setup_models
-        setup_models(args.setup_ocr)
+        try:
+            setup_models(args.setup_ocr)
+        except Exception as error:
+            print(f"{type(error).__name__}: {error}", file=sys.stderr)
+            return 1
         return 0
     if args.setup_morphology:
-        from meikipop.language.stanza_analyzer import setup_models
-        setup_models(language=args.setup_morphology)
+        from meikipop.language.stanza_analyzer import StanzaAnalyzer, setup_models
+        try:
+            setup_models(language=args.setup_morphology)
+            StanzaAnalyzer(language=args.setup_morphology)
+        except Exception as error:
+            print(f"{type(error).__name__}: {error}", file=sys.stderr)
+            return 1
         return 0
 
     if args.check_runtime:
@@ -55,6 +78,8 @@ def main(argv=None):
                 import paddle
                 import paddleocr
                 import meikiocr
+                from paddlex.utils.deps import require_extra
+                require_extra("ocr-core")
         if sys.platform == "darwin":
             import ssl
             import Vision
