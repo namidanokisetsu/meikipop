@@ -104,13 +104,13 @@ replaces them with new suggestions. Map the first field to **Word**;
 and **Language** are available for the others. Set the optional API key only if your
 AnkiConnect configuration requires one. Each language profile keeps its own choices.
 
-Use **Add to Anki** in the popup to choose the entry and review its definition and
+Use the round **+** in the popup to choose the entry and review its definition and
 sentence, then press **Add**. Selected popup text becomes the initial definition.
 The optional recorded shortcut works while the popup has focus and defaults off.
 Duplicate checks use the first field, chosen deck and note type, excluding child decks.
 Existing notes are never updated. If Anki does not confirm a save, check Anki before
 retrying; the app does not retry writes automatically.
-**Add to Anki** sits at the bottom left. Kikitori Reading fields map automatically,
+The Anki button sits at the bottom left. Kikitori Reading fields map automatically,
 including sentence furigana, editable translation, picture and pitch positions.
 Furigana uses installed Japanese dictionaries; unknown or inflected readings stay plain.
 OCR exports reuse the captured screen, without the popup. Frozen scans use the full display;

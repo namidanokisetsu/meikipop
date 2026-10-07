@@ -13,7 +13,7 @@ from PyQt6.QtCore import QObject, QEvent, QLocale, QSettings, QSignalBlocker, QS
 from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QKeySequence, QShortcut, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QMenu, QPushButton, QToolButton, QToolTip, QVBoxLayout, QWidget,
+    QLineEdit, QMenu, QToolButton, QToolTip, QVBoxLayout, QWidget,
 )
 
 from meikipop.config.config import config
@@ -690,7 +690,8 @@ class QuickLookupWindow(QDialog):
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(2)
         action_layout.addWidget(self.translate)
-        self.anki_button = QPushButton("Add to Anki")
+        self.anki_button = self._action("anki", "Add to Anki")
+        self.anki_button.setStyleSheet("QToolButton {border-radius:12px;}")
         self.anki_button.clicked.connect(self.add_to_anki)
         self.sentence_audio_button = self._action("audio_sentence", "Read sentence")
         self.sentence_audio_button.clicked.connect(lambda: self.play_audio(sentence=True))

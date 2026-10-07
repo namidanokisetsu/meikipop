@@ -147,7 +147,7 @@ clients remain explicit compatibility entrypoints.
    duplicates are refused within the chosen deck and note type. Writes are never
    retried automatically; timeouts report an uncertain outcome. Enabling Anki or
    opening its enabled settings loads decks and fields; stale profile replies are
-   ignored. Add to Anki appears at the bottom left when enabled. Field suggestions
+   ignored. A round Anki plus button appears at the bottom left when enabled. Field suggestions
    normalize case/separators, use common aliases and conservatively match spelling.
    Saved manual mappings remain intact. Kikitori-compatible exports include editable
    translation, dictionary-derived sentence furigana, pitch positions/categories,
