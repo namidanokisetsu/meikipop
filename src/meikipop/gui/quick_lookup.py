@@ -253,6 +253,8 @@ class _GlossConverter(StructuredContentConverter):
             tag, content = node.get("tag", ""), node.get("content")
             data = node.get("data", {})
             kind = str(data.get("content", "")) if isinstance(data, dict) else ""
+            if kind == "backlink":
+                return ""
             style = node.get("style", {})
             style = style if isinstance(style, dict) else {}
             heading_text = content[0] if isinstance(content, list) and len(content) == 1 else content
