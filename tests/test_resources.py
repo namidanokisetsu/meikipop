@@ -20,7 +20,7 @@ class ResourceTests(unittest.TestCase):
 
     def test_translation_ready_requires_shared_model_and_runtime_files(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "server.exe").write_bytes(b"runtime")
             (root / "model.gguf").write_bytes(b"model")
             (root / "installation.json").write_text(json.dumps({
