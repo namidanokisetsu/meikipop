@@ -1,4 +1,4 @@
-Updated: 2026-10-06
+Updated: 2026-10-07
 
 # Shared popup setup
 
@@ -6,10 +6,10 @@ Updated: 2026-10-06
 
 For normal installation, download the Windows setup EXE or macOS DMG from the
 [latest release](https://github.com/namidanokisetsu/meikipop/releases/latest).
-Choose a language in the first-run wizard to install its recommended dictionaries,
-OCR, base-form support and translation model. **Skip downloads** keeps setup manual.
-**Setup wizard** in the tray
-menu reopens it. **Settings → OCR → Install OCR model** installs the selected
+Choose a language and tick the dictionaries and models you want on the single setup page.
+Every download is optional, including Jitendex. Translation defaults unchecked;
+choose Lightweight or Quality when enabling it. Uncheck everything to start immediately.
+**Setup** in the tray menu reopens it. **Settings → OCR → Install OCR model** installs the selected
 Windows OCR component; macOS includes Apple Vision. Dictionary, translation and
 base-form downloads are available from Settings on both platforms.
 
@@ -77,7 +77,8 @@ show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
 Dictionary sections have independent previews and expansion controls. Left-click a preview
-or use the scan gesture to freeze and resize it. Escape, outside click, Close, or a new
+or use the scan gesture to freeze and resize it. Above-text previews expand upward;
+other previews grow down when space allows, switching upward near the bottom edge. Escape, outside click, Close, or a new
 scan leave the result. Entering a preview pauses its dismissal grace; leaving rearms it.
 Search also supports edge and corner resizing. Imported frequency, inflection and kanji information uses compact labels.
 Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, taking
@@ -96,7 +97,9 @@ Kanji always use compact cards with meanings and readings, without a separate la
 
 Install [AnkiConnect](https://ankiweb.net/shared/info/2055492159) in Anki and keep Anki open.
 In **Settings → Anki**, enable the integration and press **Reload decks and fields**.
-Choose a deck and note type, then map its fields. Map the first field to **Word**;
+Choose a deck and note type. Fields match by name, ignoring case and separators,
+with aliases and conservative spelling matches. Saved mappings stay intact; **Match fields**
+replaces them with new suggestions. Map the first field to **Word**;
 **Definition**, **Reading**, **Sentence**, **Dictionary**, **Frequency**, **Pitch accent**
 and **Language** are available for the others. Set the optional API key only if your
 AnkiConnect configuration requires one. Each language profile keeps its own choices.
@@ -106,7 +109,14 @@ sentence, then press **Add**. Selected popup text becomes the initial definition
 The optional recorded shortcut works while the popup has focus and defaults off.
 Duplicate checks use the first field, chosen deck and note type, excluding child decks.
 Existing notes are never updated. If Anki does not confirm a save, check Anki before
-retrying; the app does not retry writes automatically. No screenshots or audio are attached.
+retrying; the app does not retry writes automatically.
+**Add to Anki** sits at the bottom left. Kikitori Reading fields map automatically,
+including sentence furigana, editable translation, picture and pitch positions.
+Furigana uses installed Japanese dictionaries; unknown or inflected readings stay plain.
+OCR exports reuse the captured screen, without the popup. Frozen scans use the full display;
+live scans use the recognized region. Uncheck **Include screenshot** to omit it.
+The currently loaded word recording is attached when it matches the selected word.
+System speech is not recorded; Kikitori Reading retains its native TTS fallback.
 
 The top controls are Translate, Read sentence, then Read word. In pinned OCR results they
 sit alongside the heading; language switching stays in the tray and Settings.
@@ -124,8 +134,9 @@ Sentence reading always uses an installed system voice.
 When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
 Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
-**Settings → Appearance** offers Monochrome Dark, Light and Custom. Both presets use
-opaque neutral colors. Changes apply immediately; Custom starts with the profile's saved
+**Settings → Appearance** defaults to Green: black at 80% opacity, soft green accents
+and pale text. Monochrome Dark, Light and Custom remain available.
+Background opacity uses 0-100% and is available for every theme. Changes apply immediately; Custom starts with the profile's saved
 colors and remembers them when switching presets. Removed dark presets migrate to
 Monochrome Dark, keeping saved colors in Custom. Appearance remains independent per profile.
 Japanese definition readings appear above their text. Headwords keep the full word

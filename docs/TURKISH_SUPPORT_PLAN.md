@@ -143,22 +143,29 @@ clients remain explicit compatibility entrypoints.
    duplicates are refused within the chosen deck and note type. Writes are never
    retried automatically; timeouts report an uncertain outcome. Enabling Anki or
    opening its enabled settings loads decks and fields; stale profile replies are
-   ignored. A bottom-edge Add to Anki button appears when enabled.
+   ignored. Add to Anki appears at the bottom left when enabled. Field suggestions
+   normalize case/separators, use common aliases and conservatively match spelling.
+   Saved manual mappings remain intact. Kikitori-compatible exports include editable
+   translation, dictionary-derived sentence furigana, pitch positions/categories,
+   captured screenshots and a matching loaded word recording. Media uploads finish
+   before the note is written; no new screenshot is taken during export.
    This adapts [Chibipop's Anki integration](https://github.com/stellarie/chibipop/blob/main/src/anki.rs)
-   to Qt and the existing entry/context model. Screenshots and existing-note updates
-   remain outside this initial adapter to avoid coupling export to capture or review state.
+   to Qt and the existing entry/context model. Existing-note updates remain excluded.
 
 ## Compatibility and remaining acceptance
 
-- The shared desktop has a first-run wizard and a per-user Windows installer,
+- The shared desktop has a single-page setup checklist and a per-user Windows installer,
   plus Apple silicon/Intel DMGs. Bundles include Python and inference libraries,
   not user dictionaries or model weights. Settings downloads OCR, translation
   and base-form models explicitly; frozen builds use bundled setup workers.
   Existing settings skip onboarding unless requested; cancelled onboarding resumes.
   Installer upgrades/uninstall preserve user data. Publisher signing and Apple
   notarization still require release credentials.
-  Selecting a language offers automatic recommended dictionaries and supported
-  models, with lightweight/quality translation and a manual skip. ZIP imports run
+  Selecting a language offers individually optional dictionaries and supported
+  models. Translation defaults unchecked, with lightweight/quality choices;
+  unchecking everything starts without downloads. Green is the new default appearance,
+  with percentage background opacity available for every theme. Popup expansion
+  preserves an above-text preview's lower edge and fits within the display. ZIP imports run
   in a separate process and continue with Settings closed. CRC metadata is advisory;
   decompression, JSON and entry validation still reject unreadable content.
 
