@@ -32,7 +32,7 @@ def install_task(task, directory, progress, cancelled):
     if task.kind == "dictionary":
         from meikipop.dictionary.library import Library
         with closing(Library(directory)) as library:
-            if any(meta["language"] == task.value.language and meta["title"].startswith(task.value.title)
+            if any(meta["language"] == task.value.language and meta["title"].startswith(task.value.pack_title or task.value.title)
                    for _, meta, _ in library.packs):
                 return ""
         from meikipop.dictionary.import_job import background_import

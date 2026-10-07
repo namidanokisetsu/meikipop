@@ -35,7 +35,7 @@ Name: "{autoprograms}\Meikipop"; Filename: "{app}\Meikipop.exe"; WorkingDir: "{a
 Name: "{autodesktop}\Meikipop"; Filename: "{app}\Meikipop.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Meikipop.exe"; Parameters: "--setup"; Description: "Set up Meikipop"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Meikipop.exe"; Description: "Open Meikipop"; Flags: nowait postinstall skipifsilent
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "meikipop"; Flags: uninsdeletevalue

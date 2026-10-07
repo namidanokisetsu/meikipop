@@ -50,6 +50,10 @@ def default_model_dir(language="tr"):
     return Path(paths.data_dir) / "languages" / language / "stanza" / RESOURCES_VERSION
 
 
+def model_available(language):
+    return language != "ja" and model_status(language) == "Installed"
+
+
 def setup_models(model_dir=None, *, language="tr"):
     import stanza
     if stanza.__version__ != STANZA_VERSION:

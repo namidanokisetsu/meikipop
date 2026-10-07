@@ -54,7 +54,7 @@ def main(argv=None):
         from meikipop.scripts.translation_server import server_command
         if "127.0.0.1" not in server_command("llama-server", "model.gguf"):
             raise RuntimeError("Local translation setup is incomplete.")
-        from meikipop.gui.first_run import SetupWizard
+        from meikipop.gui.first_run import LanguageSuggestion
         from meikipop.gui.dictionary_manager import SetupDialog
         if getattr(sys, "frozen", False):
             import json
@@ -109,12 +109,10 @@ def main(argv=None):
     if not instance.start(args.text, background):
         return 0
     app.aboutToQuit.connect(instance.shutdown)
-    from meikipop.gui.first_run import needs_setup, show_setup
+    from meikipop.gui.first_run import needs_setup, offer_resources
     settings = QSettings("Meikipop", "QuickLookup")
     settings.setFallbacksEnabled(False)
     first_run = args.setup or needs_setup(settings)
-    if first_run:
-        settings.setValue("setup/pending", True)
     window = QuickLookupWindow(args.library, settings=settings)
     def open_requested(text=""):
         if sys.platform == "darwin" and not text:
@@ -155,7 +153,6 @@ def main(argv=None):
             action.triggered.connect(lambda _, code=code: window.set_mode(code))
     profiles.aboutToShow.connect(populate_profiles)
     menu.addAction("Settings", window.open_settings)
-    menu.addAction("Setup", lambda: show_setup(window))
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
     tray.setContextMenu(menu)
@@ -185,7 +182,7 @@ def main(argv=None):
     except (ValueError, OSError, RuntimeError) as error:
         window.show_message(str(error))
     if first_run:
-        QTimer.singleShot(0, lambda: show_setup(window))
+        QTimer.singleShot(0, lambda: offer_resources(window, window.preferred_foreign))
     elif not background and (args.text or sys.platform != "darwin"):
         QTimer.singleShot(0, lambda: open_requested(args.text))
     return app.exec()

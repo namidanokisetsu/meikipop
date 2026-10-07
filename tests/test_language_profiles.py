@@ -6,6 +6,21 @@ from meikipop.language.profiles import get_profile
 
 
 class LanguageProfileTests(unittest.TestCase):
+    def test_turkish_only_appears_after_explicit_profile_configuration(self):
+        import tempfile
+        from pathlib import Path
+        from PyQt6.QtCore import QSettings
+        from meikipop.language.profiles import configured_profiles
+        from meikipop.gui.interaction_preferences import migrate
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            self.assertEqual(configured_profiles(settings), ("ja",))
+            settings.setValue("profile", "ja")
+            migrate(settings)
+            self.assertEqual(configured_profiles(settings), ("ja",))
+            settings.setValue("profiles/tr/target", "en")
+            self.assertEqual(configured_profiles(settings), ("ja", "tr"))
+
     def test_lookup_keys_preserve_existing_pack_behavior(self):
         self.assertEqual(get_profile("tr").lookup_key("  IŞIK İSTANBUL’DA  "), "ışık istanbul'da")
         self.assertEqual(get_profile("tr").lookup_key("OĞLUMʼUN"), "oğlum'un")

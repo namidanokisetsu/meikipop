@@ -148,7 +148,7 @@ class ManagedServerTests(unittest.TestCase):
     def test_missing_model_does_not_download_or_spawn(self):
         (self.root / "quality.gguf").unlink()
         with patch.object(server, "urlopen", side_effect=AssertionError("network")), \
-                patch.object(server.subprocess, "Popen") as spawn, self.assertRaisesRegex(RuntimeError, "Install"):
+                patch.object(server.subprocess, "Popen") as spawn, self.assertRaisesRegex(RuntimeError, "Hy-MT2 7B.*Resources"):
             server.ensure_server(directory=self.root)
         spawn.assert_not_called()
 

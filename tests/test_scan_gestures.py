@@ -159,6 +159,7 @@ class ScanSettingsTests(unittest.TestCase):
             window.scan_settings_changed.connect(changed)
             settings = QSettings(str(Path(temp) / "settings.ini"), QSettings.Format.IniFormat)
             dialog = SetupDialog(Path(temp) / "library", settings, Mock(), window)
+            dialog.profile.addItem("Turkish", "tr")
             try:
                 self.assertFalse(hasattr(dialog, "auto_scan"))
                 self.assertTrue(dialog.appearance.compact_preview.isChecked())

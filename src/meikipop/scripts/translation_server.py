@@ -273,6 +273,7 @@ def _ready():
 
 def _installed_paths(profile, directory):
     root, registry = translation_path(directory), installation(directory)
+    name = "Hy-MT2 1.8B" if profile == "lightweight" else "Hy-MT2 7B"
     try:
         models = registry.get("models", {})
         model = models.get(profile, {}) if isinstance(models, dict) else {}
@@ -281,9 +282,9 @@ def _installed_paths(profile, directory):
         executable = _archive_target(root, registry["executable"].replace("\\", "/"))
         model_path = _archive_target(root, model["path"].replace("\\", "/"))
     except (KeyError, TypeError, ValueError) as error:
-        raise RuntimeError("Install the selected translation model in Settings first.") from error
+        raise RuntimeError(f"Download {name} in Settings / Resources first.") from error
     if not executable.is_file() or not model_path.is_file() or model_path.stat().st_size != model.get("size"):
-        raise RuntimeError("Install the selected translation model in Settings first.")
+        raise RuntimeError(f"Download {name} in Settings / Resources first.")
     return executable, model_path
 
 

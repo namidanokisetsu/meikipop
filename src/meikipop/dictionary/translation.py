@@ -1,5 +1,5 @@
 """Explicit local translation through llama.cpp; no cloud or runtime downloads."""
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import http.client
 import ipaddress
 import json
@@ -131,9 +131,11 @@ def save_settings(settings, directory=None):
 def load_profile_settings(preferences, profile):
     value = preferences.value(f"profiles/{profile}/translation", "")
     if not value:
-        return load_settings()
+        options = load_settings()
+        return replace(options, auto_start=True) if options.provider == "server" else options
     try:
-        return TranslationSettings(**json.loads(value)).validated()
+        options = TranslationSettings(**json.loads(value)).validated()
+        return replace(options, auto_start=True) if options.provider == "server" else options
     except (TypeError, ValueError) as error:
         raise ValueError("Invalid translation settings. Save them again in Settings.") from error
 

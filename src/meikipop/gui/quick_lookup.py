@@ -1049,14 +1049,14 @@ class QuickLookupWindow(QDialog):
         except (ValueError, TypeError) as error:
             self._failed(self.revision, str(error))
             return
+        from meikipop.language.stanza_analyzer import model_available
         worker.request(self.revision, text, source,
                        self.preferred_foreign, translate=bool(translate),
                        target=target,
                        pair=(self.preferred_foreign, self.foreign.currentData()),
                        translation_settings=translation_settings,
                        context=lookup_context if not translate else None,
-                       morphology=not translate and self.preferred_foreign != "ja" and
-                       self.settings.value(f"profiles/{self.preferred_foreign}/morphology", False, bool))
+                       morphology=not translate and model_available(self.preferred_foreign))
 
     def deliver(self, revision, result):
         if revision != self.revision or self._shutting_down:

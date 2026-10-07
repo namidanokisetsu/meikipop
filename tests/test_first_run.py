@@ -9,7 +9,7 @@ import zipfile
 
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QApplication, QWidget
-from meikipop.gui.first_run import SetupWizard, needs_setup
+from meikipop.gui.first_run import LanguageSuggestion, needs_setup
 
 
 class FirstRunTests(unittest.TestCase):
@@ -23,50 +23,36 @@ class FirstRunTests(unittest.TestCase):
         self.settings = QSettings(str(Path(self.directory.name) / "settings.ini"), QSettings.Format.IniFormat)
         self.window = QWidget()
         self.window.settings = self.settings
+        self.window.directory = self.directory.name
         self.window.preferred_foreign = "ja"
-        for name in ("update_languages", "set_mode", "apply_shortcut", "open_search"):
-            setattr(self.window, name, Mock())
-        self.wizard = SetupWizard(self.window)
-        self.addCleanup(self.wizard.deleteLater)
+        self.window._setup = None
+        self.window.refresh_library = Mock()
+        self.window.scan_settings_changed = Mock()
+        self.wizard = LanguageSuggestion(self.window)
         self.addCleanup(self.window.deleteLater)
 
-    def test_new_existing_and_cancelled_installations(self):
+    def test_only_fresh_installations_offer_the_initial_language(self):
         self.assertTrue(needs_setup(self.settings))
-        self.settings.setValue("profile", "tr")
+        self.settings.setValue("profile", "ja")
         self.assertFalse(needs_setup(self.settings))
-        self.settings.setValue("setup/pending", True)
-        self.wizard.reject()
-        self.assertTrue(needs_setup(self.settings))
-        self.assertFalse(self.settings.value("setup/completed", False, bool))
 
-    def test_finish_preserves_models_and_keeps_shortcut_opt_in(self):
-        self.settings.setValue("profiles/ja/translation_model", "existing.gguf")
-        self.settings.setValue("setup/pending", True)
-        self.wizard.language.setCurrentIndex(self.wizard.language.findData("tr"))
-        for task, check in self.wizard.choices:
-            check.setChecked(False)
-        self.wizard.accept()
-        self.window.set_mode.assert_called_once_with("tr")
-        self.window.apply_shortcut.assert_called_once_with("")
-        self.assertFalse(needs_setup(self.settings))
-        self.assertTrue(self.settings.value("setup/completed", False, bool))
-        self.assertEqual(self.settings.value("profiles/ja/translation_model"), "existing.gguf")
-        self.window.open_search.assert_called_once()
+    def test_suggestion_is_shown_once_per_profile_even_after_later(self):
+        from meikipop.gui.first_run import offer_resources
+        first = offer_resources(self.window, "ja")
+        first.reject()
+        self.assertIsNone(offer_resources(self.window, "ja"))
+        second = offer_resources(self.window, "tr")
+        self.assertEqual(second.language, "tr")
+        self.assertIsNone(offer_resources(self.window, "tr"))
+        self.assertFalse(self.settings.contains("setup/pending"))
 
-    def test_failed_shortcut_does_not_complete_setup(self):
-        self.window.apply_shortcut.side_effect = OSError("Shortcut unavailable")
-        self.wizard.accept()
-        self.assertFalse(self.settings.value("setup/completed", False, bool))
-        self.assertIn("unavailable", self.wizard.error.text())
-
-    def test_unchecking_everything_starts_without_downloads(self):
+    def test_unchecking_everything_closes_without_downloads(self):
         for task, check in self.wizard.choices:
             check.setChecked(False)
         with patch("meikipop.gui.language_setup.LanguageSetup") as setup:
             self.wizard.accept()
         setup.assert_not_called()
         self.assertIsNone(self.wizard.operation)
-        self.assertTrue(self.settings.value("setup/completed", False, bool))
 
     def test_dictionary_is_optional_and_translation_uses_selected_size(self):
         for task, check in self.wizard.choices:
@@ -75,13 +61,13 @@ class FirstRunTests(unittest.TestCase):
         tasks = self.wizard.selected_tasks()
         self.assertEqual([(task.kind, task.value) for task in tasks], [("translation", "quality")])
 
-    def test_automatic_setup_starts_once_after_language_selection(self):
-        self.window.directory = self.directory.name
+    def test_setup_starts_once_with_only_selected_resources(self):
         with patch("meikipop.gui.language_setup.LanguageSetup") as setup:
-            self.wizard.begin_downloads()
-            self.wizard.begin_downloads()
+            self.wizard.accept()
+            self.wizard.accept()
         setup.assert_called_once()
         setup.return_value.thread.start.assert_called_once()
+        self.assertFalse(any(task.kind == "translation" for task in setup.call_args.args[0]))
         self.wizard.operation = None
 
     def test_language_plan_uses_supported_models_and_native_mac_ocr(self):

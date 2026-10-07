@@ -37,7 +37,7 @@ class FakeEngine:
         self.contexts = []
         self.closed = False
 
-    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None, context=None):
+    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None, context=None, morphology=False):
         self.calls.append((text, source, foreign, translate, threading.get_ident()))
         self.contexts.append(context)
         return SearchResult(text, "ja" if source == "auto" else source, "en",
@@ -58,6 +58,9 @@ class QuickLookupTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
+        self.model_status_patch = patch("meikipop.language.stanza_analyzer.model_status", return_value="Model needed")
+        self.model_status = self.model_status_patch.start()
+        self.addCleanup(self.model_status_patch.stop)
         self.engine = FakeEngine()
         self.window = QuickLookupWindow(self.temp.name, lambda: self.engine, self.settings)
 
@@ -106,7 +109,8 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.browser.font().family(), QFont().family())
 
     def test_morphology_option_follows_profile_for_dictionary_lookup_only(self):
-        self.settings.setValue("profiles/tr/morphology", True)
+        self.settings.setValue("profiles/tr/morphology", False)
+        self.model_status.return_value = "Installed"
         self.window.set_mode("tr")
         self.window.search.setText("kitaplarımdan")
         with patch.object(self.window.worker, "request") as request:
@@ -1341,7 +1345,7 @@ class QuickLookupTests(unittest.TestCase):
         self.settings.setValue('hotkey', '<cmd>+<shift>+d' if sys.platform == 'darwin' else '<ctrl>+<shift>+d')
         self.window.open_settings()
         dialog = self.window._setup
-        dialog.tabs.setCurrentIndex(2)
+        dialog.tabs.setCurrentIndex(next(index for index in range(dialog.tabs.count()) if dialog.tabs.tabText(index) == "Shortcuts"))
         dialog.shortcut.recorder.setFocus()
         self.app.processEvents()
         self.assertIs(self.app.focusWidget(), dialog.shortcut.recorder)

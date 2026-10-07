@@ -23,7 +23,7 @@ _NAMES = {"ja": "日本語", "tr": "Türkçe", "en": "English", "zh": "中文",
 def configured_profiles(settings):
     settings.beginGroup("profiles")
     try:
-        return tuple(dict.fromkeys(("ja", "tr", *settings.childGroups())))
+        return tuple(dict.fromkeys(("ja", *settings.childGroups())))
     finally:
         settings.endGroup()
 

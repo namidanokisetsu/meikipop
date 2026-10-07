@@ -6,12 +6,21 @@ Updated: 2026-10-07
 
 For normal installation, download the Windows setup EXE or macOS DMG from the
 [latest release](https://github.com/namidanokisetsu/meikipop/releases/latest).
-Choose a language and tick the dictionaries and models you want on the single setup page.
-Every download is optional, including Jitendex. Translation defaults unchecked;
-choose Lightweight or Quality when enabling it. Uncheck everything to start immediately.
-**Setup** in the tray menu reopens it. **Settings → OCR → Install OCR model** installs the selected
-Windows OCR component; macOS includes Apple Vision. Dictionary, translation and
-base-form downloads are available from Settings on both platforms.
+A new installation starts with Japanese only. Adding a language profile offers its
+recommended downloads once, in one optional checklist. **Later** dismisses it permanently;
+all downloads remain available in Settings. Every item is optional, including Jitendex.
+Translation defaults unchecked, with Lightweight or Quality choices. There is no separate setup menu.
+**Settings / Resources** lists all dictionary, OCR, base-form and translation downloads.
+Green indicators report available files; the current OCR and translation selections appear
+at the top. **Use** selects an installed translation model for the current profile.
+Translation weights and the Paddle OCR model are shared across profiles, with one copy
+per model. Base-form models and dictionaries belong to their respective languages. Installed
+base-form models are used automatically. Translation detects the input language
+within the displayed language pair; manual direction, streaming and keep-warm
+controls are under Advanced. Installed local models start when translation is requested.
+Deleting a dictionary removes its ready indicator. Dictionaries keeps import, removal,
+priority and enable controls; OCR and Translation keep configuration controls.
+
 
 On macOS, allow **Input Monitoring** for global shortcuts, **Accessibility** for
 copying selected text from other apps, and **Screen Recording** for OCR in
@@ -47,8 +56,8 @@ separate Turkish client and its existing settings.
 Open **Settings → Dictionaries → Import ZIPs** and select local Yomitan archives.
 Definition, forms, frequency, Japanese pitch and kanji packs are indexed on disk without
 replacing `dictionary.pkl`. Enable packs and move them up or down; changes save immediately.
-Choose a recommended pack and press **Install**, or select an installed pack and press
-**Remove**. Removal deletes all revisions of that dictionary so an older copy cannot reappear.
+Download recommended packs in **Resources**, or select an installed pack in Dictionaries
+and press **Remove**. Removal deletes all revisions of that dictionary so an older copy cannot reappear.
 Cancellation keeps completed imports and discards the unfinished pack.
 Imports run in a separate process; closing Settings leaves them running. CRC
 mismatches are warnings when the JSON and dictionary entries remain valid.

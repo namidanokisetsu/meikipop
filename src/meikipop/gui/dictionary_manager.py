@@ -191,15 +191,18 @@ class SetupDialog(QDialog):
         translation = QWidget()
         translation_layout = QVBoxLayout(translation)
         translation_form = QFormLayout()
+        self.translation_advanced_widget = QWidget()
+        advanced_form = QFormLayout(self.translation_advanced_widget)
+        self.translation_pair_label = QLabel()
         self.translation_partner = QComboBox()
         for code, name in LANGUAGE_NAMES.items():
             self.translation_partner.addItem(name, code)
-        translation_form.addRow("Translate both ways with", self.translation_partner)
+        translation_form.addRow(self.translation_pair_label, self.translation_partner)
         from meikipop.gui.language_strip import LanguageStrip
         self.translation_source = LanguageStrip(LANGUAGE_NAMES)
         self.translation_target = LanguageStrip(LANGUAGE_NAMES)
         for label, control in (("From", self.translation_source), ("To", self.translation_target)):
-            translation_form.addRow(label, control)
+            advanced_form.addRow(label, control)
         self.translation_mode = QComboBox()
         self.translation_mode.addItem("Quality · Hy-MT2-7B Q8_0 (8 GB)", "quality")
         self.translation_mode.addItem("Lightweight · Hy-MT2-1.8B Q8_0 (2 GB)", "lightweight")
@@ -207,29 +210,30 @@ class SetupDialog(QDialog):
         translation_form.addRow("Model", self.translation_mode)
         self.translation_endpoint = QLineEdit()
         self.translation_endpoint.setAccessibleName("Local translation server address")
-        translation_form.addRow("Address", self.translation_endpoint)
+        advanced_form.addRow("Address", self.translation_endpoint)
         self.translation_model = QLineEdit()
         self.translation_model.setAccessibleName("Local translation server model name")
-        translation_form.addRow("Server model", self.translation_model)
+        advanced_form.addRow("Server model", self.translation_model)
         self.translation_autostart = QCheckBox("Start installed model when translating")
-        translation_form.addRow(self.translation_autostart)
+        self.translation_autostart.setParent(self)
+        self.translation_autostart.hide()
         self.translation_stream = QCheckBox("Stream translation")
-        translation_form.addRow(self.translation_stream)
+        advanced_form.addRow(self.translation_stream)
         self.translation_warm = QCheckBox("Keep model warm")
         self.translation_warm.setToolTip("Retains model memory after use. Changes apply on the next translation.")
-        translation_form.addRow(self.translation_warm)
+        advanced_form.addRow(self.translation_warm)
         self.translation_routing = {}
         for key, label in (("auto_translate_miss", "Translate partial dictionary matches"),):
             control = QCheckBox(label)
             self.translation_routing[key] = control
-            translation_form.addRow(control)
+            advanced_form.addRow(control)
             control.toggled.connect(lambda _: self.autosave(self.save_translation_routing))
         translation_layout.addLayout(translation_form)
-        note = QLabel("Downloads only when requested. Text stays on this computer.\n"
-                      "The selected model is used without automatic fallback.")
-        note.setWordWrap(True)
-        note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        translation_layout.addWidget(note)
+        self.translation_advanced = QCheckBox("Advanced")
+        self.translation_advanced.toggled.connect(self.translation_advanced_widget.setVisible)
+        translation_layout.addWidget(self.translation_advanced)
+        translation_layout.addWidget(self.translation_advanced_widget)
+        self.translation_advanced_widget.hide()
         self.model_button = QPushButton("Download selected model")
         self.model_button.clicked.connect(self.choose_model)
         translation_layout.addWidget(self.model_button)
@@ -245,7 +249,7 @@ class SetupDialog(QDialog):
             translation_settings.profile if translation_settings.provider == "server" else "custom"))
         self.translation_endpoint.setText(translation_settings.endpoint)
         self.translation_model.setText(translation_settings.model)
-        self.translation_autostart.setChecked(translation_settings.auto_start)
+        self.translation_autostart.setChecked(True)
         self.translation_stream.setChecked(translation_settings.stream)
         self.translation_warm.setChecked(translation_settings.keep_warm)
         self.translation_mode.currentIndexChanged.connect(self.update_translation_controls)
@@ -340,7 +344,7 @@ class SetupDialog(QDialog):
         def show_component_controls():
             provider = self.current_ocr_control()
             self.screenai_controls.setVisible(provider.currentData() == "screenai")
-            self.ocr_install.setVisible(provider.currentData() != "vision")
+            self.ocr_install.hide()
         self.show_component_controls = show_component_controls
         self.ja_ocr_provider.currentIndexChanged.connect(show_component_controls)
         self.tr_ocr_provider.currentIndexChanged.connect(show_component_controls)
@@ -422,6 +426,13 @@ class SetupDialog(QDialog):
         self.screenai_directory.editingFinished.connect(lambda: self.autosave(self.save_scan_settings))
         self.audio_volume.valueChanged.connect(lambda _: self.autosave(self.save_audio))
         self.audio_database.editingFinished.connect(lambda: self.autosave(self.save_audio))
+        from meikipop.gui.resources import ResourcesPanel
+        self.resources = ResourcesPanel(self)
+        tabs.insertTab(0, self.resources, "Resources")
+        tabs.setCurrentWidget(self.resources)
+        for control in (self.recommended, self.install_button, self.model_button, self.morphology_row, self.ocr_install):
+            control.hide()
+        tabs.currentChanged.connect(lambda: self.resources.refresh())
         if translation_error:
             self.status.setText(translation_error)
 
@@ -483,6 +494,7 @@ class SetupDialog(QDialog):
         from meikipop.language.support import AVAILABLE_LANGUAGES
         if code not in AVAILABLE_LANGUAGES and self.profile.findData(code) < 0:
             raise ValueError("Import a dictionary for this language first.")
+        added = self.profile.findData(code) < 0
         prefix = f"profiles/{code}/"
         if not self.settings.contains(prefix + "target"):
             self.settings.setValue(prefix + "target", default_partner(code))
@@ -492,6 +504,9 @@ class SetupDialog(QDialog):
         if self.parent() is not None:
             self.parent().update_languages(())
         self.sync_profile(code)
+        if added and self.parent() is not None:
+            from meikipop.gui.first_run import offer_resources
+            offer_resources(self.parent(), code)
 
     def move_pack(self, offset):
         row = self.packs.currentRow()
@@ -577,11 +592,16 @@ class SetupDialog(QDialog):
             window._render()
             window.scan_settings_changed.emit()
         self.status.setText("Saved.")
+        if hasattr(self, "resources"):
+            self.resources.refresh()
 
     def profile_changed(self):
         from meikipop.config.config import config
         previous_loading, self._loading = self._loading, True
         code = self.profile.currentData()
+        if code is None:
+            self._loading = previous_loading
+            return
         self.anki.load(code)
         with QSignalBlocker(self.freeze_while_held):
             self.freeze_while_held.setChecked(self.settings.value(f"profiles/{code}/freeze_while_held", True, bool))
@@ -646,7 +666,10 @@ class SetupDialog(QDialog):
         self.translation_mode.setCurrentIndex(self.translation_mode.findData(translation.profile if translation.provider == "server" else "custom"))
         self.translation_endpoint.setText(translation.endpoint)
         self.translation_model.setText(translation.model)
-        self.translation_autostart.setChecked(translation.auto_start)
+        self.translation_autostart.setChecked(True)
+        self.translation_pair_label.setText(language_name(code) + " \u2194")
+        self.translation_advanced.setChecked(translation.provider == "custom" or any(
+            self.settings.value(f"profiles/{code}/translation_{key}", "auto") != "auto" for key in ("source", "target")))
         self.translation_stream.setChecked(translation.stream)
         self.translation_warm.setChecked(translation.keep_warm)
         self.appearance.reload()
@@ -663,6 +686,8 @@ class SetupDialog(QDialog):
         self._loading = previous_loading
         if self.parent() is not None:
             self.parent().set_mode(code)
+        if hasattr(self, "resources"):
+            self.resources.refresh()
 
     def current_ocr_control(self):
         return {"ja": self.ja_ocr_provider, "tr": self.tr_ocr_provider}.get(self.profile.currentData(), self.other_ocr_provider)
@@ -702,7 +727,7 @@ class SetupDialog(QDialog):
         from meikipop.language.stanza_analyzer import default_model_dir, model_status
         code = self.profile.currentData()
         supported = code in STANZA_LANGUAGES and code != "ja"
-        self.morphology_row.setVisible(code != "ja")
+        self.morphology_row.hide()
         self.morphology.setEnabled(supported and self.operation is None)
         status = model_status(code) if supported else "Unavailable"
         self.morphology_status.setText(status)
@@ -774,6 +799,8 @@ class SetupDialog(QDialog):
         self.translation_autostart.setEnabled(not custom)
         self.translation_warm.setEnabled(not custom)
         self.model_button.setEnabled(not custom)
+        if hasattr(self, "resources"):
+            self.resources.refresh()
 
     def save_translation(self, *, cancel=True):
         mode = self.translation_mode.currentData()
@@ -828,6 +855,7 @@ class SetupDialog(QDialog):
                         self.translation_model, self.translation_autostart):
             control.setEnabled(False)
         self.operation.start()
+        self.resources.refresh()
 
     def cancel_operation(self):
         if self.operation is not None:
@@ -850,6 +878,7 @@ class SetupDialog(QDialog):
         self.update_translation_controls()
         self.update_morphology_controls()
         self.reload(preserve=True)
+        self.resources.refresh()
         self.install_button.setEnabled(self.recommended.currentData() is not None)
         self.status.setText(status)
         if changed:

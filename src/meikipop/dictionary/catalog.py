@@ -15,6 +15,7 @@ class RecommendedDictionary:
     language: str
     url: str
     website: str
+    pack_title: str = ""
 
 
 def recommendations(language):
@@ -24,10 +25,10 @@ def recommendations(language):
     if language == "ja":
         return (RecommendedDictionary("Jitendex", "ja",
                 "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip",
-                "https://jitendex.org/pages/downloads.html"),)
+                "https://jitendex.org/pages/downloads.html", "Jitendex"),)
     return (RecommendedDictionary("Wiktionary · English definitions", language,
             f"https://huggingface.co/datasets/daxida/wty-release/resolve/main/latest/dict/{language}/en/wty-{language}-en.zip?download=true",
-            "https://yomidevs.github.io/wiktionary-to-yomitan/download/"),)
+            "https://yomidevs.github.io/wiktionary-to-yomitan/download/", f"wty-{language}-en"),)
 
 
 def install_recommended(dictionary, directory, progress, cancelled):

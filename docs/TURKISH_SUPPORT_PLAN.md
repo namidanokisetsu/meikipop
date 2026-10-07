@@ -158,16 +158,19 @@ clients remain explicit compatibility entrypoints.
 
 ## Compatibility and remaining acceptance
 
-- The shared desktop has a single-page setup checklist and a per-user Windows installer,
+- The shared desktop has a one-time resource suggestion per added language and a per-user Windows installer,
   plus Apple silicon/Intel DMGs. Bundles include Python and inference libraries,
   not user dictionaries or model weights. Settings downloads OCR, translation
   and base-form models explicitly; frozen builds use bundled setup workers.
-  Existing settings skip onboarding unless requested; cancelled onboarding resumes.
+  Existing settings skip the initial suggestion. Later dismisses each profile's
+  resource suggestion permanently; individual installers remain in Settings.
   Installer upgrades/uninstall preserve user data. Publisher signing and Apple
   notarization still require release credentials.
   Selecting a language offers individually optional dictionaries and supported
   models. Translation defaults unchecked, with lightweight/quality choices;
-  unchecking everything starts without downloads. Green is the new default appearance,
+  Later starts without downloads. New installations have Japanese only; Turkish
+  appears after explicit addition or dictionary import. The tray has no setup menu.
+  Green is the new default appearance,
   with percentage background opacity available for every theme. Popup expansion
   preserves an above-text preview's lower edge and fits within the display. ZIP imports run
   in a separate process and continue with Settings closed. CRC metadata is advisory;
@@ -191,3 +194,9 @@ Implementation lives in `dictionary/library.py`, `dictionary/search.py`,
 `dictionary/translation.py`, `language/profiles.py`, `gui/quick_lookup.py`,
 `gui/dictionary_manager.py`, and `gui/unified_ocr.py`. The retained Turkish
 client lives under `gui/turkish/`. See [setup and usage](TURKISH_SETUP.md).
+
+Resources tab groups explicit downloads, reports file readiness and names current OCR/translation selections.
+Translation models share one installation across profiles, with separate per-profile selection.
+Dictionary removal clears the recommended pack indicator; manual imports stay in Dictionaries.
+Packaged OCR includes the PaddleX extras metadata checked at runtime. Model setup errors preserve
+underlying exceptions and validate loaded Stanza/Paddle models before reporting success.

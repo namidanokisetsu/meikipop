@@ -9,7 +9,7 @@ def migrate(preferences):
     keys = preferences.allKeys()
     existing = {key.split("/")[1] for key in keys if key.startswith("profiles/") and key.count("/") >= 2}
     if keys:
-        existing.update(("ja", "tr"))
+        existing.add("ja")
         existing.update(preferences.value(key, "ja") for key in ("profile", "source"))
     for profile in existing - {"auto"}:
         for key in KEYS:
