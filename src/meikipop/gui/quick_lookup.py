@@ -440,13 +440,16 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
         if result.translation:
             parts.append("<hr>")
     if result.translation:
-        parts.append(f'<p>{escape(result.translation).replace(chr(10), "<br>")}</p>')
+        parts.append(f'<p><a name="scroll-section-translation"></a>'
+                     f'{escape(result.translation).replace(chr(10), "<br>")}</p>')
         if result.entries:
             parts.append("<hr>")
     anchored = set()
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
         if group_index:
             parts.append("<hr>")
+        first_source = next(source for source in sources if source in dictionaries)
+        section = f'<a name="scroll-section-{group_index}-{sources.index(first_source)}"></a>'
         display_term = term
         if (result.source == "ru" and reading and unicodedata.normalize("NFC", reading.replace("\u0301", ""))
                 == unicodedata.normalize("NFC", term)):
@@ -456,9 +459,9 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
                         f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
                         if reading and reading != term else "")
         if result.source == "ja" and headword_furigana and reading and reading != term:
-            parts.append(f'<h2>{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
+            parts.append(f'<h2>{section}{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
         else:
-            parts.append(f'<h2>{escape(display_term)}{reading_html}</h2>')
+            parts.append(f'<h2>{section}{escape(display_term)}{reading_html}</h2>')
         parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies))
         if show_pitch and result.source == "ja":
             from meikipop.dictionary.pitch import render_pitches
@@ -493,7 +496,9 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
                 anchored.add(source)
             if not preview:
                 label = converter.first_source or _source_name(source)
-                parts.append(f'<p class="source"><small><span title="{escape(source, quote=True)}">'
+                section = (f'<a name="scroll-section-{group_index}-{index}"></a>'
+                           if source != first_source else "")
+                parts.append(f'<p class="source">{section}<small><span title="{escape(source, quote=True)}">'
                              f'{escape(label)}</span>{toggle}</small></p>')
             if len(definitions) > 1:
                 parts.append("<ol>" + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
@@ -507,13 +512,19 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
         parts.append(f"<p>{escape(result.message)}</p>")
     if result.kanji and not preview:
         from meikipop.gui.kanji_panel import render_kanji
-        parts.append('<a name="kanji"></a>' + render_kanji(result.kanji, compact_only=True))
+        parts.append('<a name="kanji"></a><a name="scroll-section-kanji"></a>'
+                     + render_kanji(result.kanji, compact_only=True))
     if not result.entries and not result.translation and not result.message and result.text:
         parts.append("<p>No entry found.</p>")
     return "".join(parts)
 
 
 class LocalDictionaryBrowser(RubyBrowser):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from meikipop.gui.section_scroll import SectionScroller
+        self.section_scroll = SectionScroller(self)
+
     def viewportEvent(self, event):
         if event.type() == QEvent.Type.ToolTip:
             QToolTip.hideText()
@@ -717,6 +728,7 @@ class QuickLookupWindow(QDialog):
         self.context_label.setParent(self)
         self.browser = LocalDictionaryBrowser(selection_lookup=self.settings.value(
             f"profiles/{initial_profile}/selection_lookup", False, bool))
+        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{initial_profile}/snap_scrolling", False, bool))
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)
         self.browser.setAccessibleName("Dictionary results")
@@ -848,6 +860,7 @@ class QuickLookupWindow(QDialog):
     def reload_appearance(self, render=True):
         from meikipop.gui.profile_appearance import load_appearance
         load_appearance(self.settings, self.preferred_foreign)
+        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{self.preferred_foreign}/snap_scrolling", False, bool))
         self.apply_style()
         if render:
             self._render()

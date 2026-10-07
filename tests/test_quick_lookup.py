@@ -108,6 +108,27 @@ class QuickLookupTests(unittest.TestCase):
         self.window.reload_appearance()
         self.assertEqual(self.window.browser.font().family(), QFont().family())
 
+    def test_snap_scrolling_saves_per_profile_without_replacing_the_document(self):
+        self.window.show_entries((entry(),), "猫")
+        dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+        try:
+            dialog.appearance.save()
+            self.assertFalse(dialog.appearance.snap_scrolling.isChecked())
+            self.assertFalse(self.window.browser.section_scroll.enabled)
+            with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
+                dialog.appearance.snap_scrolling.setChecked(True)
+                render.assert_not_called()
+            self.assertTrue(self.settings.value("profiles/ja/snap_scrolling", False, bool))
+            self.assertTrue(self.window.browser.section_scroll.enabled)
+            dialog.sync_profile("tr")
+            self.assertFalse(dialog.appearance.snap_scrolling.isChecked())
+            self.assertFalse(self.window.browser.section_scroll.enabled)
+            dialog.sync_profile("ja")
+            self.assertTrue(dialog.appearance.snap_scrolling.isChecked())
+            self.assertTrue(self.window.browser.section_scroll.enabled)
+        finally:
+            dialog.deleteLater()
+
     def test_morphology_option_follows_profile_for_dictionary_lookup_only(self):
         self.settings.setValue("profiles/tr/morphology", False)
         self.model_status.return_value = "Installed"

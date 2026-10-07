@@ -85,7 +85,9 @@ OCR translations show the original sentence, a divider, then the translation. Ty
 show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
-Dictionary sections have independent previews and expansion controls. Left-click a preview
+Dictionary sections have independent previews and expansion controls. **Appearance → Snap scrolling**
+optionally steps between dictionary blocks, paging through long blocks with overlap.
+It defaults off for each language; the scrollbar remains freely draggable. Left-click a preview
 or use the scan gesture to freeze and resize it. Above-text previews expand upward;
 other previews grow down when space allows, switching upward near the bottom edge. Escape, outside click, Close, or a new
 scan leave the result. Entering a preview pauses its dismissal grace; leaving rearms it.

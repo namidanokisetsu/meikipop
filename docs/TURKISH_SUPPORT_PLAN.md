@@ -33,7 +33,9 @@ clients remain explicit compatibility entrypoints.
    search. OCR misses hide the preview and scanning continues while held.
    Manual search translates misses. Launches without lookup text start in the tray.
    Edits invalidate old results immediately. Keep source labels,
-   independent expansion, scrolling, pinning, resizing and Back. Show supplied
+   independent expansion, scrolling, pinning, resizing and Back. Optional per-profile
+   Snap scrolling follows headword/dictionary blocks, with overlapping screenfuls
+   for long blocks and one advance per trackpad gesture; it defaults off. Show supplied
    frequency, inflection and kanji data without merging distinct source senses
    or inventing missing kanji components. Profile changes also reload cached
    settings controls. Ruby explicitly resolves the selected font for kana and
