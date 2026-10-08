@@ -1414,6 +1414,25 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("Fourth sense", self.window.browser.toPlainText())
 
     def test_default_search_shortcut_can_be_disabled(self):
+    def test_kanji_click_reveals_all_sources_and_back_restores_details(self):
+        kanji = (KanjiEntry("猫", source="Kanji A", meanings=("cat",), stats=(("strokes", 11),)),
+                 KanjiEntry("猫", source="Kanji B", meanings=("feline",), stats=(("grade", 8),)),
+                 KanjiEntry("犬", source="Kanji A", meanings=("dog",), stats=(("strokes", 4),)))
+        self.window.show_entries((entry("猫犬"),), "猫犬", kanji=kanji)
+        self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
+        self.window._link(QUrl("kanji:%E7%8C%AB"))
+        text = self.window.browser.toPlainText()
+        self.assertIn("Kanji A", text)
+        self.assertIn("Kanji B", text)
+        self.assertIn("Strokes 11", text)
+        self.assertIn("Grade 8", text)
+        self.assertNotIn("Strokes 4", text)
+        self.window._display(SearchResult("犬", "ja", "en", (entry("犬"),)))
+        self.window.go_back()
+        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.window._link(QUrl("kanji:%E7%8C%AB"))
+        self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
+
         self.assertIsNone(self.window._keys)
         with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:
             self.window.restore_shortcut()

@@ -415,9 +415,9 @@ def _compact_context(text, font, width):
     return first + "\n" + QFontMetricsF(font).elidedText(rest, Qt.TextElideMode.ElideRight, max(1, width))
 
 
-def render_result(result, expanded=(), kanji_expanded=False, preview=False, overlay_actions=False, show_source=True,
+def render_result(result, expanded=(), preview=False, overlay_actions=False, show_source=True,
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
-                  definition_furigana=False, show_pitch=True, collapsed=()):
+                  definition_furigana=False, show_pitch=True, collapsed=(), kanji_details=()):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
@@ -516,7 +516,7 @@ def render_result(result, expanded=(), kanji_expanded=False, preview=False, over
     if result.kanji and not preview:
         from meikipop.gui.kanji_panel import render_kanji
         parts.append('<a name="kanji"></a><a name="scroll-section-kanji"></a>'
-                     + render_kanji(result.kanji, compact_only=True))
+                     + render_kanji(result.kanji, compact_only=True, expanded_characters=kanji_details))
     if not result.entries and not result.translation and not result.message and result.text:
         parts.append("<p>No entry found.</p>")
     return "".join(parts)
@@ -577,7 +577,7 @@ class QuickLookupWindow(QDialog):
         self._expanded = set()
         self._collapsed = set()
         self._details_expanded = set()
-        self._kanji_expanded = False
+        self._kanji_details = set()
         self._pin_anchor_click = False
         self._keys = None
         self._shutting_down = False
@@ -1162,7 +1162,7 @@ class QuickLookupWindow(QDialog):
             self._expanded.add(source)
         self._render()
 
-    def _display(self, result, remember=True, expanded=(), details_expanded=None, collapsed=None):
+    def _display(self, result, remember=True, expanded=(), details_expanded=None, collapsed=None, kanji_details=None):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
             result.text, result.source, result.target)
         previous_context = getattr(self, "_result_context", "")
@@ -1170,7 +1170,8 @@ class QuickLookupWindow(QDialog):
             self._history.append((self._result, getattr(self, "_result_context", ""),
                                   self._result_profile, self._result_target, tuple(self._expanded),
                                   self.browser.verticalScrollBar().value(), tuple(self._details_expanded),
-                                  self._result_input, self._result_screenshot, tuple(self._collapsed)))
+                                  self._result_input, self._result_screenshot, tuple(self._collapsed),
+                                  tuple(self._kanji_details)))
             self._history = self._history[-30:]
         if details_expanded is not None:
             self._details_expanded = set(details_expanded)
@@ -1190,7 +1191,6 @@ class QuickLookupWindow(QDialog):
             self._result_screenshot = None
         self._result_input = self.search.text().strip()
         self._expanded = set(expanded)
-        self._kanji_expanded = False
         self._render()
         self.back.setEnabled(bool(self._history))
         self.back.setVisible(bool(self._history))
@@ -1213,6 +1213,10 @@ class QuickLookupWindow(QDialog):
                 expanded = {entry.source for entry in self._result.entries}
             show_source, source_text = self._peek, None
             if self._peek and self.is_pinned:
+        if kanji_details is not None:
+            self._kanji_details = set(kanji_details)
+        elif self._new_chain or not same:
+            self._kanji_details.clear()
                 show_source = self.settings.value(f"profiles/{self.preferred_foreign}/pinned_sentence", True, bool)
                 source_text = self._result_context or (self._result.text if self._result.translation else "")
                 if show_source and source_text:
@@ -1223,14 +1227,14 @@ class QuickLookupWindow(QDialog):
             from meikipop.gui.profile_appearance import DEFAULTS
             identity = (repr(self._result), self.preferred_foreign, tuple(sorted(expanded)),
                         tuple(sorted(self._details_expanded)),
-                        self._kanji_expanded, self._peek, self.is_pinned, compact,
+                        self._peek, self.is_pinned, compact,
                         tuple(getattr(config, key) for key in DEFAULTS), self.devicePixelRatioF(),
                         self.audio_actions.sizeHint().width(), show_source, source_text if show_source else None,
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
                         self.settings.value("profiles/ja/definition_furigana", True, bool),
                         self.settings.value("profiles/ja/show_pitch", True, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool),
-                        tuple(sorted(self._collapsed)))
+                        tuple(sorted(self._collapsed)), tuple(sorted(self._kanji_details)))
             if identity == self._render_identity:
                 mark("render_reused", self.revision)
                 return
@@ -1239,7 +1243,6 @@ class QuickLookupWindow(QDialog):
             block_text, offset = anchor.block().text(), self.browser.cursorRect(anchor).top()
             mark("html_begin", self.revision)
             self.browser.setHtml(render_result(self._result, expanded,
-                                               self._kanji_expanded or self._peek and not self.is_pinned and not compact,
                                                preview=self._peek and not self.is_pinned and compact,
                                                overlay_actions=(self.audio_actions.sizeHint().width() + 8) if self._peek and self.is_pinned else 0,
                                                show_source=show_source, source_text=source_text,
@@ -1282,6 +1285,7 @@ class QuickLookupWindow(QDialog):
         if desired > maximum:
             limit = maximum - chrome - 2
             bottoms = []
+                                               kanji_details=self._kanji_details,
             block = document.begin()
             while block.isValid():
                 top = document.documentLayout().blockBoundingRect(block).top()
@@ -1329,10 +1333,9 @@ class QuickLookupWindow(QDialog):
         if self._pin_anchor_click:
             self._pin_anchor_click = False
             return  # The first click already expanded the complete peek.
-        if url.scheme() == "kanji" and url.path() == "toggle":
-            self._kanji_expanded = not self._kanji_expanded
+        if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
+            self._kanji_details.symmetric_difference_update((url.path(),))
             self._render()
-            self.browser.scrollToAnchor("kanji")
             return
         if url.scheme() == "details" and re.fullmatch(r"\d+:\d+:\d+", url.path()):
             key = url.path()
@@ -1400,7 +1403,8 @@ class QuickLookupWindow(QDialog):
         self.scan_settings_changed.emit()
         self._display(result, remember=False, expanded=expanded,
                       details_expanded=previous[6] if len(previous) > 6 else (),
-                      collapsed=previous[9] if len(previous) > 9 else None)
+                      collapsed=previous[9] if len(previous) > 9 else None,
+                      kanji_details=previous[10] if len(previous) > 10 else ())
         self.set_context(context)
         self._result_screenshot = previous[8] if len(previous) > 8 else None
         self.browser.verticalScrollBar().setValue(scroll)
@@ -1773,7 +1777,6 @@ class QuickLookupWindow(QDialog):
             QTimer.singleShot(300, lambda: setattr(self, "_opening_search", False))
             if self._peek and self._result is not None:
                 self._expanded.update(entry.source for entry in self._result.entries)
-                self._kanji_expanded = True
         self.context_label.hide()
         self.actions_row.setVisible(checked or not self._peek)
         self._place_actions()
