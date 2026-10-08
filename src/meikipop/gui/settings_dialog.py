@@ -300,10 +300,12 @@ class SettingsDialog(QDialog):
         self.form_layouts.append(color_layout)
 
         self.color_widgets = {}
+        self.color_values = {}
         color_settings_map = {"Background": "color_background", "Foreground": "color_foreground",
                               "Highlight Word": "color_highlight_word", "Highlight Reading": "color_highlight_reading"}
         for name, key in color_settings_map.items():
-            btn = QPushButton(getattr(config, key))
+            self.color_values[key] = getattr(config, key)
+            btn = QPushButton(self.color_values[key])
             btn.clicked.connect(lambda _, k=key, b=btn: self.pick_color(k, b))
             self.color_widgets[key] = btn
             color_layout.addRow(f"{name}:", btn)
@@ -449,27 +451,32 @@ class SettingsDialog(QDialog):
     def _apply_theme(self, theme_name):
         if theme_name in THEMES and theme_name != "Custom":
             theme_data = THEMES[theme_name]
-            for key, value in theme_data.items():
-                setattr(config, key, value)
+            self.color_values.update({key: theme_data[key] for key in self.color_values})
             self._update_color_buttons()
-            self.opacity_slider.setValue(round(config.background_opacity * 100 / 255))
+            self.opacity_slider.blockSignals(True)
+            self.opacity_slider.setValue(round(theme_data["background_opacity"] * 100 / 255))
+            self.opacity_slider.blockSignals(False)
+            self.opacity_label.setText(f"{self.opacity_slider.value()}%")
 
     def _update_color_buttons(self):
         for key, btn in self.color_widgets.items():
-            color_hex = getattr(config, key)
+            color_hex = self.color_values[key]
             btn.setText(color_hex)
             q_color = QColor(color_hex)
             text_color = "#000000" if q_color.lightness() > 127 else "#FFFFFF"
             btn.setStyleSheet(f"background-color: {color_hex}; color: {text_color};")
 
     def pick_color(self, key, btn):
-        color = QColorDialog.getColor(QColor(getattr(config, key)), self)
+        color = QColorDialog.getColor(QColor(self.color_values[key]), self)
         if color.isValid():
-            setattr(config, key, color.name())
+            self.color_values[key] = color.name()
             self._update_color_buttons()
             self._mark_as_custom()
 
     def save_and_accept(self):
+        if self.hotkey_combo.currentText() == "None" and not self.middle_activation_check.isChecked():
+            QMessageBox.warning(self, "Activation", "Choose a keyboard or mouse activation.")
+            return
         if self.text_lookup_page is not None:
             try:
                 self.text_lookup.save_settings_page(self.text_lookup_page)
@@ -488,8 +495,6 @@ class SettingsDialog(QDialog):
             bindings.append(keyboard_binding.split('+'))
         if self.middle_activation_check.isChecked():
             bindings.append(['middle'])
-        if not bindings:
-            bindings.append(['shift'])
         config.activation_bindings = serialise_activation_bindings(bindings)
         config.hotkey = keyboard_binding.lower() if keyboard_binding != 'None' else 'shift'
         config.glens_low_bandwidth = self.glens_compression_check.isChecked()
@@ -519,6 +524,8 @@ class SettingsDialog(QDialog):
 
         selected_friendly_name = self.popup_position_combo.currentText()
         config.popup_position_mode = self.popup_mode_map.get(selected_friendly_name, "flip_vertically")
+        for key, value in self.color_values.items():
+            setattr(config, key, value)
         config.theme_name = self.theme_combo.currentText()
         config.background_opacity = round(self.opacity_slider.value() * 255 / 100)
         config.font_family = self.font_family_combo.currentFont().family()
