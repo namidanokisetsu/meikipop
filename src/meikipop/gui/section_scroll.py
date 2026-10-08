@@ -109,6 +109,7 @@ class SectionScroller(QObject):
 
     def _document_changed(self):
         self.cancel()
+        self.header.hide()
         self._boundary_latched = False
         self.browser.viewport().clearMask()
         self._positions = None
@@ -159,8 +160,9 @@ class SectionScroller(QObject):
         self._index()
         document = self.browser.document()
         layout = document.documentLayout()
-        return [(max(0, round(layout.blockBoundingRect(document.findBlock(position)).top())), heading)
-                for position, heading in self._boundaries]
+        # The sentence/translation above the first headword belongs to its page.
+        return [(0 if index == 0 else max(0, round(layout.blockBoundingRect(document.findBlock(position)).top())), heading)
+                for index, (position, heading) in enumerate(self._boundaries)]
 
     def section_starts(self):
         tops = self.section_tops()
@@ -242,6 +244,7 @@ class SectionScroller(QObject):
     def _update_header(self):
         self._update_clip()
         if not self.enabled or self.preview or not self._headings:
+            self.header.hide()
             return
         scroll = self.browser.verticalScrollBar().value()
         boundaries = self.boundaries()
@@ -256,8 +259,10 @@ class SectionScroller(QObject):
         if self._heading == position:
             return
         self._heading = position
-        cursor = QTextCursor(self.browser.document().findBlock(position))
-        cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
+        block = self.browser.document().findBlock(position)
+        cursor = QTextCursor(block)
+        # BlockUnderCursor includes the preceding paragraph's separator/format.
+        cursor.setPosition(block.position() + block.length() - 1, QTextCursor.MoveMode.KeepAnchor)
         document = self.header.document()
         document.clear()
         document.setDefaultFont(self.browser.document().defaultFont())
@@ -266,6 +271,7 @@ class SectionScroller(QObject):
         target.insertFragment(cursor.selection())
         # Ruby char formats and the registered object renderer are preserved.
         fmt = target.blockFormat()
+        fmt.clearProperty(QTextFormat.Property.BlockTrailingHorizontalRulerWidth)
         fmt.setTopMargin(0)
         fmt.setBottomMargin(0)
         target.setBlockFormat(fmt)

@@ -493,8 +493,6 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             parts.append("<hr>")
     anchored = set()
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
-        if group_index:
-            parts.append("<hr>")
         first_source = next(source for source in sources if source in dictionaries)
         section = f'<a name="scroll-section-{group_index}-{sources.index(first_source)}"></a>'
         parts.append(section)
@@ -675,10 +673,8 @@ class QuickLookupWindow(QDialog):
             self.setWindowFlag(Qt.WindowType.X11BypassWindowManagerHint)
         self.directory = directory
         self.settings = settings or QSettings("Meikipop", "QuickLookup")
-        from meikipop.gui.interaction_preferences import migrate
-        migrate(self.settings)
         from meikipop.gui.profile_appearance import load_appearance
-        load_appearance(self.settings, self.settings.value("profile", self.settings.value("source", "ja")))
+        load_appearance(self.settings, self.settings.value("profile", ""))
         self.revision = 0
         self._result = None
         self._display_revision = None
@@ -794,9 +790,7 @@ class QuickLookupWindow(QDialog):
         self.foreign.setMinimumContentsLength(7)
         self.target_label = QLabel("↔")
         self.update_languages(())
-        initial_profile = self.settings.value("profile", self.settings.value("source", "ja"))
-        if initial_profile == "auto" or initial_profile == "en" and not self.settings.contains("profile"):
-            initial_profile = self.settings.value("foreign", "ja")
+        initial_profile = self.settings.value("profile", "")
         self.source.setCurrentIndex(max(0, self.source.findData(initial_profile)))
         self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{initial_profile}/target", default_partner(initial_profile)))))
         self.translate = self._action("translate", "Translate")
@@ -938,10 +932,7 @@ class QuickLookupWindow(QDialog):
 
     @property
     def preferred_foreign(self):
-        mode = self.source.currentData()
-        if mode == "en" and not self.settings.contains("profiles/en/target"):
-            return self.settings.value("profile", "ja")
-        return mode if mode not in ("auto", None) else self.settings.value("profile", "ja")
+        return self.source.currentData() or ""
 
     def apply_style(self):
         colors = surface_colors(config.color_background, config.color_foreground)
@@ -989,16 +980,14 @@ class QuickLookupWindow(QDialog):
             self._render()
 
     def compact_preview(self):
-        return self.settings.value(f"profiles/{self.preferred_foreign}/compact_preview",
-                                   self.settings.value("compact_preview", True, type=bool), type=bool)
+        return self.settings.value(f"profiles/{self.preferred_foreign}/compact_preview", True, type=bool)
 
     def update_languages(self, languages):
         if "en" in languages and not self.settings.contains("profiles/en/target"):
             self.settings.setValue("profiles/en/target", "ja")
-        current_source = self.source.currentData() or self.settings.value("profile", self.settings.value("source", "ja"))
+        current_source = self.source.currentData() or self.settings.value("profile", "")
         current_target = self.foreign.currentData() or "en"
-        codes = list(dict.fromkeys([*configured_profiles(self.settings), *languages,
-                                   *([current_source] if current_source != "auto" else [])]))
+        codes = list(dict.fromkeys([*configured_profiles(self.settings), *languages]))
         with QSignalBlocker(self.source), QSignalBlocker(self.foreign):
             self.source.clear()
             self.foreign.clear()
@@ -1022,7 +1011,9 @@ class QuickLookupWindow(QDialog):
 
     def _mode_changed(self):
         mode = self.source.currentData()
-        if self.sender() is self.source and mode != "auto" and (mode != "en" or self.settings.contains("profiles/en/target")):
+        if not mode:
+            return
+        if self.sender() is self.source:
             with QSignalBlocker(self.foreign):
                 self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{mode}/target", default_partner(mode)))))
             self.settings.setValue("profile", mode)
@@ -1030,7 +1021,6 @@ class QuickLookupWindow(QDialog):
         if self.foreign.currentData() == self.preferred_foreign:
             with QSignalBlocker(self.foreign):
                 self.foreign.setCurrentIndex(self.foreign.findData(default_partner(mode)))
-        self.settings.setValue("source", self.source.currentData())
         self.settings.setValue(f"profiles/{self.preferred_foreign}/target", self.foreign.currentData())
         self.browser.selection_lookup = self.settings.value(f"profiles/{self.preferred_foreign}/selection_lookup", False, bool)
         self.mode_changed.emit(self.source.currentData())
@@ -1369,6 +1359,7 @@ class QuickLookupWindow(QDialog):
             scroll = self.browser.verticalScrollBar().value()
             anchor = self.browser.cursorForPosition(self.browser.viewport().rect().topLeft())
             block_text, offset = anchor.block().text(), self.browser.cursorRect(anchor).top()
+            position_in_block = anchor.position() - anchor.block().position()
             mark("html_begin", self.revision)
             self.browser.setHtml(render_result(self._result, expanded, **preview_options,
                                                preview=self._peek and not self.is_pinned and compact,
@@ -1383,14 +1374,18 @@ class QuickLookupWindow(QDialog):
             self._render_identity = identity
             self._document_revision = self.revision
             mark("document_ready", self.revision)
+            # Restore snap-page padding before restoring a position near the end.
+            self.browser.section_scroll._refresh_header()
             if scroll:
                 block = self.browser.document().begin()
                 while block.isValid() and block.text() != block_text:
                     block = block.next()
                 if block.isValid() and block_text:
                     from PyQt6.QtGui import QTextCursor
+                    restored = QTextCursor(block)
+                    restored.setPosition(block.position() + position_in_block)
                     scroll = (self.browser.verticalScrollBar().value()
-                              + self.browser.cursorRect(QTextCursor(block)).top() - offset)
+                              + self.browser.cursorRect(restored).top() - offset)
                 self.browser.verticalScrollBar().setValue(scroll)
             self.browser.setToolTip("")
             self.fit_timer.start(0)
@@ -2157,6 +2152,4 @@ def shortcut_preset():
 
 
 def audio_autoplay_mode(settings, profile):
-    legacy = settings.value(f"profiles/{profile}/audio_autoplay",
-                            config.audio_autoplay_enabled if profile == "ja" else False, type=bool)
-    return settings.value(f"profiles/{profile}/audio_autoplay_mode", "lookup" if legacy else "off")
+    return settings.value(f"profiles/{profile}/audio_autoplay_mode", "off")

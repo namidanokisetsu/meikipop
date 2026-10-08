@@ -104,6 +104,8 @@ class QuickLookupTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
+        self.settings.setValue("profile", "ja")
+        self.settings.setValue("profiles/ja/target", "en")
         self.model_status_patch = patch("meikipop.language.stanza_analyzer.model_status", return_value="Model needed")
         self.model_status = self.model_status_patch.start()
         self.addCleanup(self.model_status_patch.stop)
@@ -226,6 +228,9 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("Preview meaning 5", self.window.browser.toPlainText())
 
     def test_pinned_dictionary_toggle_matches_display_and_preserves_scroll(self):
+        active = patch.object(self.window, "isActiveWindow", return_value=True)
+        active.start()
+        self.addCleanup(active.stop)
         self.settings.setValue("profiles/ja/expanded_dictionaries", ['First', 'Second', 'Third'])
         for compact in (True, False):
             with self.subTest(compact=compact):
@@ -668,11 +673,11 @@ class QuickLookupTests(unittest.TestCase):
         self.window.go_back()
         self.assertEqual(self.window._context, "猫がいる。")
 
-    def test_switching_to_english_keeps_previous_foreign_mode(self):
+    def test_switching_to_english_selects_its_own_profile(self):
         self.window.set_mode("tr")
         self.window.set_mode("en")
-        self.assertEqual(self.window.preferred_foreign, "tr")
-        self.assertEqual(self.window.foreign.currentData(), "en")
+        self.assertEqual(self.window.preferred_foreign, "en")
+        self.assertEqual(self.settings.value("profile"), "en")
 
     def test_explicit_sentence_skips_dictionary_and_translates_into_english(self):
         self.window.lookup_selected("昨日は朝ご飯を食べなかった。")
@@ -1382,6 +1387,34 @@ class QuickLookupTests(unittest.TestCase):
                     cursor.setPosition(cursor.selectionStart() + 1)
                     self.assertLessEqual(abs(browser.cursorRect(cursor).center().y() - point.y()), 1)
 
+    def test_disclosures_in_short_final_snap_page_keep_their_position(self):
+        definition = {"type": "structured-content", "content": [
+            {"tag": "details", "content": [{"tag": "summary", "content": label}, "Extra detail"]}
+            for label in ("Grammar", "Etymology")]}
+        browser = self.window.browser
+        self.settings.setValue("profiles/ja/snap_scrolling", True)
+        self.window.reload_appearance()
+        with patch.object(self.window, "isActiveWindow", return_value=True):
+            self.window.show_entries((entry("first", definitions=("Earlier definition\n" * 30,)),
+                                      entry("last", definitions=(definition,))), "last", peek=True)
+            self.window.pin.setChecked(True)
+            self.app.processEvents()
+            bar = browser.verticalScrollBar()
+            bar.setValue(browser.section_scroll.boundaries()[-1][0])
+            for label in ("Grammar", "Grammar", "Etymology", "Etymology"):
+                cursor = browser.document().find(label)
+                cursor.setPosition(cursor.selectionStart() + 1)
+                point = browser.cursorRect(cursor).center()
+                self.assertTrue(browser.viewport().rect().contains(point))
+                scroll = bar.value()
+                QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+                self.wait_until(lambda: not self.window.render_timer.isActive())
+                self.app.processEvents()
+                self.assertEqual(bar.value(), scroll)
+                cursor = browser.document().find(label)
+                cursor.setPosition(cursor.selectionStart() + 1)
+                self.assertLessEqual(abs(browser.cursorRect(cursor).center().y() - point.y()), 1)
+
     def test_japanese_disclosures_keep_shared_ruby_and_escape_summary(self):
         definition = {"type": "structured-content", "content": [
             {"tag": "ruby", "content": ["猫", {"tag": "rt", "content": "ねこ"}]},
@@ -1707,6 +1740,8 @@ class DictionaryManagerTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.directory = Path(self.temp.name) / "library"
         self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
+        self.settings.setValue("profile", "ja")
+        self.settings.setValue("profiles/ja/target", "en")
         self.dialog = SetupDialog(self.directory, self.settings, Mock())
 
     def tearDown(self):

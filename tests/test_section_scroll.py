@@ -85,6 +85,49 @@ class SectionScrollTests(unittest.TestCase):
         self.assertGreater(self.bar.value(), 0)
         self.assertNotEqual(self.bar.value(), self.scroller.stops()[1])
 
+    def test_sentence_and_first_definition_share_the_first_page(self):
+        entries = (Entry("would", "would", "", "English", "en", ("past tense of will",)),
+                   Entry("will", "will", "", "English", "en", ("expressing intention",)))
+        html = render_result(SearchResult("would", "en", "ru", entries),
+                             source_text="I would like to know.", show_source=True)
+        self.assertNotIn("<hr>", html)
+        self.browser.resize(400, 360)
+        self.browser.setHtml(html)
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        self.app.processEvents()
+        definition = self.browser.document().find("past tense of will")
+        bottom = self.browser.cursorRect(definition).bottom()
+        self.assertGreater(self.browser.viewport().mask().boundingRect().height(), bottom)
+        self.assertEqual(self.scroller.boundaries()[0][0], 0)
+        self.assertFalse(self.scroller.header.isVisible())
+        second = self.scroller.boundaries()[1][0]
+        self.wheel(angle=0, pixel=-10, phase=Qt.ScrollPhase.ScrollUpdate)
+        self.assertEqual(self.bar.value(), second)
+        self.assertFalse(self.scroller.header.isVisible())
+
+    def test_replacing_result_hides_previous_sticky_header_immediately(self):
+        self.render(lines=20)
+        self.scroller.set_enabled(True)
+        self.bar.setValue(80)
+        self.assertTrue(self.scroller.header.isVisible())
+        self.browser.setHtml("New result")
+        self.assertFalse(self.scroller.header.isVisible())
+        self.app.processEvents()
+        self.assertFalse(self.scroller.header.isVisible())
+
+    def test_sticky_heading_does_not_copy_preceding_rule_or_paragraph(self):
+        from PyQt6.QtGui import QTextFormat
+        self.browser.setHtml('<p>Sentence</p><hr><h2><a name="scroll-headword-0"></a>'
+                             '<a name="scroll-section-0"></a>would</h2><p>' + "definition<br>" * 30 + '</p>')
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        self.bar.setValue(120)
+        self.assertTrue(self.scroller.header.isVisible())
+        self.assertEqual(self.scroller.header.toPlainText(), "would")
+        block = self.scroller.header.document().begin()
+        self.assertFalse(block.blockFormat().hasProperty(QTextFormat.Property.BlockTrailingHorizontalRulerWidth))
+
     def test_normal_mode_arrows_scroll_without_moving_the_text_selection(self):
         self.browser.setTextCursor(self.browser.document().find("Definition"))
         selected = self.browser.selected_text()
