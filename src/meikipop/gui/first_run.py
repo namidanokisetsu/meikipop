@@ -5,7 +5,8 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLa
 
 
 def needs_setup(settings):
-    return not settings.allKeys()
+    from meikipop.language.profiles import configured_profiles
+    return not configured_profiles(settings)
 
 
 class FirstLanguage(QDialog):
@@ -40,7 +41,6 @@ class FirstLanguage(QDialog):
         if code is None:
             return
         from meikipop.language.profiles import default_partner
-        self.settings.setValue("initial_language", code)
         self.settings.setValue("profile", code)
         if not self.settings.contains(f"profiles/{code}/target"):
             self.settings.setValue(f"profiles/{code}/target", default_partner(code))

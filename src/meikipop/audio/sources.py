@@ -1,37 +1,15 @@
 """Per-language pronunciation modes and retained local source order."""
-from meikipop.config.config import config
 
 
 def database_path(settings, language):
-    return settings.value(f"profiles/{language}/audio_database", config.audio_database_path if language == "ja" else "")
+    return settings.value(f"profiles/{language}/audio_database", "")
 
 
 def source_order(settings, language):
     saved = settings.value(f"profiles/{language}/audio_priority")
     if saved is not None:
         return saved if isinstance(saved, list) else [saved] if saved else []
-    mode = audio_mode(settings, language)
-    if mode == "online":
-        return ["tts", "online"]
-    if mode == "tts":
-        return ["tts"]
-    return local_source_order(settings, language)
-
-
-def audio_mode(settings, language):
-    saved = settings.value(f"profiles/{language}/audio_mode")
-    if saved in ("online", "local", "tts"):
-        return saved
-    return "local" if database_path(settings, language) else "online"
-
-
-def local_source_order(settings, language):
-    saved = settings.value(f"profiles/{language}/audio_order")
-    if saved is not None:
-        return saved if isinstance(saved, list) else [saved] if saved else []
-    legacy = settings.value(f"profiles/{language}/audio_sources", config.audio_preferred_sources if language == "ja" else "")
-    sources = ["db:" + source.strip() for source in legacy.split(",") if source.strip()]
-    return list(dict.fromkeys([*sources, "database", "tts"]))
+    return ["tts", "online"]
 
 
 def source_label(source):

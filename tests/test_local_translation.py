@@ -269,6 +269,8 @@ class TranslationSetupTests(unittest.TestCase):
                           side_effect=lambda: load_settings(self.translation_directory))
         self.load.start()
         settings = QSettings(str(self.directory / "qt.ini"), QSettings.Format.IniFormat)
+        settings.setValue("profile", "ja")
+        settings.setValue("profiles/ja/target", "en")
         self.dialog = SetupDialog(self.directory / "library", settings, Mock())
 
     def tearDown(self):

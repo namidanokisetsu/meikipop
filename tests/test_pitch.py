@@ -97,6 +97,7 @@ class PitchTests(unittest.TestCase):
             with sqlite3.connect(imported) as db:
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM pitches").fetchone()[0], 1)
                 self.assertEqual(db.execute("SELECT key FROM pitches").fetchone()[0], "悪辣")
+            db.close()
 
             for accent in ({"position": True}, {"position": 0, "nasal": "bad"},
                            {"position": 0, "tags": "bad"}):

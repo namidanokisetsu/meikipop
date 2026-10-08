@@ -636,12 +636,12 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         scan.assert_not_called()
 
     def test_provider_setting_change_invalidates_inflight_result(self):
-        values = {"ja_ocr_provider": "screenai", "screenai_directory": "local/component"}
+        values = {f"profiles/{self.window.preferred_foreign}/ocr_provider": "screenai", "screenai_directory": "local/component"}
         self.window.settings = SimpleNamespace(value=lambda name, default, kind=None: values.get(name, default))
         generation = self.controller.generation
         self.window.scan_settings_changed.emit()
         self.assertGreater(self.controller.generation, generation)
-        self.assertEqual((self.controller.ja_ocr_provider, self.controller.screenai_directory),
+        self.assertEqual((self.controller.profile_ocr_provider, self.controller.screenai_directory),
                          ("screenai", "local/component"))
         self.controller.deliver(generation, Mock(), Mock(), "")
         self.window.show_entries.assert_not_called()

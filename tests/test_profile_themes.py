@@ -138,7 +138,7 @@ class ProfileThemeTests(unittest.TestCase):
                 config.__dict__.update(previous)
                 widget.deleteLater()
 
-    def test_removed_preset_migrates_without_losing_saved_or_custom_colors(self):
+    def test_unknown_preset_uses_defaults_without_migrating_saved_colors(self):
         with tempfile.TemporaryDirectory() as folder:
             settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
             settings.setValue('profiles/tr/theme_name', 'Dusk')
@@ -150,19 +150,19 @@ class ProfileThemeTests(unittest.TestCase):
                 load_appearance(settings, 'tr')
                 self.assertEqual(config.theme_name, 'Monochrome Dark')
                 self.assertEqual(config.color_highlight_word, '#FFFFFF')
-                self.assertEqual(settings.value('profiles/tr/theme_name'), 'Monochrome Dark')
+                self.assertEqual(settings.value('profiles/tr/theme_name'), 'Dusk')
                 widget = ProfileAppearance(settings, lambda: 'tr', Mock())
                 widget.theme.setCurrentText('Light')
                 widget.theme.setCurrentText('Custom')
                 load_appearance(settings, 'tr')
-                self.assertEqual(config.color_background, '#28231F')
-                self.assertEqual(config.color_highlight_word, '#E4BD8B')
+                self.assertEqual(config.color_background, DEFAULTS['color_background'])
+                self.assertEqual(config.color_highlight_word, DEFAULTS['color_highlight_word'])
                 self.assertEqual(config.color_foreground, '#eeeeee')
                 widget.theme.setCurrentText('Monochrome Dark')
                 widget.deleteLater()
                 widget = ProfileAppearance(settings, lambda: 'tr', Mock())
                 widget.theme.setCurrentText('Custom')
-                self.assertEqual(widget.controls['color_background'].text(), '#28231F')
+                self.assertEqual(widget.controls['color_background'].text(), DEFAULTS['color_background'])
                 widget.deleteLater()
                 self.assertFalse(settings.contains('profiles/ja/theme_name'))
             finally:

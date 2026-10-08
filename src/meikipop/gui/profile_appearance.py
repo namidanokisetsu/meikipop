@@ -21,9 +21,6 @@ def custom_palette(settings, profile):
     palette = {}
     for key in THEMES["Monochrome Dark"]:
         custom = prefix + "custom/" + key
-        if not settings.contains(custom):
-            # Seed before a preset can overwrite the user's saved colors.
-            settings.setValue(custom, settings.value(prefix + key, DEFAULTS[key]))
         palette[key] = settings.value(custom, DEFAULTS[key], type=type(DEFAULTS[key]))
     return palette
 
@@ -32,7 +29,6 @@ def load_appearance(settings, profile):
     scale = settings.value(f"profiles/{profile}/scale", 100, type=int) / 100
     custom = custom_palette(settings, profile)
     name = theme_name(settings.value(f"profiles/{profile}/theme_name", DEFAULTS["theme_name"]))
-    settings.setValue(f"profiles/{profile}/theme_name", name)
     palette = custom if name == "Custom" else THEMES[name]
     for key, default in DEFAULTS.items():
         if key in palette:
@@ -137,8 +133,7 @@ class ProfileAppearance(QWidget):
         name = theme_name(self.settings.value(f"profiles/{self.profile()}/theme_name", DEFAULTS["theme_name"]))
         self.theme.setCurrentText(name)
         self.theme.blockSignals(False)
-        self.compact_preview.setChecked(self.settings.value(f"profiles/{self.profile()}/compact_preview",
-                                       self.settings.value("compact_preview", True, bool), bool))
+        self.compact_preview.setChecked(self.settings.value(f"profiles/{self.profile()}/compact_preview", True, bool))
         self.pinned_sentence.setChecked(self.settings.value(f"profiles/{self.profile()}/pinned_sentence", True, bool))
         self.snap_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/snap_scrolling", False, bool))
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))

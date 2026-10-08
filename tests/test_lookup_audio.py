@@ -73,7 +73,7 @@ class SentenceAudioTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
             settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
             settings.setValue("profiles/tr/audio_database", "turkish.db")
-            settings.setValue("profiles/tr/audio_order", ["db:recorded", "tts"])
+            settings.setValue("profiles/tr/audio_priority", ["db:recorded", "tts"])
             audio = LookupAudio()
             word = Entry("ev", "ev", "", "Turkdict", "tr", ("house",))
             try:
@@ -86,7 +86,7 @@ class SentenceAudioTests(unittest.TestCase):
                     speak.assert_not_called()
                     audio._audio_result(request, None)
                     speak.assert_called_once()
-                    settings.setValue("profiles/tr/audio_order", ["tts", "db:recorded"])
+                    settings.setValue("profiles/tr/audio_priority", ["tts", "db:recorded"])
                     audio.worker.submit.reset_mock()
                     audio.play(word, 4, settings)
                     audio.worker.submit.assert_not_called()
@@ -129,8 +129,7 @@ class SentenceAudioTests(unittest.TestCase):
                     self.assertEqual((request.language, request.iso3), ("ru", "rus"))
                     audio._audio_result(request, None)
                     speak.assert_called_once_with("приве\u0301т", "ru", 80)
-                    settings.setValue("profiles/ru/audio_mode", "tts")
-                    settings.remove("profiles/ru/audio_priority")
+                    settings.setValue("profiles/ru/audio_priority", ["tts"])
                     audio.worker.submit.reset_mock()
                     audio.play(word, 2, settings)
                     audio.worker.submit.assert_not_called()

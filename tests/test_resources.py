@@ -108,6 +108,7 @@ class ResourceTests(unittest.TestCase):
     def test_empty_japanese_settings_only_offer_actionable_downloads(self):
         with tempfile.TemporaryDirectory() as directory:
             settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
             with patch("meikipop.gui.resources.ocr_ready", return_value=True), \
                     patch("meikipop.gui.resources.translation_ready", return_value=False):
                 dialog = SetupDialog(Path(directory) / "library", settings, Mock())

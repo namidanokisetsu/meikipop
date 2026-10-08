@@ -21,6 +21,4 @@ THEMES = {
 
 
 def theme_name(name):
-    return name if name in THEMES else {
-        "Academic": "Light", "light": "Light", "Meikipop": "Custom",
-    }.get(name, "Monochrome Dark")
+    return name if name in THEMES else "Monochrome Dark"

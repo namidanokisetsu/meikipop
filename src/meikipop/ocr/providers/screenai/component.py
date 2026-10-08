@@ -52,7 +52,7 @@ def find_in_directory(directory):
 def default_directories():
     from meikipop.utils.paths import paths
     home = Path.home()
-    result = [Path(paths.data_dir) / "screen_ai", Path(paths.data_dir) / "screenai", home / ".config/screen_ai"]
+    result = [Path(paths.data_dir) / "screen_ai"]
     if sys.platform == "win32":
         local = Path(os.environ.get("LOCALAPPDATA", home / "AppData/Local"))
         result.extend(local / browser / "User Data/screen_ai" for browser in ("Google/Chrome", "Microsoft/Edge"))

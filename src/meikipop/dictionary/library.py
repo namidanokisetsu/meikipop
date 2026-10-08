@@ -237,20 +237,10 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 raise InterruptedError("Dictionary import cancelled.")
             db.close()
             if destination.exists():
-                # Upgrade in a transaction: Windows readers can keep the existing pack open.
-                with closing(sqlite3.connect(destination)) as existing, existing:
-                    existing.execute("ATTACH DATABASE ? AS upgraded", (temporary,))
-                    existing.execute("BEGIN IMMEDIATE")
-                    if version[0] == "1":
-                        existing.execute("ALTER TABLE forms ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'")
-                    existing.execute("""UPDATE forms SET labels=COALESCE((SELECT labels FROM upgraded.forms f
-                        WHERE f.rowid=forms.rowid AND f.key=forms.key AND f.target=forms.target),'[]')""")
-                    existing.execute("CREATE TABLE IF NOT EXISTS pitches(key TEXT, reading_key TEXT, reading TEXT, data TEXT)")
-                    existing.execute("DELETE FROM pitches")
-                    existing.execute("INSERT INTO pitches SELECT * FROM upgraded.pitches")
-                    existing.execute("CREATE INDEX IF NOT EXISTS pitch_key ON pitches(key,reading_key)")
-                    existing.execute("INSERT OR REPLACE INTO metadata VALUES('pitches',?)", (str(pitch_count),))
-                    existing.execute("UPDATE metadata SET value='3' WHERE key='schema_version'")
+                # Explicit reimport rebuilds from the ZIP; no old-schema migration.
+                # SQLite's backup keeps the file usable by existing Windows readers.
+                with closing(sqlite3.connect(temporary)) as rebuilt, closing(sqlite3.connect(destination)) as existing:
+                    rebuilt.backup(existing)
             else:
                 os.replace(temporary, destination)
             library_changed(directory)
@@ -305,8 +295,8 @@ class Library:
                 db.row_factory = sqlite3.Row
                 db.execute("PRAGMA cache_size=-2048")
                 metadata = dict(db.execute("SELECT key,value FROM metadata"))
-                if metadata.get("schema_version") not in ("1", "2", "3"):
-                    raise ValueError("Unsupported dictionary pack")
+                if metadata.get("schema_version") != "3":
+                    raise ValueError("Unsupported dictionary pack; reimport its ZIP")
                 identity = (metadata["language"], metadata["title"])
                 previous = selected.get(identity)
                 if previous:
@@ -380,8 +370,7 @@ class Library:
 
         def form_rows(meta, db, candidate, fold=False):
             column = "folded" if fold else "key"
-            labels = "labels" if meta.get("schema_version") in ("2", "3") else "'[]'"
-            return db.execute(f"SELECT target,{labels} FROM forms WHERE {column}=? LIMIT 64",
+            return db.execute(f"SELECT target,labels FROM forms WHERE {column}=? LIMIT 64",
                               (folded(candidate) if fold else candidate,))
 
         def remember_form(candidate, target, raw):

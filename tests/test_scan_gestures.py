@@ -87,6 +87,7 @@ class ScanGestureTests(unittest.TestCase):
             self.input.click(10, 20, mouse.Button.left, True)
         clicked.assert_called_once_with()
 
+    @unittest.skipUnless(sys.platform == "darwin", "Requires native pynput macOS backend")
     def test_macos_pin_click_intercept_consumes_only_matching_down_and_up(self):
         self.ready()
         quartz = SimpleNamespace(kCGEventLeftMouseDown=1, kCGEventLeftMouseUp=2,
@@ -101,6 +102,7 @@ class ScanGestureTests(unittest.TestCase):
             self.assertIsNone(self.input.darwin_intercept(2, event))
             self.assertIs(self.input.darwin_intercept(1, event), event)
 
+    @unittest.skipUnless(sys.platform == "darwin", "Requires native pynput macOS backend")
     def test_macos_unrelated_events_pass_through_without_a_pin(self):
         quartz = SimpleNamespace(kCGEventLeftMouseDown=1, kCGEventLeftMouseUp=2,
                                  kCGEventOtherMouseDown=25, kCGEventOtherMouseUp=26,
@@ -111,6 +113,7 @@ class ScanGestureTests(unittest.TestCase):
             self.assertIs(self.input.darwin_intercept(5, event), event)
             self.assertIs(self.input.darwin_intercept(22, event), event)
 
+    @unittest.skipUnless(sys.platform == "darwin", "Requires native pynput macOS backend")
     def test_macos_listener_uses_pynput_darwin_intercept_option(self):
         with patch("meikipop.gui.turkish.desktop_input.KeyboardListener") as keyboard_listener, \
                 patch("meikipop.gui.turkish.desktop_input.mouse.Listener") as mouse_listener:
@@ -134,6 +137,7 @@ class ScanGestureTests(unittest.TestCase):
             finally:
                 probe.shutdown()
 
+    @unittest.skipUnless(sys.platform == "darwin", "Requires native pynput macOS backend")
     def test_macos_escape_intercept_consumes_release_after_dismissal(self):
         self.input.visible.set()
         quartz = SimpleNamespace(kCGEventKeyDown=10, kCGEventKeyUp=11,
@@ -151,6 +155,7 @@ class ScanGestureTests(unittest.TestCase):
             self.assertIsNone(self.input.darwin_key_intercept(11, event))
             self.assertIs(self.input.darwin_key_intercept(10, event), event)
 
+    @unittest.skipUnless(sys.platform == "darwin", "Requires native pynput macOS backend")
     def test_macos_pin_shortcut_intercept_consumes_eligible_key_pair(self):
         self.ready()
         self.input.set_pin_shortcut("c")
@@ -240,6 +245,7 @@ class ScanSettingsTests(unittest.TestCase):
             changed = Mock()
             window.scan_settings_changed.connect(changed)
             settings = QSettings(str(Path(temp) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
             dialog = SetupDialog(Path(temp) / "library", settings, Mock(), window)
             dialog.profile.addItem("Turkish", "tr")
             try:
@@ -261,7 +267,7 @@ class ScanSettingsTests(unittest.TestCase):
                 (component / library_names()[0]).touch()
                 dialog.screenai_directory.setText(str(component))
                 dialog.ja_ocr_provider.setCurrentIndex(dialog.ja_ocr_provider.findData("screenai"))
-                self.assertEqual(settings.value("ja_ocr_provider"), "screenai")
+                self.assertEqual(settings.value("profiles/ja/ocr_provider"), "screenai")
                 self.assertEqual(settings.value("screenai_directory"), str(component))
                 self.assertEqual(changed.call_count, 2)
                 self.assertFalse(dialog.selected_text.isChecked())

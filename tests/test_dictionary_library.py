@@ -127,7 +127,8 @@ class LibraryTests(unittest.TestCase):
             db.execute("UPDATE metadata SET value='1' WHERE key='schema_version'")
         db.close()
         self.library.refresh()
-        self.assertEqual(self.library.lookup("evleri", "tr")[0].inflection, ("inflected form",))
+        self.assertEqual(self.library.lookup("evleri", "tr"), ())
+        self.assertTrue(any("reimport its ZIP" in error for error in self.library.errors))
         import_yomitan(self.root / "Forms1.zip", self.directory)
         self.library.refresh()
         self.assertEqual(self.library.lookup("evleri", "tr")[0].inflection,

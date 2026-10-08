@@ -26,6 +26,8 @@ class DictionaryCollapseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
+        self.settings.setValue("profile", "ja")
+        self.settings.setValue("profiles/ja/target", "en")
         self.model_status_patch = patch("meikipop.language.stanza_analyzer.model_status", return_value="Model needed")
         self.model_status_patch.start()
         self.window = QuickLookupWindow(self.temp.name, lambda: None, self.settings)

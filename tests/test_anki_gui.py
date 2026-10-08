@@ -196,6 +196,8 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertEqual(panel._field_controls["sentenceFurigana"].currentData(), "sentence_furigana")
 
     def test_popup_is_opt_in_and_old_results_cannot_be_exported(self):
+        self.settings.setValue("profile", "ja")
+        self.settings.setValue("profiles/ja/target", "en")
         window = QuickLookupWindow(self.temp.name, FakeEngine, self.settings)
         self.widgets.append(window)
         self.assertTrue(window.anki_button.isHidden())

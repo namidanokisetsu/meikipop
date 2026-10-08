@@ -55,13 +55,6 @@ class ClipboardWindow(QWidget):
     def __init__(self, dictionary, analyzer="stanza", model_dir=None, hotkey=None, search_hotkey=None):
         super().__init__()
         self.settings = QSettings("meikipop-turkish", "Turkish")
-        if not self.settings.value("text_input_opt_in", False, bool):
-            # Previous versions enabled these by default, without user opt-in.
-            for key in ("auto_clipboard", "selection_lookup"):
-                self.settings.setValue(key, False)
-            for key in ("clipboard_hotkey", "search_hotkey"):
-                self.settings.setValue(key, "")
-            self.settings.setValue("text_input_opt_in", True)
         self.setWindowTitle("meikipop-turkish")
         self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -87,7 +80,7 @@ class ClipboardWindow(QWidget):
         self.hotkey = hotkey if hotkey is not None else self.settings.value("clipboard_hotkey", "")
         self.search_hotkey = search_hotkey if search_hotkey is not None else self.settings.value("search_hotkey", "")
         self.selection_hotkey = self.settings.value("selection_hotkey", "")
-        self.bindings = self.settings.value("activation_bindings", self.settings.value("hold_key", config.activation_bindings))
+        self.bindings = self.settings.value("activation_bindings", config.activation_bindings)
         self.enabled = True
         self.searching = False
         self.input = None

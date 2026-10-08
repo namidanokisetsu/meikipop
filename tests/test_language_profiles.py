@@ -6,17 +6,17 @@ from meikipop.language.profiles import get_profile
 
 
 class LanguageProfileTests(unittest.TestCase):
-    def test_turkish_only_appears_after_explicit_profile_configuration(self):
+    def test_profiles_only_appear_after_explicit_configuration(self):
         import tempfile
         from pathlib import Path
         from PyQt6.QtCore import QSettings
         from meikipop.language.profiles import configured_profiles
-        from meikipop.gui.interaction_preferences import migrate
         with tempfile.TemporaryDirectory() as folder:
             settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
-            self.assertEqual(configured_profiles(settings), ("ja",))
+            self.assertEqual(configured_profiles(settings), ())
             settings.setValue("profile", "ja")
-            migrate(settings)
+            self.assertEqual(configured_profiles(settings), ())
+            settings.setValue("profiles/ja/target", "en")
             self.assertEqual(configured_profiles(settings), ("ja",))
             settings.setValue("profiles/tr/target", "en")
             self.assertEqual(configured_profiles(settings), ("ja", "tr"))

@@ -5,7 +5,7 @@ from test_quick_lookup import QuickLookupTests, entry
 from meikipop.dictionary.search import SearchResult
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
-from meikipop.gui.interaction_preferences import migrate, enabled
+from meikipop.gui.interaction_preferences import enabled
 
 
 class PendingTests(QuickLookupTests):
@@ -42,15 +42,13 @@ class PendingTests(QuickLookupTests):
         self.assertEqual(selected.call_count, 1)
         self.assertTrue(browser.selected_text())
 
-    def test_migration_preserves_existing_only_once(self):
+    def test_interaction_preferences_require_explicit_opt_in(self):
         self.settings.clear()
         self.settings.setValue("profiles/tr/target", "en")
         self.settings.setValue("profiles/ja/selection_lookup", False)
-        migrate(self.settings)
-        self.assertTrue(enabled(self.settings, "tr", "auto_translate_miss"))
+        self.assertFalse(enabled(self.settings, "tr", "auto_translate_miss"))
         self.assertFalse(enabled(self.settings, "ja", "selection_lookup"))
         self.settings.setValue("profiles/de/target", "en")
-        migrate(self.settings)
         self.assertFalse(enabled(self.settings, "de", "auto_translate_miss"))
         self.assertFalse(self.settings.value("profiles/tr/selected_text", False, bool))
 

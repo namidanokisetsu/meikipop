@@ -34,7 +34,40 @@ class FirstRunTests(unittest.TestCase):
     def test_only_fresh_installations_offer_the_initial_language(self):
         self.assertTrue(needs_setup(self.settings))
         self.settings.setValue("profile", "ja")
+        self.assertTrue(needs_setup(self.settings))
+        self.settings.setValue("profiles/ja/target", "en")
         self.assertFalse(needs_setup(self.settings))
+
+    def test_selected_language_survives_window_and_settings_without_extra_profiles(self):
+        from meikipop.gui.quick_lookup import QuickLookupWindow
+        from meikipop.gui.dictionary_manager import SetupDialog
+        from meikipop.language.profiles import configured_profiles
+        from test_quick_lookup import FakeEngine
+        for code in ("tr", "en", "fr"):
+            with self.subTest(language=code):
+                self.settings.clear()
+                picker = FirstLanguage(self.settings)
+                picker.language.setCurrentIndex(picker.language.findData(code))
+                picker.accept()
+                picker.deleteLater()
+                engine = FakeEngine()
+                engine.library.packs = []
+                popup = QuickLookupWindow(self.directory.name, lambda: engine, self.settings)
+                dialog = SetupDialog(self.directory.name, self.settings, Mock())
+                try:
+                    self.app.processEvents()
+                    self.assertEqual(configured_profiles(self.settings), (code,))
+                    self.assertEqual([popup.source.itemData(i) for i in range(popup.source.count())], [code])
+                    self.assertEqual([dialog.profile.itemData(i) for i in range(dialog.profile.count())], [code])
+                    self.assertFalse(self.settings.value(f"profiles/{code}/selection_lookup", False, bool))
+                    self.assertFalse(self.settings.value(f"profiles/{code}/auto_translate_miss", False, bool))
+                finally:
+                    dialog.close()
+                    dialog.deleteLater()
+                    popup.shutdown()
+                    popup.worker._thread.join(timeout=2)
+                    popup.deleteLater()
+                    self.app.processEvents()
 
     def test_first_language_has_no_default_and_does_not_add_japanese(self):
         from meikipop.language.profiles import configured_profiles

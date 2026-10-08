@@ -118,8 +118,6 @@ class SetupDialog(QDialog):
         super().__init__(parent)
         self.directory = Path(directory or default_library_path())
         self.settings = settings
-        from meikipop.gui.interaction_preferences import migrate
-        migrate(settings)
         self._apply_shortcut = apply_shortcut
         self.operation = None
         self._close_pending = False
@@ -132,7 +130,7 @@ class SetupDialog(QDialog):
         self.profile = QComboBox()
         for code in configured_profiles(settings):
             self.profile.addItem(language_name(code), code)
-        self.profile.setCurrentIndex(max(0, self.profile.findData(settings.value("profile", settings.value("source", "ja")))))
+        self.profile.setCurrentIndex(max(0, self.profile.findData(settings.value("profile", ""))))
         profile_row.addWidget(QLabel("Language"))
         profile_row.addWidget(self.profile, 1)
         self.add_profile_button = QPushButton("Add language…")
@@ -302,7 +300,7 @@ class SetupDialog(QDialog):
         if sys.platform == "darwin":
             self.ja_ocr_provider.addItem("Apple Vision", "vision")
         default_provider = "vision" if sys.platform == "darwin" else "meikiocr"
-        self.ja_ocr_provider.setCurrentIndex(max(0, self.ja_ocr_provider.findData(settings.value("ja_ocr_provider", default_provider))))
+        self.ja_ocr_provider.setCurrentIndex(max(0, self.ja_ocr_provider.findData(settings.value("profiles/ja/ocr_provider", default_provider))))
         scan_layout.addRow("OCR model", self.ja_ocr_provider)
         self.tr_ocr_provider = QComboBox()
         self.tr_ocr_provider.addItem("PaddleOCR (local)", "paddle")
@@ -310,7 +308,7 @@ class SetupDialog(QDialog):
         if sys.platform == "darwin":
             self.tr_ocr_provider.addItem("Apple Vision", "vision")
         tr_default = "vision" if sys.platform == "darwin" else "paddle"
-        self.tr_ocr_provider.setCurrentIndex(max(0, self.tr_ocr_provider.findData(settings.value("tr_ocr_provider", tr_default))))
+        self.tr_ocr_provider.setCurrentIndex(max(0, self.tr_ocr_provider.findData(settings.value("profiles/tr/ocr_provider", tr_default))))
         scan_layout.addRow("OCR model", self.tr_ocr_provider)
         self.other_ocr_provider = QComboBox()
         self.other_ocr_provider.addItem("PaddleOCR (multilingual)", "paddle")
@@ -457,7 +455,7 @@ class SetupDialog(QDialog):
             self.status.setText(translation_error)
 
     def autosave(self, callback):
-        if not self._loading:
+        if not self._loading and self.profile.currentData():
             callback()
 
     def show_audio(self):
@@ -636,8 +634,6 @@ class SetupDialog(QDialog):
         self.settings.setValue(prefix + "pin_gesture", self.pin_gesture.currentData())
         self.settings.setValue(prefix + "freeze_while_held", self.freeze_while_held.isChecked())
         self.settings.setValue(prefix + "ocr_provider", provider.currentData())
-        self.settings.setValue("ja_ocr_provider", self.ja_ocr_provider.currentData())
-        self.settings.setValue("tr_ocr_provider", self.tr_ocr_provider.currentData())
         self.settings.setValue("screenai_directory", component_directory)
         window = self.parent()
         if window is not None:
@@ -688,7 +684,7 @@ class SetupDialog(QDialog):
             provider.model().item(provider.findData("meikiocr")).setEnabled(False)
         paddle.setToolTip("" if code in PADDLE_LANGUAGES else "The installed Paddle model does not support this language")
         default = default_ocr_provider(code)
-        provider.setCurrentIndex(max(0, provider.findData(self.settings.value(f"profiles/{code}/ocr_provider", self.settings.value(f"{code}_ocr_provider", default)))))
+        provider.setCurrentIndex(max(0, provider.findData(self.settings.value(f"profiles/{code}/ocr_provider", default))))
         try:
             translation = load_profile_settings(self.settings, code)
         except ValueError as error:
@@ -714,7 +710,7 @@ class SetupDialog(QDialog):
         self.translation_warm.setChecked(translation.keep_warm)
         self.appearance.reload()
         self.show_component_controls()
-        self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(self.settings.value(f"profiles/{code}/pin_gesture", self.settings.value("pin_gesture", "left")))))
+        self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(self.settings.value(f"profiles/{code}/pin_gesture", "left"))))
         with QSignalBlocker(self.audio_autoplay):
             self.audio_autoplay.setCurrentIndex(max(0, self.audio_autoplay.findData(audio_autoplay_mode(self.settings, code))))
         self.audio_volume.setValue(self.settings.value(f"profiles/{code}/audio_volume", config.audio_volume, type=int))

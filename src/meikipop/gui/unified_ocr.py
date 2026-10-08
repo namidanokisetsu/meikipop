@@ -378,14 +378,9 @@ class UnifiedOCR(QObject):
 
     def reload_settings(self):
         settings = getattr(self.window, "settings", None)
-        previous = (getattr(self, "ja_ocr_provider", None), getattr(self, "tr_ocr_provider", None),
-                    getattr(self, "screenai_directory", None))
-        default_provider = "vision" if sys.platform == "darwin" else "meikiocr"
-        self.ja_ocr_provider = settings.value("ja_ocr_provider", default_provider) if settings else default_provider
-        tr_default = "vision" if sys.platform == "darwin" else "paddle"
-        self.tr_ocr_provider = settings.value("tr_ocr_provider", tr_default) if settings else tr_default
+        previous = getattr(self, "screenai_directory", None)
         self.screenai_directory = settings.value("screenai_directory", "") if settings else ""
-        if previous != (self.ja_ocr_provider, self.tr_ocr_provider, self.screenai_directory):
+        if previous != self.screenai_directory:
             self.invalidate()
         profile = self.window.preferred_foreign
         frozen = settings.value(f"profiles/{profile}/freeze_while_held", True, bool) if settings else True
@@ -399,11 +394,11 @@ class UnifiedOCR(QObject):
         self.morphology = morphology
         previous_profile_provider = getattr(self, "profile_ocr_provider", None)
         from meikipop.language.support import default_ocr_provider
-        default = self.ja_ocr_provider if profile == "ja" else self.tr_ocr_provider if profile == "tr" else default_ocr_provider(profile)
+        default = default_ocr_provider(profile)
         self.profile_ocr_provider = settings.value(f"profiles/{profile}/ocr_provider", default) if settings else default
         if previous_profile_provider != self.profile_ocr_provider:
             self.invalidate()
-        self.pin_gesture = settings.value(f"profiles/{profile}/pin_gesture", settings.value("pin_gesture", "left")) if settings else "left"
+        self.pin_gesture = settings.value(f"profiles/{profile}/pin_gesture", "left") if settings else "left"
         if self.pin_gesture not in ("left", "middle", "popup"):
             self.pin_gesture = "left"
         if self.input:

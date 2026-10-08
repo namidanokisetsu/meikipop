@@ -5,12 +5,13 @@ import os
 import sys
 
 from meikipop.utils.paths import paths
+from meikipop import __version__
 from meikipop.gui.activation import normalise_activation_bindings
 
 logger = logging.getLogger(__name__)
 
 APP_NAME = "meikipop"
-APP_VERSION = "2.1.5"
+APP_VERSION = __version__
 MAX_DICT_ENTRIES = 10
 IS_LINUX = sys.platform.startswith('linux')
 IS_WINDOWS = sys.platform.startswith('win')
@@ -84,7 +85,6 @@ class Config:
         parser = configparser.ConfigParser()
         found = parser.read(CONFIG_PATH, encoding='utf-8')
 
-        activation_was_present = parser.has_option('Settings', 'activation_bindings')
         for section, settings in self._SCHEMA.items():
             for key, default in settings.items():
                 if parser.has_option(section, key):
@@ -100,9 +100,7 @@ class Config:
                     val = default
                 setattr(self, key, val)
 
-        # Legacy config files used one keyboard chord in ``hotkey``. Only new
-        # installs receive the Shift-or-Middle default.
-        activation_source = self.activation_bindings if activation_was_present or not found else self.hotkey
+        activation_source = self.activation_bindings
         try:
             self.activation_bindings = normalise_activation_bindings(activation_source)
         except ValueError as exc:
