@@ -3,7 +3,7 @@ from bisect import bisect_left, bisect_right
 
 from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QTimer, Qt
 from PyQt6.QtGui import QColor, QPainter, QTextCursor
-from PyQt6.QtWidgets import QProgressBar
+from PyQt6.QtWidgets import QApplication, QProgressBar
 
 from meikipop.gui.ruby import RubyBrowser
 
@@ -42,19 +42,12 @@ class SectionScroller(QObject):
         self._positions = None
         self._headings = []
         self._heading = None
-        self._wheel_delta = 0
-        self._gesture_delta = 0
-        self._gesture_flipped = False
         self._target = None
         from meikipop.utils.window_focus import reduce_motion_enabled
         self.animation_enabled = not reduce_motion_enabled()
         self.animation = QPropertyAnimation(browser.verticalScrollBar(), b"value", self)
         self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.finished.connect(self._animation_finished)
-        self._idle = QTimer(self)
-        self._idle.setSingleShot(True)
-        self._idle.setInterval(180)
-        self._idle.timeout.connect(self._reset_gesture)
         self._refresh = QTimer(self)
         self._refresh.setSingleShot(True)
         self._refresh.timeout.connect(self._refresh_header)
@@ -96,9 +89,6 @@ class SectionScroller(QObject):
     def cancel(self):
         self.animation.stop()
         self._target = None
-        self._idle.stop()
-        self._wheel_delta = self._gesture_delta = 0
-        self._gesture_flipped = False
 
     def _animation_finished(self):
         self._target = None
@@ -261,9 +251,22 @@ class SectionScroller(QObject):
         else:
             self._move(stops[max(0, bisect_left(stops, value) - 1)])
 
-    def _reset_gesture(self):
-        self._gesture_flipped = False
-        self._gesture_delta = self._wheel_delta = 0
+    def scroll_by(self, movement, animate=False):
+        self._index()
+        bar = self.browser.verticalScrollBar()
+        value = self._target if animate and self._target is not None else bar.value()
+        boundaries = sorted({0, bar.maximum(), *(min(bar.maximum(), self._top(pos))
+                                                for pos in self._headings[1:])})
+        target = value + movement
+        if movement > 0:
+            target = min(target, boundaries[min(bisect_right(boundaries, value), len(boundaries) - 1)])
+        elif movement < 0:
+            target = max(target, boundaries[max(0, bisect_left(boundaries, value) - 1)])
+        if animate:
+            self._move(round(target))
+        else:
+            self.cancel()
+            bar.setValue(round(target))
 
     def eventFilter(self, watched, event):
         kind = event.type()
@@ -278,9 +281,11 @@ class SectionScroller(QObject):
                 return False
             key = event.key()
             if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
-                self._idle.stop()
-                self._reset_gesture()
-                self.advance(-1 if key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp) else 1)
+                direction = -1 if key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp) else 1
+                if key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+                    self.scroll_by(direction * self.browser.verticalScrollBar().singleStep(), animate=True)
+                else:
+                    self.advance(direction)
             elif key in (Qt.Key.Key_Home, Qt.Key.Key_End):
                 self.cancel()
                 self._move(0 if key == Qt.Key.Key_Home else self.browser.verticalScrollBar().maximum())
@@ -295,33 +300,10 @@ class SectionScroller(QObject):
         if abs(delta.x()) > abs(delta.y()):
             return False
         if not pixel.isNull() or phase != Qt.ScrollPhase.NoScrollPhase:
-            if phase == Qt.ScrollPhase.ScrollBegin:
-                self._idle.stop()
-                self._reset_gesture()
-            if phase == Qt.ScrollPhase.ScrollEnd:
-                self._reset_gesture()
-            elif phase != Qt.ScrollPhase.ScrollMomentum:
-                movement = pixel.y() if not pixel.isNull() else angle.y() / 3
-                if not self._gesture_flipped:
-                    if movement * self._gesture_delta < 0:
-                        self._gesture_delta = 0
-                    self._gesture_delta += movement
-                    if abs(self._gesture_delta) >= 60:
-                        self._gesture_flipped = True
-                        self.advance(1 if self._gesture_delta < 0 else -1)
-            # Phased gestures stay latched through pauses and native momentum.
-            if phase == Qt.ScrollPhase.NoScrollPhase:
-                self._idle.start()
+            # Native trackpad updates already include smooth motion and momentum.
+            self.scroll_by(-pixel.y() if not pixel.isNull() else -angle.y() / 3)
         else:
-            if self._target is not None:
-                self._wheel_delta = 0
-            else:
-                if angle.y() * self._wheel_delta < 0:
-                    self._wheel_delta = 0
-                self._wheel_delta += angle.y()
-                if abs(self._wheel_delta) >= 120:
-                    self.advance(1 if self._wheel_delta < 0 else -1)
-                    self._wheel_delta = 0
-            self._idle.start()
+            movement = -angle.y() / 120 * QApplication.wheelScrollLines() * self.browser.verticalScrollBar().singleStep()
+            self.scroll_by(movement, animate=True)
         event.accept()
         return True
