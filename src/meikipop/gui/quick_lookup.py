@@ -465,9 +465,10 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                         f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
                         if reading and reading != term else "")
         if result.source == "ja" and headword_furigana and reading and reading != term:
-            parts.append(f'<h2>{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
+            parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>'
+                         f'{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
         else:
-            parts.append(f'<h2>{escape(display_term)}{reading_html}</h2>')
+            parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{escape(display_term)}{reading_html}</h2>')
         parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies))
         if show_pitch and result.source == "ja":
             from meikipop.dictionary.pitch import render_pitches
@@ -528,6 +529,8 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
 
 
 class LocalDictionaryBrowser(RubyBrowser):
+    scrolled = pyqtSignal()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from meikipop.gui.section_scroll import SectionScroller
@@ -538,6 +541,30 @@ class LocalDictionaryBrowser(RubyBrowser):
             QToolTip.hideText()
             return True
         return super().viewportEvent(event)
+
+    def wheelEvent(self, event):
+        super().wheelEvent(event)
+        event.accept()
+
+    def keyPressEvent(self, event):
+        if not self.section_scroll.enabled and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            bar = self.verticalScrollBar()
+            targets = {Qt.Key.Key_Up: bar.value() - bar.singleStep(),
+                       Qt.Key.Key_Down: bar.value() + bar.singleStep(),
+                       Qt.Key.Key_PageUp: bar.value() - bar.pageStep(),
+                       Qt.Key.Key_PageDown: bar.value() + bar.pageStep(),
+                       Qt.Key.Key_Home: 0, Qt.Key.Key_End: bar.maximum()}
+            if event.key() in targets:
+                bar.setValue(targets[event.key()])
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def scrollContentsBy(self, dx, dy):
+        super().scrollContentsBy(dx, dy)
+        if hasattr(self, "section_scroll"):
+            self.section_scroll.header.move(0, 0)
+        self.scrolled.emit()
 
     def loadResource(self, resource_type, name):
         # Dictionary content is text; embedded local/network resources are unnecessary.
@@ -743,6 +770,7 @@ class QuickLookupWindow(QDialog):
         self.browser.setAccessibleName("Dictionary results")
         self.browser.document().setIndentWidth(10)
         self.browser.anchorClicked.connect(self._link)
+        self.browser.scrolled.connect(self._place_actions)
         self.browser.word_selected.connect(self.lookup_word)
         layout.addWidget(self.browser, 1)
         self.status = QLabel()
@@ -1186,6 +1214,10 @@ class QuickLookupWindow(QDialog):
             self._collapsed = set(collapsed)
         elif self._new_chain or not same:
             self._collapsed = self.collapsed_dictionaries()
+        if kanji_details is not None:
+            self._kanji_details = set(kanji_details)
+        elif self._new_chain or not same:
+            self._kanji_details.clear()
         self._new_chain = False
         self._result = result
         self._display_revision = self.revision
@@ -1213,15 +1245,12 @@ class QuickLookupWindow(QDialog):
                 self.render_timer.start(50)
                 return
             compact = self.compact_preview()
+            self.browser.section_scroll.set_preview(self._peek and not self.is_pinned)
             expanded = self._expanded
             if self._peek and not self.is_pinned and not compact:
                 expanded = {entry.source for entry in self._result.entries}
             show_source, source_text = self._peek, None
             if self._peek and self.is_pinned:
-        if kanji_details is not None:
-            self._kanji_details = set(kanji_details)
-        elif self._new_chain or not same:
-            self._kanji_details.clear()
                 show_source = self.settings.value(f"profiles/{self.preferred_foreign}/pinned_sentence", True, bool)
                 source_text = self._result_context or (self._result.text if self._result.translation else "")
                 if show_source and source_text:
@@ -1256,6 +1285,7 @@ class QuickLookupWindow(QDialog):
                                                definition_furigana=self.settings.value("profiles/ja/definition_furigana", True, bool),
                                                show_pitch=self.settings.value("profiles/ja/show_pitch", True, bool),
                                                collapsed=self._collapsed,
+                                               kanji_details=self._kanji_details,
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
             self._document_revision = self.revision
@@ -1290,7 +1320,6 @@ class QuickLookupWindow(QDialog):
         if desired > maximum:
             limit = maximum - chrome - 2
             bottoms = []
-                                               kanji_details=self._kanji_details,
             block = document.begin()
             while block.isValid():
                 top = document.documentLayout().blockBoundingRect(block).top()

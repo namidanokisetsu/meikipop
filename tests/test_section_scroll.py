@@ -5,6 +5,7 @@ import unittest
 
 from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtGui import QWheelEvent
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
 from meikipop.dictionary.library import Entry
@@ -54,12 +55,23 @@ class SectionScrollTests(unittest.TestCase):
         self.assertGreater(self.bar.value(), 0)
         self.assertNotEqual(self.bar.value(), self.scroller.stops()[1])
 
+    def test_normal_mode_arrows_scroll_without_moving_the_text_selection(self):
+        self.browser.setTextCursor(self.browser.document().find("Definition"))
+        selected = self.browser.selected_text()
+        QTest.keyClick(self.browser, Qt.Key.Key_Down)
+        self.assertGreater(self.bar.value(), 0)
+        self.assertEqual(self.browser.selected_text(), selected)
+        QTest.keyClick(self.browser, Qt.Key.Key_Home)
+        self.assertEqual(self.bar.value(), 0)
+
     def test_short_sections_snap_both_directions(self):
         self.scroller.set_enabled(True)
         second = self.scroller.stops()[1]
         self.wheel()
+        self.finish_animation()
         self.assertEqual(self.bar.value(), second)
         self.wheel(angle=120)
+        self.finish_animation()
         self.assertEqual(self.bar.value(), 0)
 
     def test_long_sections_keep_overlapping_pages_before_next_dictionary(self):
@@ -69,39 +81,120 @@ class SectionScrollTests(unittest.TestCase):
         stops = self.scroller.stops()
         self.assertGreater(second, self.browser.viewport().height())
         self.assertLess(stops[1], self.browser.viewport().height())
-        self.assertIn(second, stops)
+        self.assertIn(second - self.scroller.header.height(), stops)
         for left, right in zip(stops, stops[1:]):
             self.assertLessEqual(right - left, self.browser.viewport().height())
         for target in stops[1:]:
             self.wheel()
+            self.finish_animation()
             self.assertEqual(self.bar.value(), target)
         self.wheel()
         self.assertEqual(self.bar.value(), self.bar.maximum())
 
-    def test_trackpad_advances_once_and_ignores_momentum(self):
+    def finish_animation(self):
+        self.scroller.animation.setCurrentTime(self.scroller.animation.duration())
+
+    def test_trackpad_moves_continuously_and_keeps_native_momentum(self):
+        self.render(lines=4)
         self.scroller.set_enabled(True)
         self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
         self.wheel(angle=0, pixel=-20, phase=Qt.ScrollPhase.ScrollUpdate)
-        self.assertEqual(self.bar.value(), 0)
+        self.assertEqual(self.bar.value(), 20)
         self.wheel(angle=0, pixel=-25, phase=Qt.ScrollPhase.ScrollUpdate)
-        first = self.bar.value()
-        self.assertEqual(first, self.scroller.stops()[1])
-        self.wheel(angle=0, pixel=-100, phase=Qt.ScrollPhase.ScrollUpdate)
+        self.assertEqual(self.bar.value(), 45)
         self.wheel(angle=0, pixel=-100, phase=Qt.ScrollPhase.ScrollMomentum)
-        self.assertEqual(self.bar.value(), first)
+        self.assertEqual(self.bar.value(), 145)
         self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollEnd)
-        self.wheel(angle=0, pixel=-45, phase=Qt.ScrollPhase.ScrollBegin)
-        self.assertEqual(self.bar.value(), self.scroller.stops()[2])
+        self.scroller._idle.timeout.emit()
+        self.finish_animation()
+        self.assertIn(self.bar.value(), self.scroller.stops())
+        self.assertGreater(self.bar.value(), self.scroller.stops()[1])
 
-    def test_unphased_trackpad_resets_after_idle(self):
+    def test_unphased_trackpad_settles_after_idle(self):
         self.scroller.set_enabled(True)
         self.wheel(angle=0, pixel=-45)
-        first = self.bar.value()
         self.wheel(angle=0, pixel=-45)
-        self.assertEqual(self.bar.value(), first)
+        self.assertEqual(self.bar.value(), 90)
+        target = min(self.scroller.stops(), key=lambda value: abs(value - 90))
         self.scroller._idle.timeout.emit()
-        self.wheel(angle=0, pixel=-45)
-        self.assertEqual(self.bar.value(), self.scroller.stops()[2])
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), target)
+
+    def test_repeated_steps_retarget_and_reverse_without_jumping(self):
+        self.scroller.set_enabled(True)
+        stops = self.scroller.stops()
+        self.wheel()
+        self.assertEqual(self.bar.value(), 0)
+        self.scroller.animation.setCurrentTime(60)
+        self.assertGreater(self.bar.value(), 0)
+        self.assertLess(self.bar.value(), stops[1])
+        self.wheel()
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), stops[2])
+        self.wheel(angle=120)
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), stops[1])
+
+    def test_arrow_page_and_boundary_keys_preserve_text_selection(self):
+        self.scroller.set_enabled(True)
+        self.browser.setTextCursor(self.browser.document().find("Definition"))
+        selected = self.browser.selected_text()
+        QTest.keyClick(self.browser, Qt.Key.Key_Down)
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), self.scroller.stops()[1])
+        QTest.keyClick(self.browser, Qt.Key.Key_Up)
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), 0)
+        QTest.keyClick(self.browser, Qt.Key.Key_PageDown)
+        self.finish_animation()
+        self.assertGreater(self.bar.value(), 0)
+        QTest.keyClick(self.browser, Qt.Key.Key_End)
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), self.bar.maximum())
+        QTest.keyClick(self.browser, Qt.Key.Key_Home)
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), 0)
+        self.assertEqual(self.browser.selected_text(), selected)
+
+    def test_sticky_headword_follows_groups_and_preserves_japanese_ruby(self):
+        entries = tuple(Entry(str(i), term, reading, "Source", "ja",
+                              ("\n".join(f"Meaning {n}" for n in range(20)),))
+                        for i, (term, reading) in enumerate((("猫", "ねこ"), ("犬", "いぬ"))))
+        self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", entries),
+                                           expanded=("Source",), headword_furigana=True))
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        self.assertEqual(self.browser.verticalScrollBarPolicy(), Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.bar.setValue(50)
+        self.assertTrue(self.scroller.header.isVisible())
+        self.assertEqual(self.scroller.header.pos(), QPoint(0, 0))
+        self.assertEqual(self.scroller.header.toPlainText().strip(), "猫")
+        second = self.scroller._top(self.scroller._headings[1])
+        self.bar.setValue(second + 5)
+        self.assertEqual(self.scroller.header.toPlainText().strip(), "犬")
+        self.scroller.set_preview(True)
+        self.assertFalse(self.scroller.header.isVisible())
+        self.scroller.set_enabled(False)
+        self.assertEqual(self.browser.verticalScrollBarPolicy(), Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+    def test_replacing_document_or_disabling_cancels_pending_motion(self):
+        self.scroller.set_enabled(True)
+        self.wheel()
+        self.render(lines=3)
+        value = self.bar.value()
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), value)
+        self.wheel()
+        self.scroller.set_enabled(False)
+        value = self.bar.value()
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), value)
+
+    def test_reduced_motion_uses_the_same_stops_without_animation(self):
+        self.scroller.set_enabled(True)
+        self.scroller.animation_enabled = False
+        self.wheel()
+        self.assertEqual(self.bar.value(), self.scroller.stops()[1])
 
     def test_fractional_wheel_steps_accumulate(self):
         self.scroller.set_enabled(True)
@@ -109,6 +202,7 @@ class SectionScrollTests(unittest.TestCase):
             self.wheel(angle=-30)
         self.assertEqual(self.bar.value(), 0)
         self.wheel(angle=-30)
+        self.finish_animation()
         self.assertEqual(self.bar.value(), self.scroller.stops()[1])
 
     def test_modified_horizontal_and_selection_scrolls_are_not_intercepted(self):
@@ -132,6 +226,7 @@ class SectionScrollTests(unittest.TestCase):
         self.assertEqual(value, self.scroller.stops()[1] + 3)
         target = next(stop for stop in self.scroller.stops() if stop > value)
         self.wheel()
+        self.finish_animation()
         self.assertEqual(self.bar.value(), target)
         self.assertEqual(self.browser.selected_text(), selected)
 

@@ -34,8 +34,9 @@ clients remain explicit compatibility entrypoints.
    Manual search translates misses. Launches without lookup text start in the tray.
    Edits invalidate old results immediately. Keep source labels,
    independent expansion, scrolling, pinning, resizing and Back. Optional per-profile
-   Snap scrolling follows headword/dictionary blocks, with overlapping screenfuls
-   for long blocks and one advance per trackpad gesture; it defaults off.
+   Snap scrolling animates wheel/arrow steps through dictionary blocks, retains trackpad
+   momentum, and settles between sections with overlapping pages for long blocks. A sticky
+   headword retains Japanese ruby; the scrollbar hides only in this opt-in mode.
    Dictionary-specific Start collapsed defaults retain only a source heading in expanded
    results, including pinned OCR; compact OCR previews keep their definitions. Manual
    expansion is local to the result and Back restores it.
@@ -49,14 +50,19 @@ clients remain explicit compatibility entrypoints.
    Shared dictionary rendering retains topic/usage labels, emphasis, line breaks
    and merged table cells; forms use visible status labels and theme-aware borders.
    Frequency display defaults to the harmonic mean of positive ranks, with one
-   best rank per dictionary; counts and nonnumeric labels are excluded. Per-source
-   display remains optional. Themes are Monochrome Dark, Light and Custom; removed
+   best rank per dictionary; counts and nonnumeric labels are excluded. Optional per-source
+   display labels each dictionary inline. Kanji summaries use up to three columns; clicking
+   a character reveals complete details from every enabled kanji pack. Themes are Green,
+   Monochrome Dark, Light and Custom; removed
    dark presets migrate to Monochrome Dark while saved colors seed Custom once.
    Unchanged render identities preserve documents and selections; fitting is coalesced.
    Selection lookup inside results is independently opt-in for new profiles, with
    a one-time migration preserving existing behavior. The Turkish compatibility
    browser retains immediate double-click lookup without a duplicate release request.
    Pin freezes a preview; existing dismissal and fresh-scan actions leave it.
+   Windows and macOS consume eligible pin gestures and their releases. Pinned results
+   receive keyboard focus; macOS keys the nonactivating panel without activating the app.
+   Exclusive-fullscreen games still require platform-specific hands-on acceptance.
    Pinned OCR results include compact original context, enabled by default with
    a per-profile Appearance toggle. Long context is limited to two lines that adapt
    to the popup width; copy, translation and audio retain the complete context.

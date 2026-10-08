@@ -1,8 +1,10 @@
-"""Optional wheel navigation through rendered dictionary sections."""
+"""Optional animated section navigation with a persistent lexical heading."""
 from bisect import bisect_left, bisect_right
 
-from PyQt6.QtCore import QEvent, QObject, QTimer, Qt
+from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QTimer, Qt
 from PyQt6.QtGui import QTextCursor
+
+from meikipop.gui.ruby import RubyBrowser
 
 
 SECTION_PREFIX = "scroll-section-"
@@ -13,62 +15,150 @@ class SectionScroller(QObject):
         super().__init__(browser)
         self.browser = browser
         self.enabled = False
+        self.preview = False
         self._positions = None
+        self._headings = []
+        self._heading = None
         self._wheel_delta = 0
         self._gesture_delta = 0
-        self._gesture_advanced = False
+        self._gesture_start = None
+        self._target = None
+        from meikipop.utils.window_focus import reduce_motion_enabled
+        self.animation_enabled = not reduce_motion_enabled()
+        self.animation = QPropertyAnimation(browser.verticalScrollBar(), b"value", self)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.finished.connect(self._animation_finished)
         self._idle = QTimer(self)
         self._idle.setSingleShot(True)
-        self._idle.setInterval(220)
-        self._idle.timeout.connect(self._reset_gesture)
+        self._idle.setInterval(120)
+        self._idle.timeout.connect(self._settle)
+        self._refresh = QTimer(self)
+        self._refresh.setSingleShot(True)
+        self._refresh.timeout.connect(self._refresh_header)
+        self.header = RubyBrowser(browser.viewport(), selection_lookup=False)
+        self.header.setAccessibleName("Current headword")
+        self.header.setFrameShape(self.header.Shape.NoFrame)
+        self.header.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.header.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.header.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.header.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.header.hide()
+        self.header.viewport().installEventFilter(self)
+        browser.installEventFilter(self)
         browser.viewport().installEventFilter(self)
         browser.document().contentsChanged.connect(self._document_changed)
+        browser.verticalScrollBar().valueChanged.connect(self._update_header)
+        self._scrollbar_policy = browser.verticalScrollBarPolicy()
 
     def set_enabled(self, enabled):
         if self.enabled != bool(enabled):
             self.enabled = bool(enabled)
-            self._reset_gesture()
+            self.cancel()
+            self.browser.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff if enabled else self._scrollbar_policy)
+            self._refresh_header()
 
-    def _reset_gesture(self):
+    def set_preview(self, preview):
+        if self.preview != preview:
+            self.preview = preview
+            self._refresh_header()
+
+    def cancel(self):
+        self.animation.stop()
+        self._target = None
         self._idle.stop()
         self._wheel_delta = self._gesture_delta = 0
-        self._gesture_advanced = False
+        self._gesture_start = None
+
+    def _animation_finished(self):
+        self._target = None
 
     def _document_changed(self):
+        self.cancel()
         self._positions = None
-        self._reset_gesture()
+        self._heading = None
+        self._headings = []
+        self._refresh.start(0)
+
+    def _index(self):
+        if self._positions is not None:
+            return
+        positions = set()
+        self._headings = []
+        block = self.browser.document().begin()
+        while block.isValid():
+            names = set(block.charFormat().anchorNames())
+            if any(name.startswith(SECTION_PREFIX) for name in names):
+                positions.add(block.position())
+            iterator = block.begin()
+            while not iterator.atEnd():
+                fragment = iterator.fragment()
+                names.update(fragment.charFormat().anchorNames())
+                if any(name.startswith(SECTION_PREFIX) for name in fragment.charFormat().anchorNames()):
+                    positions.add(fragment.position())
+                iterator += 1
+            if any(name.startswith("scroll-headword-") for name in names):
+                self._headings.append(block.position())
+            block = block.next()
+        self._positions = sorted(positions)
+
+    def _top(self, position):
+        cursor = QTextCursor(self.browser.document())
+        cursor.setPosition(position)
+        return self.browser.cursorRect(cursor).top() + self.browser.verticalScrollBar().value()
 
     def section_tops(self):
+        self._index()
+        return [0, *(max(0, self._top(position)) for position in self._positions[1:])]
+
+    def _refresh_header(self):
+        self._index()
+        visible = self.enabled and not self.preview and bool(self._headings)
+        if not visible:
+            self.header.hide()
+            return
+        # Keep the original heading's typography, including Japanese ruby.
         document = self.browser.document()
-        if self._positions is None:
-            positions = set()
-            block = document.begin()
-            while block.isValid():
-                if any(name.startswith(SECTION_PREFIX) for name in block.charFormat().anchorNames()):
-                    positions.add(block.position())
-                iterator = block.begin()
-                while not iterator.atEnd():
-                    fragment = iterator.fragment()
-                    if any(name.startswith(SECTION_PREFIX) for name in fragment.charFormat().anchorNames()):
-                        positions.add(fragment.position())
-                    iterator += 1
-                block = block.next()
-            self._positions = sorted(positions)
-        bar = self.browser.verticalScrollBar()
-        tops = []
-        cursor = QTextCursor(document)
-        for position in self._positions:
-            cursor.setPosition(position)
-            tops.append(max(0, self.browser.cursorRect(cursor).top() + bar.value()))
-        # Context and metadata belong to the first section.
-        return [0, *tops[1:]]
+        from meikipop.config.config import config
+        self.header.setStyleSheet(f"QTextBrowser {{background:{config.color_background};border:0;}}")
+        height = min(100, max(32, max(round(document.documentLayout().blockBoundingRect(
+            document.findBlock(position)).height()) for position in self._headings) + 8))
+        self.header.setGeometry(0, 0, self.browser.viewport().width(), height)
+        self._heading = None
+        self._update_header()
+
+    def _update_header(self):
+        if not self.enabled or self.preview or not self._headings:
+            return
+        scroll = self.browser.verticalScrollBar().value()
+        index = max(0, bisect_right([self._top(pos) for pos in self._headings], scroll + 1) - 1)
+        position = self._headings[index]
+        self.header.setVisible(self._top(position) < scroll)
+        if self._heading == position:
+            return
+        self._heading = position
+        cursor = QTextCursor(self.browser.document().findBlock(position))
+        cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
+        document = self.header.document()
+        document.clear()
+        document.setDefaultFont(self.browser.document().defaultFont())
+        document.setDefaultStyleSheet(self.browser.document().defaultStyleSheet())
+        target = QTextCursor(document)
+        target.insertFragment(cursor.selection())
+        # Ruby char formats and the registered object renderer are preserved.
+        fmt = target.blockFormat()
+        fmt.setTopMargin(0)
+        fmt.setBottomMargin(0)
+        target.setBlockFormat(fmt)
+        self.header.verticalScrollBar().setValue(0)
 
     def stops(self):
         bar = self.browser.verticalScrollBar()
-        height = max(1, self.browser.viewport().height())
+        heading_height = self.header.height() if self._headings and not self.preview else 0
+        height = max(1, self.browser.viewport().height() - heading_height)
         overlap = min(height // 3, max(24, self.browser.fontMetrics().lineSpacing() * 2))
         step = max(1, height - overlap)
-        tops = self.section_tops()
+        tops = [max(0, top - heading_height) for top in self.section_tops()]
         stops = {0, bar.maximum()}
         for start, end in zip(tops, [*tops[1:], bar.maximum() + height]):
             stops.add(min(start, bar.maximum()))
@@ -76,47 +166,96 @@ class SectionScroller(QObject):
                 stops.update(range(start + step, min(end, bar.maximum()), step))
         return sorted(stops)
 
-    def advance(self, direction):
+    def _move(self, target):
         bar = self.browser.verticalScrollBar()
+        target = max(0, min(target, bar.maximum()))
+        self.animation.stop()
+        self._target = target
+        distance = abs(target - bar.value())
+        if not distance:
+            self._target = None
+            return
+        if not self.animation_enabled:
+            bar.setValue(target)
+            self._target = None
+            return
+        self.animation.setDuration(min(280, 140 + distance // 4))
+        self.animation.setStartValue(bar.value())
+        self.animation.setEndValue(target)
+        self.animation.start()
+
+    def advance(self, direction, page=False):
+        bar = self.browser.verticalScrollBar()
+        value = self._target if self._target is not None else bar.value()
         stops = self.stops()
-        if direction > 0:
-            index = bisect_right(stops, bar.value())
-            target = stops[min(index, len(stops) - 1)]
+        if page:
+            self._move(value + direction * max(1, self.browser.viewport().height() - 24))
+        elif direction > 0:
+            self._move(stops[min(bisect_right(stops, value), len(stops) - 1)])
         else:
-            index = bisect_left(stops, bar.value()) - 1
-            target = stops[max(0, index)]
-        bar.setValue(target)
+            self._move(stops[max(0, bisect_left(stops, value) - 1)])
+
+    def _settle(self):
+        if self._gesture_start is None:
+            return
+        value = self.browser.verticalScrollBar().value()
+        stops = self.stops()
+        target = min(stops, key=lambda stop: abs(stop - value))
+        # A deliberate short flick still advances; long gestures retain momentum.
+        if abs(self._gesture_delta) >= 40:
+            if self._gesture_delta < 0 and target <= self._gesture_start:
+                target = stops[min(bisect_right(stops, self._gesture_start), len(stops) - 1)]
+            elif self._gesture_delta > 0 and target >= self._gesture_start:
+                target = stops[max(0, bisect_left(stops, self._gesture_start) - 1)]
+        self._gesture_start = None
+        self._gesture_delta = 0
+        self._move(target)
 
     def eventFilter(self, watched, event):
-        if (event.type() != QEvent.Type.Wheel or not self.enabled
-                or event.modifiers() != Qt.KeyboardModifier.NoModifier
-                or self.browser.selecting):
+        kind = event.type()
+        if watched is self.browser and kind in (QEvent.Type.Hide, QEvent.Type.Resize):
+            self.cancel()
+            if kind == QEvent.Type.Resize:
+                self._refresh.start(0)
+        if not self.enabled:
+            return False
+        if kind == QEvent.Type.KeyPress and watched is self.browser:
+            if event.modifiers() != Qt.KeyboardModifier.NoModifier:
+                return False
+            key = event.key()
+            if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
+                self._idle.stop()
+                self._gesture_start = None
+                self.advance(-1 if key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp) else 1,
+                             page=key in (Qt.Key.Key_PageUp, Qt.Key.Key_PageDown))
+            elif key in (Qt.Key.Key_Home, Qt.Key.Key_End):
+                self.cancel()
+                self._move(0 if key == Qt.Key.Key_Home else self.browser.verticalScrollBar().maximum())
+            else:
+                return False
+            event.accept()
+            return True
+        if kind != QEvent.Type.Wheel or event.modifiers() != Qt.KeyboardModifier.NoModifier or self.browser.selecting:
             return False
         pixel, angle, phase = event.pixelDelta(), event.angleDelta(), event.phase()
         delta = pixel if not pixel.isNull() else angle
         if abs(delta.x()) > abs(delta.y()):
             return False
-        if phase in (Qt.ScrollPhase.ScrollBegin, Qt.ScrollPhase.ScrollEnd):
-            self._reset_gesture()
-        if phase == Qt.ScrollPhase.ScrollEnd:
-            event.accept()
-            return True
-        if phase != Qt.ScrollPhase.NoScrollPhase:
-            self._idle.stop()
-        else:
+        if not pixel.isNull() or phase != Qt.ScrollPhase.NoScrollPhase:
+            if phase == Qt.ScrollPhase.ScrollBegin or self._gesture_start is None:
+                self.cancel()
+                self._gesture_start = self.browser.verticalScrollBar().value()
+            movement = pixel.y() if not pixel.isNull() else angle.y() / 3
+            self._gesture_delta += movement
+            bar = self.browser.verticalScrollBar()
+            bar.setValue(round(bar.value() - movement))
+            # Native trackpad momentum is already decelerated; do not synthesize it twice.
             self._idle.start()
-        if phase != Qt.ScrollPhase.ScrollMomentum:
-            if not pixel.isNull() or phase != Qt.ScrollPhase.NoScrollPhase:
-                self._gesture_delta += delta.y()
-                threshold = 40 if not pixel.isNull() else 120
-                if not self._gesture_advanced and abs(self._gesture_delta) >= threshold:
-                    self.advance(1 if self._gesture_delta < 0 else -1)
-                    self._gesture_advanced = True
-            else:
-                self._wheel_delta += angle.y()
-                while abs(self._wheel_delta) >= 120:
-                    direction = 1 if self._wheel_delta < 0 else -1
-                    self.advance(direction)
-                    self._wheel_delta += direction * 120
+        else:
+            self._wheel_delta += angle.y()
+            while abs(self._wheel_delta) >= 120:
+                direction = 1 if self._wheel_delta < 0 else -1
+                self.advance(direction)
+                self._wheel_delta += direction * 120
         event.accept()
         return True

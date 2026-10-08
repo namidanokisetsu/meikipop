@@ -1359,7 +1359,7 @@ class QuickLookupTests(unittest.TestCase):
                 html = render_result(result, preview=preview, expanded=expanded)
                 self.window.browser.setHtml(html)
                 text = self.window.browser.toPlainText()
-                self.assertEqual(html.count("<h2>koyun</h2>"), 1)
+                self.assertEqual(html.count(">koyun</h2>"), 1)
                 # One shared heading and one legitimate occurrence in the example.
                 self.assertEqual(text.splitlines().count("koyun"), 2)
                 for meaning in ("sheep", "embrace", "koynu", "possessive form", "koyun means sheep"):
@@ -1414,7 +1414,6 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Strokes", self.window.browser.toPlainText())
         self.assertIn("Fourth sense", self.window.browser.toPlainText())
 
-    def test_default_search_shortcut_can_be_disabled(self):
     def test_kanji_click_reveals_all_sources_and_back_restores_details(self):
         kanji = (KanjiEntry("猫", source="Kanji A", meanings=("cat",), stats=(("strokes", 11),)),
                  KanjiEntry("猫", source="Kanji B", meanings=("feline",), stats=(("grade", 8),)),
@@ -1434,6 +1433,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window._link(QUrl("kanji:%E7%8C%AB"))
         self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
 
+    def test_default_search_shortcut_can_be_disabled(self):
         self.assertIsNone(self.window._keys)
         with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:
             self.window.restore_shortcut()

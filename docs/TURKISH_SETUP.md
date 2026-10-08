@@ -29,7 +29,7 @@ recorded and saved before permission is granted. Command and Control are separat
 re-record an older shortcut if it used the wrong modifier. Packaged diagnostics
 are in `~/Library/Caches/meikipop/meikipop.log` and `meikipop-runtime.log`.
 The DMGs are ad-hoc signed, without Apple notarization. Apple Vision replaces the
-Windows OCR engines; global pin clicks also reach the underlying app on macOS.
+Windows OCR engines. Eligible pin clicks are consumed on Windows and macOS.
 After an update, macOS can retain permissions for the old signature. If a switch
 is on but access still fails, remove Meikipop from that list and add the installed
 app again, then reopen it.
@@ -86,8 +86,10 @@ show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
 Dictionary sections have independent previews and expansion controls. **Appearance → Snap scrolling**
-optionally steps between dictionary blocks, paging through long blocks with overlap.
-It defaults off for each language; the scrollbar remains freely draggable.
+animates wheel and arrow-key steps between dictionary blocks, paging through long blocks
+with overlap. Trackpad gestures retain momentum before settling. The current headword
+stays visible and the scrollbar hides in this mode. Page Up/Down and Home/End also work
+when the results have focus. It defaults off for each language and respects reduced motion.
 In **Dictionaries**, select a definition dictionary and enable **Start collapsed** to
 show only its heading in expanded results, including pinned OCR. **+** opens the full
 entry; compact OCR previews retain their definitions. The choice persists across reimports.
@@ -97,8 +99,9 @@ scan leave the result. Entering a preview pauses its dismissal grace; leaving re
 Search also supports edge and corner resizing. Imported frequency, inflection and kanji information uses compact labels.
 Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, taking
 the best matching rank per dictionary. **Dictionaries → Combine frequency ranks**
-switches between the combined number and individual labels. Counts and nonnumeric
+switches between the combined number and compact dictionary-labelled values. Counts and nonnumeric
 bands are excluded from the mean.
+Click a kanji in the compact row to show its complete details from all enabled kanji packs.
 Import a Yomitan pitch dictionary with the Japanese profile selected. **Dictionaries →
 Pitch accent** controls its display: overlines mark high morae, ꜜ marks a drop,
 and brackets show the supplied accent number or H/L pattern. Sources and alternative
@@ -239,8 +242,9 @@ New language profiles inherit the current profile's screen lookup shortcuts,
 including an explicitly disabled shortcut. Clear both screen lookup shortcuts to
 disable OCR; there is no additional toggle.
 **Settings → Shortcuts → Pin with mouse** selects left click, middle click, or popup-only pinning.
-Windows consumes the configured outside pin click while a scan preview is ready;
-on macOS and Linux it also reaches the underlying app. Other clicks are unchanged.
+Windows and macOS consume the configured outside pin click while a scan preview is ready;
+on Linux it also reaches the underlying app. Other clicks are unchanged. Pinning gives
+the results keyboard focus; macOS uses a nonactivating panel to stay in the source Space.
 **Appearance → Compact preview** is on by default; turn it off for full definitions immediately.
 Scanning always requires a held trigger. Automatic hover scanning has been removed;
 old saved hover preferences are ignored. OCR runs separately from dictionary search
