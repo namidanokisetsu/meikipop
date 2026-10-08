@@ -118,15 +118,15 @@ class DictionaryPresentationTests(unittest.TestCase):
         self.assertIn("…", text)
         self.assertIn("長い意味" * 200, self.render(value, expanded=("Fixture",)))
 
-    def test_other_readings_are_reachable_without_initial_wall_of_entries(self):
+    def test_all_readings_are_visible_without_expanding(self):
         value = SearchResult("生", "ja", "en", tuple(
             Entry(str(i), "生", reading, "Fixture", "ja", (f"Meaning {i}",))
             for i, reading in enumerate(("なま", "せい", "しょう", "き", "いき"))))
         text = self.render(value)
         self.assertIn("Meaning 0", text)
-        self.assertNotIn("Meaning 4", text)
-        self.assertIn("Other readings (4)", text)
-        self.assertIn("Meaning 4", self.render(value, details_expanded=("readings",)))
+        self.assertNotIn("Other readings", text)
+        for i in range(5):
+            self.assertIn(f"Meaning {i}", text)
 
     def test_headword_does_not_keep_qt_relative_font_enlargement(self):
         self.render(result(("Meaning",)))

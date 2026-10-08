@@ -492,16 +492,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         if result.entries:
             parts.append("<hr>")
     anchored = set()
-    fold_readings = result.source == "ja" and len(groups) > 3 and not preview
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
-        if fold_readings and group_index == 1:
-            opened = "readings" in details_expanded
-            parts.append(f'<p class="source"><a name="other-readings"></a>'
-                         f'<small>Other readings ({len(groups) - 1})</small>'
-                         f'<a href="readings:toggle" title="{"Collapse" if opened else "Expand"}">'
-                         f'&nbsp;&nbsp;{"−" if opened else "+"}&nbsp;&nbsp;</a></p>')
-        if fold_readings and group_index and "readings" not in details_expanded:
-            continue
         if group_index:
             parts.append("<hr>")
         first_source = next(source for source in sources if source in dictionaries)
@@ -1457,11 +1448,6 @@ class QuickLookupWindow(QDialog):
         if self._pin_anchor_click:
             self._pin_anchor_click = False
             return  # The first click already expanded the complete peek.
-        if url.scheme() == "readings" and url.path() == "toggle":
-            self._details_expanded.symmetric_difference_update(("readings",))
-            self._render()
-            self.browser.scrollToAnchor("other-readings")
-            return
         if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
             self._kanji_details.symmetric_difference_update((url.path(),))
             self._render()
