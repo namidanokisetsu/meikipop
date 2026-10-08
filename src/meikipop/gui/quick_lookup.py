@@ -481,9 +481,10 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
         if fold_readings and group_index == 1:
             opened = "readings" in details_expanded
-            parts.append(f'<p style="margin:6px 0"><a name="other-readings"></a>'
-                         f'<a href="readings:toggle">{"Hide" if opened else "Show"} '
-                         f'other readings ({len(groups) - 1})</a></p>')
+            parts.append(f'<p class="source"><a name="other-readings"></a>'
+                         f'<small>Other readings ({len(groups) - 1})</small>'
+                         f'<a href="readings:toggle" title="{"Collapse" if opened else "Expand"}">'
+                         f'&nbsp;&nbsp;{"−" if opened else "+"}&nbsp;&nbsp;</a></p>')
         if fold_readings and group_index and "readings" not in details_expanded:
             continue
         if group_index:

@@ -104,7 +104,7 @@ class DictionaryPresentationTests(unittest.TestCase):
         text = self.render(value)
         self.assertIn("Meaning 0", text)
         self.assertNotIn("Meaning 4", text)
-        self.assertIn("Show other readings (4)", text)
+        self.assertIn("Other readings (4)", text)
         self.assertIn("Meaning 4", self.render(value, details_expanded=("readings",)))
 
     def test_headword_does_not_keep_qt_relative_font_enlargement(self):
