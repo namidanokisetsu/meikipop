@@ -66,8 +66,15 @@ class ProfileAppearance(QWidget):
         self.theme.addItems(THEMES)
         form.addRow("Theme", self.theme)
         self.compact_preview = QCheckBox("Compact preview")
-        self.compact_preview.setToolTip("Pin to expand the full entry")
+        self.compact_preview.setToolTip("First matching dictionary; pin to show all dictionaries")
         form.addRow(self.compact_preview)
+        self.preview_frequency = QCheckBox("Frequency in preview")
+        self.preview_pitch = QCheckBox("Pitch in preview")
+        self.preview_definitions = QSpinBox()
+        self.preview_definitions.setRange(1, 10)
+        detail_form.addRow(self.preview_frequency)
+        detail_form.addRow(self.preview_pitch)
+        detail_form.addRow("Preview definitions", self.preview_definitions)
         self.pinned_sentence = QCheckBox("Show sentence when pinned")
         detail_form.addRow(self.pinned_sentence)
         self.snap_scrolling = QCheckBox("Snap scrolling")
@@ -105,6 +112,9 @@ class ProfileAppearance(QWidget):
         self.font.currentFontChanged.connect(self.save)
         self.headword_furigana.toggled.connect(self.save)
         self.definition_furigana.toggled.connect(self.save)
+        self.preview_frequency.toggled.connect(self.save)
+        self.preview_pitch.toggled.connect(self.save)
+        self.preview_definitions.valueChanged.connect(self.save)
         self.compact_preview.toggled.connect(self.save)
         self.pinned_sentence.toggled.connect(self.save)
         self.snap_scrolling.toggled.connect(self.save)
@@ -117,6 +127,11 @@ class ProfileAppearance(QWidget):
 
     def reload(self):
         self._loading = True
+        prefix = f"profiles/{self.profile()}/"
+        self.preview_frequency.setChecked(self.settings.value(prefix + "preview_frequency", True, bool))
+        self.preview_pitch.setChecked(self.settings.value(prefix + "preview_pitch", True, bool))
+        self.preview_definitions.setValue(self.settings.value(prefix + "preview_definitions", 1, int))
+        self.detail_form.setRowVisible(self.preview_pitch, self.profile() == "ja")
         custom = custom_palette(self.settings, self.profile())
         self.theme.blockSignals(True)
         name = theme_name(self.settings.value(f"profiles/{self.profile()}/theme_name", DEFAULTS["theme_name"]))
@@ -175,6 +190,9 @@ class ProfileAppearance(QWidget):
         prefix = f"profiles/{self.profile()}/"
         self.settings.setValue(prefix + "theme_name", self.theme.currentText())
         self.settings.setValue(prefix + "compact_preview", self.compact_preview.isChecked())
+        self.settings.setValue(prefix + "preview_frequency", self.preview_frequency.isChecked())
+        self.settings.setValue(prefix + "preview_pitch", self.preview_pitch.isChecked())
+        self.settings.setValue(prefix + "preview_definitions", self.preview_definitions.value())
         self.settings.setValue(prefix + "pinned_sentence", self.pinned_sentence.isChecked())
         self.settings.setValue(prefix + "snap_scrolling", self.snap_scrolling.isChecked())
         self.settings.setValue(prefix + "font_family", self.font.currentFont().family())

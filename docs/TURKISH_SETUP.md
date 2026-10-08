@@ -103,12 +103,16 @@ show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
 Dictionary sections have independent previews and expansion controls. **Appearance → Snap scrolling**
-keeps the current headword visible, scrolls continuously within it, and stops at headword
-boundaries. Page Up/Down page through long sections; Home/End reach the ends.
+keeps the current headword visible and scrolls continuously within long sections.
+The next section stays hidden until a new scroll gesture crosses its measured boundary.
+Page Up/Down page through long sections; Home/End reach the ends.
 It defaults off for each language and respects reduced motion.
 In **Dictionaries**, select a definition dictionary and choose **Expanded**, **Preview**,
 or **Collapsed** for its initial display. Pinning preserves that choice; **+ / −** override
-it for the current result. Compact OCR previews retain their definitions. Choices persist across reimports.
+it for the current result. Choices persist across reimports. Compact OCR previews use
+the first matching dictionary in priority order. **Appearance → Customize** controls
+preview frequency, pitch, and definition count (one by default); height follows content
+up to the preview height limit. Pitch patterns share one line and wrap when needed.
 Left-click a preview or use the scan gesture to freeze and resize it. Above-text previews expand upward;
 other previews grow down when space allows, switching upward near the bottom edge. Escape, outside click, Close, or a new
 scan leave the result. Entering a preview pauses its dismissal grace; leaving rearms it.

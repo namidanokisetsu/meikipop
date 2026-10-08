@@ -165,8 +165,9 @@ class LookupWorker(QObject):
 class _GlossConverter(StructuredContentConverter):
     """Prune structured previews before conversion, retaining lists and emphasis."""
     def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term="",
-                 details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False):
+                 details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False, preview_definitions=3):
         super().__init__()
+        self.preview_definitions = preview_definitions
         self.definition_furigana = definition_furigana
         self.colors = surface_colors(config.color_background, config.color_foreground)
         self.expanded = expanded
@@ -314,9 +315,9 @@ class _GlossConverter(StructuredContentConverter):
                 marked_senses = (isinstance(content, list) and bool(content) and all(
                     isinstance(child, dict) and isinstance(child.get("data"), dict)
                     and "meaning" in child["data"] for child in content))
-                if (tag in ("ol", "ul") or kind == "glosses" or numbered_senses or marked_senses) and isinstance(content, list):
+                if ((tag in ("ol", "ul") and kind != "glossary") or kind == "glosses" or numbered_senses or marked_senses) and isinstance(content, list):
                     senses = [child for child in content if not isinstance(child, str) or child.strip()]
-                    maximum = 3 if self.preview else 2
+                    maximum = self.preview_definitions if self.preview else 2
                     if len(senses) > maximum:
                         node["content"] = senses[:maximum]
                         self.clipped = True
@@ -397,12 +398,12 @@ class _GlossConverter(StructuredContentConverter):
         return parts
 
 
-def _metadata(entries, combine_frequencies=True):
+def _metadata(entries, combine_frequencies=True, show_frequencies=True):
     frequencies, inflections = OrderedDict(), OrderedDict()
     raw_frequencies = []
     for entry in entries:
-        raw_frequencies.extend(entry.frequencies)
-        for frequency in entry.frequencies:
+        raw_frequencies.extend(entry.frequencies if show_frequencies else ())
+        for frequency in entry.frequencies if show_frequencies else ():
             label = frequency.label or (f"{frequency.rank:g}" if frequency.rank is not None else "")
             if (frequency.rank is not None and frequency.mode == "rank-based"
                     and re.fullmatch(r"[\d,.]+", label)):
@@ -461,8 +462,10 @@ def _compact_context(text, font, width):
 
 def render_result(result, expanded=(), preview=False, overlay_actions=False, show_source=True,
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
-                  definition_furigana=False, collapsed=(), kanji_details=()):
+                  definition_furigana=False, collapsed=(), kanji_details=(),
+                  preview_frequency=True, preview_pitch=True, preview_definitions=3):
     """Share lexical headings while preserving the configured dictionary order."""
+    preview_definitions = max(1, min(10, preview_definitions))
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
@@ -508,8 +511,9 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                          f'{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
         else:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{escape(display_term)}{reading_html}</h2>')
-        parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies))
-        if result.source == "ja":
+        parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies,
+                               show_frequencies=not preview or preview_frequency))
+        if result.source == "ja" and (not preview or preview_pitch):
             from meikipop.dictionary.pitch import render_pitches
             parts.append(render_pitches(pitch for entries in dictionaries.values() for entry in entries
                                         for pitch in entry.pitches))
@@ -528,7 +532,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             normalized = [normalize_definitions(entry.definitions, source) for entry in entries]
             limit = 240 if result.source == "ja" else (None if preview else 360)
             converter = _GlossConverter(expanded=full, limit=limit,
-                                        preview=preview,
+                                        preview=preview, preview_definitions=preview_definitions,
                                         generic_source=generic_source, term=term,
                                         details_expanded=details_expanded, detail_prefix=f"{group_index}:{index}",
                                         definition_furigana=definition_furigana,
@@ -537,7 +541,9 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             visible_entries = () if hidden else (normalized if full else normalized[:2])
             for entry_definitions in visible_entries:
                 more = more or len(entry_definitions) > 3
-                definitions.extend(converter.glosses(entry_definitions if full else entry_definitions[:3]))
+                definitions.extend(converter.glosses(entry_definitions if full else entry_definitions[:preview_definitions if preview else 3]))
+            if preview:
+                definitions = definitions[:preview_definitions]
             more = more or converter.clipped
             toggle = (f'<a href="expand:{index}" title="{"Collapse" if full and not hidden else "Expand"}">'
                       f'&nbsp;&nbsp;{"−" if full and not hidden else "+"}&nbsp;&nbsp;</a>'
@@ -1329,6 +1335,11 @@ class QuickLookupWindow(QDialog):
                 self.render_timer.start(50)
                 return
             compact = self.compact_preview()
+            prefix = f"profiles/{self.preferred_foreign}/"
+            preview_options = dict(
+                preview_frequency=self.settings.value(prefix + "preview_frequency", True, bool),
+                preview_pitch=self.settings.value(prefix + "preview_pitch", True, bool),
+                preview_definitions=self.settings.value(prefix + "preview_definitions", 1, int))
             self.browser.section_scroll.set_preview(self._peek and not self.is_pinned)
             expanded = self._expanded
             if self._peek and not self.is_pinned and not compact:
@@ -1345,7 +1356,7 @@ class QuickLookupWindow(QDialog):
             from meikipop.gui.profile_appearance import DEFAULTS
             identity = (repr(self._result), self.preferred_foreign, tuple(sorted(expanded)),
                         tuple(sorted(self._details_expanded)),
-                        self._peek, self.is_pinned, compact,
+                        self._peek, self.is_pinned, compact, tuple(preview_options.values()),
                         tuple(getattr(config, key) for key in DEFAULTS), self.devicePixelRatioF(),
                         self.audio_actions.sizeHint().width(), show_source, source_text if show_source else None,
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
@@ -1359,7 +1370,7 @@ class QuickLookupWindow(QDialog):
             anchor = self.browser.cursorForPosition(self.browser.viewport().rect().topLeft())
             block_text, offset = anchor.block().text(), self.browser.cursorRect(anchor).top()
             mark("html_begin", self.revision)
-            self.browser.setHtml(render_result(self._result, expanded,
+            self.browser.setHtml(render_result(self._result, expanded, **preview_options,
                                                preview=self._peek and not self.is_pinned and compact,
                                                overlay_actions=(self.audio_actions.sizeHint().width() + 8) if self._peek and self.is_pinned else 0,
                                                show_source=show_source, source_text=source_text,

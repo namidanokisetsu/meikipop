@@ -51,6 +51,29 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_preview_options_limit_first_dictionary_without_changing_pinned_results(self):
+        from meikipop.dictionary.pitch import Pitch
+        first = replace(entry(definitions=("first meaning", "second meaning", "third meaning")),
+                        frequencies=(Frequency("Rank", 123, "123"),), pitches=(Pitch("Pitch", "ねこ", 1),))
+        self.settings.setValue("profiles/ja/preview_frequency", False)
+        self.settings.setValue("profiles/ja/preview_pitch", False)
+        self.window.show_entries((first, entry(source="Other", definitions=("other meaning",))), "猫", peek=True)
+        text = self.window.browser.toPlainText()
+        self.assertIn("first meaning", text)
+        for hidden in ("second meaning", "other meaning", "#123", "ꜜ"):
+            self.assertNotIn(hidden, text)
+        self.settings.setValue("profiles/ja/preview_definitions", 2)
+        self.settings.setValue("profiles/ja/preview_pitch", True)
+        self.window._render()
+        text = self.window.browser.toPlainText()
+        self.assertIn("second meaning", text)
+        self.assertIn("ꜜ", text)
+        self.assertNotIn("third meaning", text)
+        self.window.pin.setChecked(True)
+        text = self.window.browser.toPlainText()
+        self.assertIn("other meaning", text)
+        self.assertIn("#123", text)
+
     def test_search_arrows_navigate_sticky_sections_without_editing_query(self):
         browser = self.window.browser
         browser.setHtml(render_result(SearchResult("猫", "ja", "en", tuple(
@@ -539,6 +562,7 @@ class QuickLookupTests(unittest.TestCase):
 
     def test_compact_preview_keeps_complete_senses_with_a_bounded_height(self):
         self.window.set_mode("tr")
+        self.settings.setValue("profiles/tr/preview_definitions", 3)
         self.settings.setValue("profiles/tr/expanded_dictionaries", ['Turkish Monolingual'])
         long_sense = "A complete definition with several clauses. " * 12
         for list_tag in ("ol", "div"):
