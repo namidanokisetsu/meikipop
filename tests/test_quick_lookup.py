@@ -1126,6 +1126,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window._render()
         self.assertIn("#100", self.window.browser.toPlainText())
         self.assertIn("#400", self.window.browser.toPlainText())
+        self.assertIn("A #100/900㋕ · B #400", self.window.browser.toPlainText().replace("\xa0", " "))
 
     def test_structured_preview_keeps_lists_and_hides_examples_and_extra_senses(self):
         # Mirrors Turkdict's export_prototype.Structured output (classes become styles).

@@ -383,8 +383,13 @@ def _metadata(entries, combine_frequencies=True):
                 detail = "; ".join(source + ": " + label for source, label in frequencies)
                 parts.append(f'<a href="frequency:{quote(detail)}" style="color:{muted}">#{max(1, round(rank)):,}</a>')
         else:
-            parts.extend(f'<a href="frequency:{quote(source + ": " + label)}" style="color:{muted}">{escape(label)}</a>'
-                         for source, label in frequencies)
+            by_source = OrderedDict()
+            for source, label in frequencies:
+                by_source.setdefault(source, []).append(label)
+            parts.extend(f'<a href="frequency:{quote(source + ": " + ", ".join(labels))}" '
+                         f'style="color:{muted};white-space:nowrap">'
+                         f'{escape(_source_name(source))} {escape("/".join(labels))}</a>'
+                         for source, labels in by_source.items())
     if inflections:
         parts.append(escape(" · ".join(inflections)))
     return '<p class="metadata"><small>' + " · ".join(parts) + '</small></p>' if parts else ""
@@ -428,10 +433,10 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         groups.setdefault((entry.term, entry.reading), OrderedDict()).setdefault(entry.source, []).append(entry)
     parts = [f'<style>body {{color:{config.color_foreground};}} '
              f'a,h2 {{color:{config.color_highlight_word};text-decoration:none;}} '
-             f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:3px {clearance}px 3px 0;}} '
+             f'h2 {{font-size:{config.font_size_header}px;font-weight:normal;margin:0 {clearance}px 0 0;}} '
              'p {margin:2px 0;} ol,ul {margin:2px 0 4px 8px;padding:0;} '
              'li {margin:1px 0;} hr {margin:6px 0;} '
-             f'.metadata {{margin:1px 0 3px;color:{muted};}} .source {{margin:5px 0 2px;color:{muted};}}</style>']
+             f'.metadata {{margin:0;color:{muted};}} .source {{margin:4px 0 1px;color:{muted};}}</style>']
     if source_text is None:
         source_text = result.text if result.translation else ""
     if show_source and source_text:
