@@ -134,6 +134,16 @@ class DictionaryPresentationTests(unittest.TestCase):
         self.assertFalse(block.charFormat().hasProperty(QTextFormat.Property.FontSizeAdjustment))
         self.assertFalse(block.begin().fragment().charFormat().hasProperty(QTextFormat.Property.FontSizeAdjustment))
 
+    def test_missing_entry_shows_nonempty_scanned_text_safely(self):
+        for message in ("", "No entry found."):
+            with self.subTest(message=message):
+                value = SearchResult("未登録 <word>\n次の行", "ja", "en", (), message=message)
+                text = self.render(value, show_source=False)
+                self.assertIn("未登録 <word>\n次の行", text.replace("\u2028", "\n"))
+                self.assertNotIn("No entry found", text)
+        text = self.render(SearchResult("", "ja", "en", ()))
+        self.assertEqual(text.strip(), "")
+
 
 if __name__ == "__main__":
     unittest.main()

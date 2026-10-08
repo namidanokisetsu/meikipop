@@ -576,14 +576,18 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         parts.append('<p>Did you mean: ' + " · ".join(
             f'<a href="suggest:{index}">{escape(str(word))}</a>'
             for index, word in enumerate(result.suggestions)) + "</p>")
-    if result.message:
+    unmatched_text = result.text.strip() if not result.entries and not result.translation and not result.kanji else ""
+    if unmatched_text and not (show_source and source_text):
+        parts.append(f'<p>{escape(unmatched_text).replace(chr(10), "<br>")}</p>')
+    if result.message and not (unmatched_text and result.message == "No entry found."):
         parts.append(f"<p>{escape(result.message)}</p>")
     if result.kanji and not preview:
         from meikipop.gui.kanji_panel import render_kanji
         parts.append('<a name="kanji"></a><a name="scroll-section-kanji"></a>'
                      + render_kanji(result.kanji, compact_only=True, expanded_characters=kanji_details))
     if not result.entries and not result.translation and not result.message and result.text:
-        parts.append("<p>No entry found.</p>")
+        if not unmatched_text:
+            parts.append("<p>No entry found.</p>")
     return "".join(parts)
 
 
