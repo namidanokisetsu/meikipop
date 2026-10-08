@@ -42,7 +42,7 @@ def pitch_rows(archive, cancelled=None, progress=None):
         if len(row) != 3 or row[1] != "pitch":
             continue
         term, _, data = row
-        if (not isinstance(term, str) or not term.strip() or not isinstance(data, dict)
+        if (not isinstance(term, str) or not isinstance(data, dict)
                 or not isinstance(data.get("reading"), str) or not data["reading"]
                 or not isinstance(data.get("pitches"), list)):
             raise ValueError("Invalid pitch metadata")
@@ -56,7 +56,9 @@ def pitch_rows(archive, cancelled=None, progress=None):
                 raise ValueError("Invalid pitch tags")
             normalized = dict(position=position, nasal=_markers(accent.get("nasal", [])),
                               devoice=_markers(accent.get("devoice", [])), tags=tags)
-            yield term, data["reading"], normalized
+            # Blank lookup keys cannot be indexed; validate their payload first.
+            if term.strip():
+                yield term, data["reading"], normalized
 
 
 def levels(pitch):
@@ -84,6 +86,6 @@ def render_pitches(pitches):
             if indices:
                 annotations.append(f'{label}: {", ".join(map(str, indices))}')
         suffix = " · " + escape(" · ".join(annotations)) if annotations else ""
-        rows.append(f'<p><small>{"".join(parts)} [{escape(str(pitch.position))}]'
+        rows.append(f'<p style="margin:0"><small>{"".join(parts)} [{escape(str(pitch.position))}]'
                     f' · {escape(pitch.source)}{suffix}</small></p>')
     return "".join(rows)

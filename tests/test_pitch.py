@@ -68,3 +68,29 @@ class PitchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 import_yomitan(archive, root / "packs")
             self.assertEqual(list((root / "packs").iterdir()), [])
+
+    def test_empty_term_rows_are_ignored_after_payload_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "pitch.zip"
+            with zipfile.ZipFile(archive, "w") as output:
+                output.writestr("index.json", json.dumps(dict(title="Pitch", format=3)))
+                output.writestr("term_meta_bank_1.json", json.dumps([
+                    ["", "pitch", {"reading": "あくらつ", "pitches": [{"position": 0}]}],
+                    ["悪辣", "pitch", {"reading": "あくらつ", "pitches": [{"position": 0}]}],
+                ]))
+
+            imported = import_yomitan(archive, root / "packs")
+            with sqlite3.connect(imported) as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM pitches").fetchone()[0], 1)
+                self.assertEqual(db.execute("SELECT key FROM pitches").fetchone()[0], "悪辣")
+
+            for accent in ({"position": True}, {"position": 0, "nasal": "bad"},
+                           {"position": 0, "tags": "bad"}):
+                with self.subTest(accent=accent):
+                    with zipfile.ZipFile(archive, "w") as output:
+                        output.writestr("index.json", json.dumps(dict(title="Invalid", format=3)))
+                        output.writestr("term_meta_bank_1.json", json.dumps([
+                            ["", "pitch", {"reading": "ねこ", "pitches": [accent]}]]))
+                    with self.assertRaises(ValueError):
+                        import_yomitan(archive, root / "packs")
