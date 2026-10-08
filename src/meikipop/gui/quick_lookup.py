@@ -10,7 +10,7 @@ import threading
 import unicodedata
 
 from PyQt6.QtCore import QObject, QEvent, QLocale, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QKeySequence, QShortcut, QTextLayout, QTextOption
+from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QKeySequence, QShortcut, QTextCursor, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QToolButton, QToolTip, QVBoxLayout, QWidget,
@@ -21,6 +21,7 @@ from meikipop.dictionary.search import SearchEngine, SearchResult
 from meikipop.gui.popup_style import expanded_geometry, frame_stylesheet, popup_position, surface_colors
 from meikipop.gui.action_icons import action_icon
 from meikipop.gui.ruby import RubyBrowser, ruby_html
+from meikipop.gui.gloss_content import normalize_definitions
 from meikipop.language.profiles import configured_profiles, default_partner
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
 from meikipop.utils.timing import mark
@@ -176,6 +177,7 @@ class _GlossConverter(StructuredContentConverter):
         self._preview_source_complete = False
         self.remaining = limit
         self.clipped = False
+        self.supplements = []
         self.details_expanded = details_expanded
         self._detail_keys = {}
         def index_details(node):
@@ -230,6 +232,7 @@ class _GlossConverter(StructuredContentConverter):
         if self._preview_source_complete:
             return ""
         if isinstance(node, str):
+            node = re.sub(r"\n[ \t]*\n+", "\n", node)
             if not self.expanded and self.remaining is not None:
                 text = node[:self.remaining]
                 self.remaining -= len(text)
@@ -253,8 +256,27 @@ class _GlossConverter(StructuredContentConverter):
             tag, content = node.get("tag", ""), node.get("content")
             data = node.get("data", {})
             kind = str(data.get("content", "")) if isinstance(data, dict) else ""
+            semantic_kind = re.sub(r"[-_]", "", kind).lower()
             if kind == "backlink":
                 return ""
+            if semantic_kind in ("forms", "formstable", "formslist"):
+                self.clipped = True
+                if self.expanded:
+                    supplement = dict(node, data={})
+                    self.supplements.append(("Forms", self._node_to_html(supplement)))
+                return ""
+            if semantic_kind == "attribution":
+                self.clipped = True
+                if self.expanded:
+                    self.supplements.append(("", self._node_to_html(dict(node, data={}))))
+                return ""
+            if not self.expanded and semantic_kind in ("explanation", "extrainfo"):
+                self.clipped = True
+                return ""
+            if kind == "section-heading":
+                if not self.expanded:
+                    return ""
+                return f'<p style="margin:6px 0 2px;font-weight:bold">{self._node_to_html(content)}</p>'
             style = node.get("style", {})
             style = style if isinstance(style, dict) else {}
             heading_text = content[0] if isinstance(content, list) and len(content) == 1 else content
@@ -292,7 +314,10 @@ class _GlossConverter(StructuredContentConverter):
                     and isinstance(child.get("content"), list) and child["content"]
                     and isinstance(child["content"][0], str)
                     and re.match(r"\d+\.\s", child["content"][0]) for child in content))
-                if (tag in ("ol", "ul") or kind == "glosses" or numbered_senses) and isinstance(content, list):
+                marked_senses = (isinstance(content, list) and bool(content) and all(
+                    isinstance(child, dict) and isinstance(child.get("data"), dict)
+                    and "meaning" in child["data"] for child in content))
+                if (tag in ("ol", "ul") or kind == "glosses" or numbered_senses or marked_senses) and isinstance(content, list):
                     senses = [child for child in content if not isinstance(child, str) or child.strip()]
                     maximum = 3 if self.preview else 2
                     if len(senses) > maximum:
@@ -320,6 +345,8 @@ class _GlossConverter(StructuredContentConverter):
             # Keep a small, safe subset of typography. Dictionary CSS must not
             # inject attributes, override the theme or stretch the popup.
             safe_style = {}
+            if tag == "ol" and isinstance(content, list) and len(content) > 9:
+                safe_style["marginLeft"] = "20px"
             for name, values in (("fontStyle", ("italic", "normal")),
                                  ("fontWeight", ("bold", "normal", "400", "700"))):
                 if style.get(name) in values:
@@ -353,7 +380,7 @@ class _GlossConverter(StructuredContentConverter):
             else:
                 continue
             rendered = self._node_to_html(content)
-            if rendered:
+            if rendered and re.sub(r"<[^>]*>", "", rendered).strip():
                 parts.append(rendered)
         return parts
 
@@ -450,7 +477,15 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         if result.entries:
             parts.append("<hr>")
     anchored = set()
+    fold_readings = result.source == "ja" and len(groups) > 3 and not preview
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
+        if fold_readings and group_index == 1:
+            opened = "readings" in details_expanded
+            parts.append(f'<p style="margin:6px 0"><a name="other-readings"></a>'
+                         f'<a href="readings:toggle">{"Hide" if opened else "Show"} '
+                         f'other readings ({len(groups) - 1})</a></p>')
+        if fold_readings and group_index and "readings" not in details_expanded:
+            continue
         if group_index:
             parts.append("<hr>")
         first_source = next(source for source in sources if source in dictionaries)
@@ -486,19 +521,22 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             full, more = source in expanded and not preview, len(entries) > 2
             hidden = source in collapsed and not preview
             generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
-            converter = _GlossConverter(expanded=full, limit=None if preview else 360, preview=preview,
+            normalized = [normalize_definitions(entry.definitions, source) for entry in entries]
+            limit = 240 if result.source == "ja" else (None if preview else 360)
+            converter = _GlossConverter(expanded=full, limit=limit,
+                                        preview=preview,
                                         generic_source=generic_source, term=term,
                                         details_expanded=details_expanded, detail_prefix=f"{group_index}:{index}",
                                         definition_furigana=definition_furigana,
-                                        definitions=tuple(definition for entry in entries for definition in entry.definitions))
+                                        definitions=tuple(definition for definitions in normalized for definition in definitions))
             definitions = []
-            visible_entries = () if hidden else (entries if full else entries[:2])
-            for entry in visible_entries:
-                more = more or len(entry.definitions) > 3
-                definitions.extend(converter.glosses(entry.definitions if full else entry.definitions[:3]))
+            visible_entries = () if hidden else (normalized if full else normalized[:2])
+            for entry_definitions in visible_entries:
+                more = more or len(entry_definitions) > 3
+                definitions.extend(converter.glosses(entry_definitions if full else entry_definitions[:3]))
             more = more or converter.clipped
             toggle = (f'<a href="expand:{index}" title="{"Collapse" if full and not hidden else "Expand"}">'
-                      f'&nbsp;{"−" if full and not hidden else "+"}&nbsp;</a>'
+                      f'&nbsp;&nbsp;{"−" if full and not hidden else "+"}&nbsp;&nbsp;</a>'
                       if hidden or more or full else "")
             if source not in anchored:
                 parts.append(f'<a name="dictionary-{index}"></a>')
@@ -508,11 +546,16 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                 section = (f'<a name="scroll-section-{group_index}-{index}"></a>'
                            if source != first_source else "")
                 parts.append(f'<p class="source">{section}<small><span title="{escape(source, quote=True)}">'
-                             f'{escape(label)}</span>{toggle}</small></p>')
+                             f'{escape(label)}</span></small>{toggle}</p>')
             if len(definitions) > 1:
-                parts.append("<ol>" + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
+                opening = '<ol style="margin-left:20px">' if len(definitions) > 9 else "<ol>"
+                parts.append(opening + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
             else:
                 parts.append("".join(f"<div>{gloss}</div>" for gloss in definitions))
+            for label, supplement in converter.supplements:
+                if label:
+                    parts.append(f'<p class="source"><small>{label}</small></p>')
+                parts.append(supplement)
     if result.suggestions:
         parts.append('<p>Did you mean: ' + " · ".join(
             f'<a href="suggest:{index}">{escape(str(word))}</a>'
@@ -535,6 +578,35 @@ class LocalDictionaryBrowser(RubyBrowser):
         super().__init__(*args, **kwargs)
         from meikipop.gui.section_scroll import SectionScroller
         self.section_scroll = SectionScroller(self)
+
+    def setHtml(self, html):
+        super().setHtml(html)
+        def heading_format(fmt):
+            fmt.clearProperty(QTextFormat.Property.FontSizeAdjustment)
+            size = fmt.property(QTextFormat.Property.FontPixelSize)
+            if size:
+                font = fmt.font()
+                font.setPixelSize(int(size))
+                fmt.setFont(font)
+            return fmt
+
+        block = self.document().begin()
+        while block.isValid():
+            if block.blockFormat().headingLevel():
+                # Qt retains h2's relative enlargement alongside our explicit size.
+                cursor = QTextCursor(block)
+                cursor.setBlockCharFormat(heading_format(block.charFormat()))
+                runs = []
+                iterator = block.begin()
+                while not iterator.atEnd():
+                    fragment = iterator.fragment()
+                    runs.append((fragment.position(), fragment.length(), fragment.charFormat()))
+                    iterator += 1
+                for start, length, fmt in runs:
+                    cursor.setPosition(start)
+                    cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+                    cursor.setCharFormat(heading_format(fmt))
+            block = block.next()
 
     def viewportEvent(self, event):
         if event.type() == QEvent.Type.ToolTip:
@@ -1365,6 +1437,11 @@ class QuickLookupWindow(QDialog):
         if self._pin_anchor_click:
             self._pin_anchor_click = False
             return  # The first click already expanded the complete peek.
+        if url.scheme() == "readings" and url.path() == "toggle":
+            self._details_expanded.symmetric_difference_update(("readings",))
+            self._render()
+            self.browser.scrollToAnchor("other-readings")
+            return
         if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
             self._kanji_details.symmetric_difference_update((url.path(),))
             self._render()

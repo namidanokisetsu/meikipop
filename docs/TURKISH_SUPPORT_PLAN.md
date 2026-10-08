@@ -38,6 +38,10 @@ clients remain explicit compatibility entrypoints.
    Snap scrolling animates wheel/arrow steps through dictionary blocks, retains trackpad
    momentum, and settles between sections with overlapping pages for long blocks. A sticky
    headword retains Japanese ruby; the scrollbar hides only in this opt-in mode.
+   A noninteractive vertical rail tracks equal section progress, interpolating within long
+   sections. Japanese previews have a text budget; semantic forms stay outside numbered
+   senses, and extra reading groups fold when there are more than three. Shared section
+   handling uses isolated Bunpro and legacy Japanese grammar adapters for unmarked layouts.
    Dictionary-specific Start collapsed defaults retain only a source heading in expanded
    results, including pinned OCR; compact OCR previews keep their definitions. Manual
    expansion is local to the result and Back restores it.
