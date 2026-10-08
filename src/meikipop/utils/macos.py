@@ -6,6 +6,16 @@ class InputMonitoringPermissionError(RuntimeError):
     pass
 
 
+def require_accessibility_permission() -> None:
+    if sys.platform != "darwin":
+        return
+    from ApplicationServices import AXIsProcessTrustedWithOptions, kAXTrustedCheckOptionPrompt
+    if not AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: True}):
+        raise RuntimeError(
+            "Allow Meikipop in System Settings > Privacy & Security > Accessibility, then reopen Meikipop."
+        )
+
+
 def require_input_monitoring_permission() -> None:
     if sys.platform != "darwin":
         return

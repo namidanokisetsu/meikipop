@@ -56,6 +56,19 @@ class ShortcutRecordingTests(unittest.TestCase):
 
 
 class InputPermissionTests(unittest.TestCase):
+    def test_accessibility_requests_access_and_reports_denial(self):
+        from meikipop.utils.macos import require_accessibility_permission
+        api = Mock(kAXTrustedCheckOptionPrompt="prompt")
+        for granted in (False, True):
+            api.AXIsProcessTrustedWithOptions.return_value = granted
+            with patch("sys.platform", "darwin"), patch.dict(sys.modules, {"ApplicationServices": api}):
+                if granted:
+                    require_accessibility_permission()
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "Accessibility"):
+                        require_accessibility_permission()
+            api.AXIsProcessTrustedWithOptions.assert_called_with({"prompt": True})
+
     def test_denied_permission_keeps_configured_shortcut_for_next_launch(self):
         from types import SimpleNamespace
         from meikipop.gui.quick_lookup import QuickLookupWindow
@@ -101,15 +114,28 @@ class InputPermissionTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS event tap")
 class MacListenerTests(unittest.TestCase):
+    def test_intercept_requires_accessibility_before_starting_thread(self):
+        listener = KeyboardListener(darwin_intercept=lambda kind, event: event)
+        with patch("meikipop.utils.macos.require_input_monitoring_permission"), \
+                patch("meikipop.utils.macos.require_accessibility_permission",
+                      side_effect=RuntimeError("Accessibility")) as permission, \
+                patch.object(keyboard.Listener, "start") as start:
+            with self.assertRaisesRegex(RuntimeError, "Accessibility"):
+                listener.start()
+        permission.assert_called_once_with()
+        start.assert_not_called()
+
     def test_permission_symbol_is_resolved_before_listener_thread_starts(self):
         from pynput._util.darwin import HIServices
         events = []
         listener = KeyboardListener()
         with patch("meikipop.utils.macos.require_input_monitoring_permission"), \
+                patch("meikipop.utils.macos.require_accessibility_permission") as accessibility, \
                 patch.object(HIServices, "AXIsProcessTrusted", side_effect=lambda: events.append("resolve")), \
                 patch.object(keyboard.Listener, "start", side_effect=lambda: events.append("start")):
             listener.start()
         self.assertEqual(events, ["resolve", "start"])
+        accessibility.assert_not_called()
 
     def test_all_keyboard_listeners_bypass_carbon_layout_context(self):
         for factory in (lambda: KeyboardListener(), lambda: TextHotKeys({"<cmd>+d": Mock()})):

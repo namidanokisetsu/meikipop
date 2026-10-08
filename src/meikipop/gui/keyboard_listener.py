@@ -17,6 +17,9 @@ class MacListenerMixin:
         from meikipop.utils.macos import require_input_monitoring_permission
         require_input_monitoring_permission()
         if sys.platform == "darwin":
+            if self.suppress or self._intercept is not None:
+                from meikipop.utils.macos import require_accessibility_permission
+                require_accessibility_permission()
             from pynput._util.darwin import HIServices
             # PyObjC's lazy symbol cache is not thread-safe. Keyboard and mouse
             # listeners both use this function as soon as their threads start.
