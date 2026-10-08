@@ -141,6 +141,12 @@ class SectionScroller(QObject):
         self._index()
         return [0, *(max(0, self._top(position)) for position in self._positions[1:])]
 
+    def section_starts(self):
+        tops = self.section_tops()
+        heading = self.header.height() if self._headings and not self.preview else 0
+        return [0, *(max(0, top - (0 if position in self._headings else heading))
+                     for position, top in zip(self._positions[1:], tops[1:]))]
+
     def _refresh_header(self):
         self._index()
         self._update_progress()
@@ -164,9 +170,7 @@ class SectionScroller(QObject):
         maximum = bar.maximum()
         if not maximum:
             return 0.0
-        heading = self.header.height() if self._headings and not self.preview else 0
-        boundaries = sorted({0, maximum, *(min(maximum, max(0, top - heading))
-                                         for top in self.section_tops())})
+        boundaries = sorted({0, maximum, *(min(maximum, top) for top in self.section_starts())})
         value = bar.value()
         if value >= maximum:
             return 1.0
@@ -219,12 +223,14 @@ class SectionScroller(QObject):
         height = max(1, self.browser.viewport().height() - heading_height)
         overlap = min(height // 3, max(24, self.browser.fontMetrics().lineSpacing() * 2))
         step = max(1, height - overlap)
-        tops = [max(0, top - heading_height) for top in self.section_tops()]
+        tops = self.section_starts()
         stops = {0, bar.maximum()}
         for start, end in zip(tops, [*tops[1:], bar.maximum() + height]):
             stops.add(min(start, bar.maximum()))
             if end - start > height:
-                stops.update(range(start + step, min(end, bar.maximum()), step))
+                last_page = min(end - height, bar.maximum())
+                stops.update(range(start + step, last_page, step))
+                stops.add(last_page)
         return sorted(stops)
 
     def _move(self, target):

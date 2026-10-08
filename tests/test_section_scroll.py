@@ -121,6 +121,21 @@ class SectionScrollTests(unittest.TestCase):
         self.wheel()
         self.assertEqual(self.bar.value(), self.bar.maximum())
 
+    def test_new_headword_lands_at_top_and_long_pages_stop_before_boundary(self):
+        entries = tuple(Entry(str(i), term, "", "Source", "ja", ("line\n" * 20,))
+                        for i, term in enumerate(("猫", "犬", "鳥")))
+        self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", entries), expanded=("Source",)))
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        second = self.scroller._top(self.scroller._headings[1])
+        stops = self.scroller.stops()
+        height = self.browser.viewport().height() - self.scroller.header.height()
+        self.assertIn(second, stops)
+        self.assertEqual(max(stop for stop in stops if stop < second), second - height)
+        self.bar.setValue(second)
+        self.assertFalse(self.scroller.header.isVisible())
+        self.assertEqual(self.browser.cursorRect(self.browser.document().find("犬")).top(), 0)
+
     def finish_animation(self):
         self.scroller.animation.setCurrentTime(self.scroller.animation.duration())
 
