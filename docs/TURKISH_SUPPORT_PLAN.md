@@ -75,8 +75,10 @@ clients remain explicit compatibility entrypoints.
    including nested Turkdict sections; toggles preserve the reading position and
    history restores their state. Embedded Turkish source headings share the popup's
    source style; expansion links stay separate from selection lookup after scrolling.
-   Audio orders enabled Online pronunciations, System voice and Local recordings in one
-   per-profile list with checkboxes, drag/drop and arrows, preserving existing choices. Online
+   Audio orders named database sources, Online pronunciations and System voice in one
+   per-profile list with checkboxes, drag/drop and arrows. Importing a database enables
+   its sources ahead of online/system voice; later edits preserve explicit priorities.
+   Remove disconnects the database without deleting it; there is no aggregate local entry. Online
    retrieves language-matched Wiktionary/Lingua Libre files from Wikimedia Commons on
    the audio worker through indexed title searches with exact language/word filters, bounded downloads, cached
    misses and fallback to the next enabled source. System voice can run before the network.

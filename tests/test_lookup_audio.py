@@ -139,3 +139,71 @@ class SentenceAudioTests(unittest.TestCase):
             finally:
                 audio.shutdown()
                 audio.deleteLater()
+
+
+class AudioSourceSettingsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        from meikipop.gui.audio_sources import AudioSources
+        worker = patch("meikipop.gui.audio_sources.AudioWorker")
+        worker.start()
+        self.addCleanup(worker.stop)
+        self.sources = AudioSources()
+        self.addCleanup(self.sources.deleteLater)
+        self.addCleanup(self.sources.shutdown)
+
+    def test_import_enables_named_sources_before_fallbacks_in_one_update(self):
+        self.sources.load(["tts", "online"], "android.db", prefer_local=True)
+        changed = Mock()
+        self.sources.changed.connect(changed)
+        self.sources.received("android.db", ["jpod", "nhk"])
+        self.assertEqual(self.sources.order(), ["db:jpod", "db:nhk", "tts", "online"])
+        self.assertEqual(self.sources.items.count(), 4)
+        changed.assert_called_once_with()
+
+    def test_reload_preserves_custom_priority_and_disabled_sources(self):
+        self.sources.load(["online", "db:nhk", "tts"], "android.db")
+        self.sources.received("android.db", ["jpod", "nhk"])
+        self.assertEqual(self.sources.order(), ["online", "db:nhk", "tts"])
+        self.assertEqual(self.sources.items.count(), 4)
+        self.sources.load([], "android.db")
+        self.sources.received("android.db", ["jpod", "nhk"])
+        self.assertEqual(self.sources.order(), [])
+        self.assertEqual(self.sources.items.count(), 4)
+
+    def test_legacy_aggregate_expands_once_without_remaining_in_list(self):
+        self.sources.load(["tts", "online", "db:nhk", "database"], "android.db")
+        self.sources.received("android.db", ["jpod", "nhk"])
+        self.assertEqual(self.sources.order(), ["db:nhk", "db:jpod", "tts", "online"])
+        self.assertEqual(self.sources.items.count(), 4)
+
+    def test_removal_ignores_pending_database_response(self):
+        self.sources.load(["db:jpod", "tts"], "android.db")
+        self.sources.load(self.sources.order(), "")
+        self.sources.received("android.db", ["jpod", "nhk"])
+        self.assertEqual(self.sources.order(), ["tts"])
+        self.assertEqual(self.sources.items.count(), 2)
+
+    def test_remove_button_clears_profile_and_keeps_database_file(self):
+        from meikipop.gui.dictionary_manager import SetupDialog
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "android.db"
+            path.touch()
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/audio_database", str(path))
+            settings.setValue("profiles/ja/audio_priority", ["db:jpod", "online", "tts"])
+            settings.setValue("profiles/tr/audio_database", "other.db")
+            dialog = SetupDialog(Path(folder) / "library", settings, Mock())
+            try:
+                dialog.audio_remove.click()
+                self.assertTrue(path.exists())
+                self.assertEqual(settings.value("profiles/ja/audio_database"), "")
+                self.assertEqual(settings.value("profiles/ja/audio_priority"), ["online", "tts"])
+                self.assertEqual(settings.value("profiles/tr/audio_database"), "other.db")
+                self.assertTrue(dialog.audio_remove.isHidden())
+            finally:
+                dialog.audio_sources.shutdown()
+                dialog.deleteLater()

@@ -14,6 +14,7 @@ class AudioSources(QWidget):
         super().__init__()
         self.worker = None
         self.path = ""
+        self._prefer_local = False
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.items = QListWidget()
@@ -38,20 +39,20 @@ class AudioSources(QWidget):
         return [self.items.item(index).data(Qt.ItemDataRole.UserRole) for index in range(self.items.count())
                 if self.items.item(index).checkState() == Qt.CheckState.Checked]
 
-    def load(self, sources, path):
+    def load(self, sources, path, *, prefer_local=False):
+        self.path = path
+        self._prefer_local = prefer_local or "database" in sources
         with QSignalBlocker(self.items):
             self.items.clear()
-            for source in dict.fromkeys([*sources, "online", "tts", "database"]):
-                self.add(source, enabled=source in sources)
+            for source in dict.fromkeys([*sources, "online", "tts"]):
+                if source != "database" and (path or not source.startswith("db:")):
+                    self.add(source, enabled=source in sources)
             self.items.setCurrentRow(0)
-        if path and path != self.path:
-            self.path = path
+        if path:
             if self.worker is None:
                 self.worker = AudioWorker(lambda _: None, self.report_status, sources_callback=self.sources_ready.emit)
                 self.worker.start()
             self.worker.submit(AudioRequest(0, None, path, ()))
-        elif not path:
-            self.path = ""
 
     def report_status(self, text):
         if not text.startswith("Audio database ready"):
@@ -67,15 +68,25 @@ class AudioSources(QWidget):
     def received(self, path, sources):
         if path != self.path:
             return
+        before = self.order()
+        available = list(dict.fromkeys("db:" + source for source in sources))
         order = [self.items.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.items.count())]
-        position = order.index("database") if "database" in order else len(order)
-        added = False
-        for source in sources:
-            if "db:" + source not in order:
-                self.add("db:" + source, position, enabled="database" in self.order())
-                position += 1
-                added = True
-        if added:
+        order = [source for source in order if not source.startswith("db:") or source in available]
+        local = list(dict.fromkeys([*(source for source in order if source.startswith("db:")), *available]))
+        enabled = set(before)
+        if self._prefer_local:
+            order = local + [source for source in order if not source.startswith("db:")]
+            enabled.update(local)
+        else:
+            order += [source for source in local if source not in order]
+        changed = self._prefer_local or before != [source for source in order if source in enabled]
+        self._prefer_local = False
+        with QSignalBlocker(self.items):
+            self.items.clear()
+            for source in order:
+                self.add(source, enabled=source in enabled)
+            self.items.setCurrentRow(0)
+        if changed:
             self.changed.emit()
 
     def move(self, delta):

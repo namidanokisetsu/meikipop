@@ -364,6 +364,10 @@ class SetupDialog(QDialog):
         database_layout.setContentsMargins(0, 0, 0, 0)
         database_layout.addWidget(self.audio_database, 1)
         database_layout.addWidget(audio_browse)
+        self.audio_remove = QPushButton("Remove")
+        self.audio_remove.setToolTip("Disconnect this database without deleting its file")
+        self.audio_remove.clicked.connect(self.remove_audio_database)
+        database_layout.addWidget(self.audio_remove)
         audio_detail_form.addRow("Local database", self.audio_database_row)
         from meikipop.gui.audio_sources import AudioSources
         self.audio_sources = AudioSources()
@@ -704,8 +708,8 @@ class SetupDialog(QDialog):
         self.audio_volume.setValue(self.settings.value(f"profiles/{code}/audio_volume", config.audio_volume, type=int))
         from meikipop.audio.sources import database_path, source_order
         self.audio_database.setText(database_path(self.settings, code))
+        self.audio_remove.setVisible(bool(self.audio_database.text()))
         self.audio_sources.load(source_order(self.settings, code), self.audio_database.text())
-        self.show_audio_controls()
         self.language.setCurrentIndex(max(0, self.language.findData(code)))
         self._loading = previous_loading
         if self.parent() is not None:
@@ -757,17 +761,16 @@ class SetupDialog(QDialog):
         self.save_autoplay()
         self.settings.setValue(f"profiles/{code}/audio_volume", self.audio_volume.value())
         self.settings.setValue(f"profiles/{code}/audio_database", self.audio_database.text().strip())
-        order = self.audio_sources.order()
-        self.settings.setValue(f"profiles/{code}/audio_priority", order)
         path = self.audio_database.text().strip()
         if path != self.audio_sources.path:
-            self.audio_sources.load(order, path)
-        self.show_audio_controls()
+            self.audio_sources.load(self.audio_sources.order(), path, prefer_local=True)
+        self.settings.setValue(f"profiles/{code}/audio_priority", self.audio_sources.order())
+        self.audio_remove.setVisible(bool(path))
         self.status.clear()
 
-    def show_audio_controls(self):
-        local = any(source == "database" or source.startswith("db:") for source in self.audio_sources.order())
-        self.audio_form.setRowVisible(self.audio_database_row, local)
+    def remove_audio_database(self):
+        self.audio_database.clear()
+        self.autosave(self.save_audio)
 
     def save_autoplay(self):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/audio_autoplay_mode", self.audio_autoplay.currentData())
