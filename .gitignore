@@ -8,6 +8,9 @@ venv/
 .venv-desktop/
 env/
 .env
+*.p12
+*.pfx
+*.key
 
 # Build artifacts
 dist/

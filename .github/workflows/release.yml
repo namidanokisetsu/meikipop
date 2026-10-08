@@ -11,6 +11,11 @@ jobs:
     uses: ./.github/workflows/build-windows.yml
   build-macos:
     uses: ./.github/workflows/build-macos.yml
+    with:
+      require_signing: true
+    secrets:
+      MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+      MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
 
   release:
     needs: [ build-windows, build-macos ]

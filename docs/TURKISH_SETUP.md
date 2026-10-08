@@ -29,11 +29,24 @@ System Settings → Privacy & Security, then reopen Meikipop. Shortcuts can be
 recorded and saved before permission is granted. Command and Control are separate;
 re-record an older shortcut if it used the wrong modifier. Packaged diagnostics
 are in `~/Library/Caches/meikipop/meikipop.log` and `meikipop-runtime.log`.
-The DMGs are ad-hoc signed, without Apple notarization. Apple Vision replaces the
-Windows OCR engines. Eligible pin clicks are consumed on Windows and macOS.
-After an update, macOS can retain permissions for the old signature. If a switch
+Release DMGs use a persistent self-signed certificate, without Apple notarization;
+Gatekeeper warnings remain. PR builds remain ad-hoc signed. The switch from older
+builds may require granting permissions once more; retention across subsequent
+updates still needs hands-on verification. Apple Vision replaces the Windows OCR
+engines. Eligible pin clicks are consumed on Windows and macOS.
+If macOS retains permissions for an old signature and a switch
 is on but access still fails, remove Meikipop from that list and add the installed
 app again, then reopen it.
+
+Release maintainers: create the signing identity once with OpenSSL 3 and
+`bash packaging/create-macos-signing.sh /absolute/private/backup-directory`.
+Store the base64-encoded `signing.p12` as `MACOS_SIGNING_P12` and the contents of
+`password.txt` as `MACOS_SIGNING_PASSWORD` in repository Actions secrets. Keep both
+files backed up outside Git and reuse them for both architectures and every release.
+The certificate contains only `Meikipop Signing` and expires after ten years;
+replacing it may require users to grant permissions again. Release workflows fail
+if either secret is absent. Signing uses a temporary keychain and restores its
+search list afterward; it does not install a trusted root certificate.
 
 For a source checkout:
 

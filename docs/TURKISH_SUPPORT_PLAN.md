@@ -178,8 +178,10 @@ clients remain explicit compatibility entrypoints.
   and base-form models explicitly; frozen builds use bundled setup workers.
   Existing settings skip the initial suggestion. Later dismisses each profile's
   resource suggestion permanently; individual installers remain in Settings.
-  Installer upgrades/uninstall preserve user data. Publisher signing and Apple
-  notarization still require release credentials.
+  Installer upgrades/uninstall preserve user data. macOS releases use a persistent
+  self-signed identity from Actions secrets; PR builds remain ad-hoc signed.
+  Permission retention across updates still needs hands-on acceptance. Windows
+  publisher signing and Apple notarization still require release credentials.
   Selecting a language offers individually optional dictionaries and supported
   models. Translation defaults unchecked, with lightweight/quality choices;
   Later starts without downloads. New installations have Japanese only; Turkish

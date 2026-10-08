@@ -2,7 +2,21 @@ name: reusable macos build
 
 on:
   workflow_call:
+    inputs:
+      require_signing:
+        type: boolean
+        default: false
+    secrets:
+      MACOS_SIGNING_P12:
+        required: false
+      MACOS_SIGNING_PASSWORD:
+        required: false
   workflow_dispatch:
+    inputs:
+      require_signing:
+        description: Require persistent release signing
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -24,6 +38,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: check signing credentials
+        env:
+          REQUIRE_SIGNING: ${{ inputs.require_signing }}
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        run: |
+          if [[ "$REQUIRE_SIGNING" == true || -n "$MACOS_SIGNING_P12" || -n "$MACOS_SIGNING_PASSWORD" ]]; then
+            test -n "$MACOS_SIGNING_P12" && test -n "$MACOS_SIGNING_PASSWORD" || {
+              echo 'Both macOS signing secrets are required.' >&2
+              exit 1
+            }
+          fi
 
       - name: set up python
         uses: actions/setup-python@v5
@@ -54,6 +81,15 @@ jobs:
 
       - name: build with pyinstaller (macos)
         run: pyinstaller meikipop.macos.spec
+
+      - name: sign release app
+        env:
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        run: |
+          if [[ -n "$MACOS_SIGNING_P12" ]]; then
+            bash packaging/sign-macos.sh dist/meikipop.app
+          fi
 
       - name: verify app resources and signature
         run: |
