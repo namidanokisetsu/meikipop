@@ -257,7 +257,7 @@ class _GlossConverter(StructuredContentConverter):
             data = node.get("data", {})
             kind = str(data.get("content", "")) if isinstance(data, dict) else ""
             semantic_kind = re.sub(r"[-_]", "", kind).lower()
-            if kind == "backlink":
+            if kind == "backlink" or semantic_kind == "formslabel":
                 return ""
             if semantic_kind in ("forms", "formstable", "formslist"):
                 self.clipped = True
@@ -342,6 +342,21 @@ class _GlossConverter(StructuredContentConverter):
                     node["content"] = labels[source_class]
             if kind in ("sense-groups", "sense-group"):
                 tag = node["tag"] = "div"
+            if kind == "sense-group" and isinstance(content, list):
+                # Keep leading POS tags beside the first sense, not on an empty-height line.
+                children = list(content)
+                for index, child in enumerate(children):
+                    if not isinstance(child, dict):
+                        break
+                    child_data = child.get("data", {})
+                    if not isinstance(child_data, dict):
+                        break
+                    if child_data.get("content") == "sense" and index:
+                        children[index] = dict(child, tag="span")
+                        break
+                    if child_data.get("class") != "tag" and child_data.get("content") != "tag":
+                        break
+                node["content"] = children
             # Keep a small, safe subset of typography. Dictionary CSS must not
             # inject attributes, override the theme or stretch the popup.
             safe_style = {}

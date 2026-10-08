@@ -81,6 +81,27 @@ class DictionaryPresentationTests(unittest.TestCase):
                 self.assertIn("Forms", html)
                 self.assertIn("Alternative spelling", self.render(value, expanded=("Fixture",)))
 
+    def test_jitendex_tags_share_first_meaning_line_and_forms_label_is_not_repeated(self):
+        definition = {"type": "structured-content", "content": [
+            {"tag": "div", "data": {"content": "sense-group"}, "content": [
+                {"tag": "span", "data": {"class": "tag", "content": "part-of-speech-info"},
+                 "content": "noun"},
+                {"tag": "div", "data": {"content": "sense"}, "content": [
+                    {"tag": "ul", "data": {"content": "glossary"},
+                     "content": {"tag": "li", "content": "Tokyo"}},
+                    {"tag": "div", "content": "Example sentence"}]},
+                {"tag": "div", "data": {"content": "sense"}, "content": "Second meaning"}]},
+            {"tag": "div", "data": {"content": "forms"}, "content": [
+                {"tag": "span", "data": {"class": "tag", "content": "forms-label"},
+                 "content": "forms"},
+                {"tag": "table", "content": {"tag": "tr", "content": [
+                    {"tag": "td", "content": "東京"}, {"tag": "td", "content": "東亰"}]}}]}]}
+        text = self.render(result((definition,)), expanded=("Fixture",))
+        self.assertIn("[noun] Tokyo\nExample sentence\nSecond meaning", text)
+        self.assertEqual(text.lower().count("forms"), 1)
+        self.assertIn("東亰", text)
+        self.assertEqual(definition["content"][0]["content"][1]["tag"], "div")
+
     def test_semantic_meanings_collapse_without_discarding_full_content(self):
         value = result(({"type": "structured-content", "content": {"tag": "div", "content": [
             {"tag": "div", "data": {"meaning": ""}, "content": f"Sense {i}"}
