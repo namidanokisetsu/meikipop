@@ -207,7 +207,7 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertFalse(window.anki_button.icon().isNull())
         self.assertEqual(window.anki_button.size(), window.copy_button.size())
         layout = window.actions_row.layout()
-        self.assertEqual(layout.indexOf(window.anki_button), 0)
+        self.assertEqual(layout.indexOf(window.anki_button), 2)
         window._set_peek(True)
         self.assertFalse(window.anki_button.isVisible())
         window.pin.setChecked(True)

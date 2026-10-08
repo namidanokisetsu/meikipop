@@ -744,7 +744,7 @@ class QuickLookupWindow(QDialog):
         self.status.setWordWrap(True)
         self.status.hide()
         layout.addWidget(self.status)
-        toolbar.insertWidget(0, self.anki_button)
+        toolbar.addWidget(self.anki_button)
         toolbar.addWidget(self.copy_button)
         toolbar.addWidget(close)
         layout.addWidget(self.actions_row)
