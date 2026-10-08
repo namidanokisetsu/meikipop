@@ -26,7 +26,8 @@ class PitchTests(unittest.TestCase):
             Pitch("Third", "ねこ", 0), Pitch("Fourth", "ねこ", 1, devoice=(1,)),
             Pitch("Fifth", "ねこ", 1, tags=("<rare>",)),
         ])
-        self.assertEqual(html.count("<p "), 4)
+        self.assertEqual(html.count("<p "), 1)
+        self.assertEqual(html.count("[1]"), 3)
         self.assertNotIn("First", html)
         self.assertNotIn("Second", html)
         self.assertIn("devoiced: 1", html)

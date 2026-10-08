@@ -86,6 +86,5 @@ def render_pitches(pitches):
             if indices:
                 annotations.append(f'{label}: {", ".join(map(str, indices))}')
         suffix = " · " + escape(" · ".join(annotations)) if annotations else ""
-        rows.append(f'<p style="margin:0"><small>{"".join(parts)} [{escape(str(pitch.position))}]'
-                    f'{suffix}</small></p>')
-    return "".join(dict.fromkeys(rows))
+        rows.append(f'{"".join(parts)} [{escape(str(pitch.position))}]{suffix}')
+    return '<p style="margin:0"><small>' + ' · '.join(dict.fromkeys(rows)) + '</small></p>' if rows else ""
