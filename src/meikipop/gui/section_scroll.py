@@ -44,7 +44,7 @@ class SectionScroller(QObject):
         self._heading = None
         self._wheel_delta = 0
         self._gesture_delta = 0
-        self._gesture_start = None
+        self._gesture_flipped = False
         self._target = None
         from meikipop.utils.window_focus import reduce_motion_enabled
         self.animation_enabled = not reduce_motion_enabled()
@@ -53,8 +53,8 @@ class SectionScroller(QObject):
         self.animation.finished.connect(self._animation_finished)
         self._idle = QTimer(self)
         self._idle.setSingleShot(True)
-        self._idle.setInterval(120)
-        self._idle.timeout.connect(self._settle)
+        self._idle.setInterval(180)
+        self._idle.timeout.connect(self._reset_gesture)
         self._refresh = QTimer(self)
         self._refresh.setSingleShot(True)
         self._refresh.timeout.connect(self._refresh_header)
@@ -98,7 +98,7 @@ class SectionScroller(QObject):
         self._target = None
         self._idle.stop()
         self._wheel_delta = self._gesture_delta = 0
-        self._gesture_start = None
+        self._gesture_flipped = False
 
     def _animation_finished(self):
         self._target = None
@@ -246,37 +246,24 @@ class SectionScroller(QObject):
             bar.setValue(target)
             self._target = None
             return
-        self.animation.setDuration(min(280, 140 + distance // 4))
+        self.animation.setDuration(180)
         self.animation.setStartValue(bar.value())
         self.animation.setEndValue(target)
         self.animation.start()
 
-    def advance(self, direction, page=False):
-        bar = self.browser.verticalScrollBar()
-        value = self._target if self._target is not None else bar.value()
+    def advance(self, direction):
+        if self._target is not None:
+            return
+        value = self.browser.verticalScrollBar().value()
         stops = self.stops()
-        if page:
-            self._move(value + direction * max(1, self.browser.viewport().height() - 24))
-        elif direction > 0:
+        if direction > 0:
             self._move(stops[min(bisect_right(stops, value), len(stops) - 1)])
         else:
             self._move(stops[max(0, bisect_left(stops, value) - 1)])
 
-    def _settle(self):
-        if self._gesture_start is None:
-            return
-        value = self.browser.verticalScrollBar().value()
-        stops = self.stops()
-        target = min(stops, key=lambda stop: abs(stop - value))
-        # A deliberate short flick still advances; long gestures retain momentum.
-        if abs(self._gesture_delta) >= 40:
-            if self._gesture_delta < 0 and target <= self._gesture_start:
-                target = stops[min(bisect_right(stops, self._gesture_start), len(stops) - 1)]
-            elif self._gesture_delta > 0 and target >= self._gesture_start:
-                target = stops[max(0, bisect_left(stops, self._gesture_start) - 1)]
-        self._gesture_start = None
-        self._gesture_delta = 0
-        self._move(target)
+    def _reset_gesture(self):
+        self._gesture_flipped = False
+        self._gesture_delta = self._wheel_delta = 0
 
     def eventFilter(self, watched, event):
         kind = event.type()
@@ -292,9 +279,8 @@ class SectionScroller(QObject):
             key = event.key()
             if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
                 self._idle.stop()
-                self._gesture_start = None
-                self.advance(-1 if key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp) else 1,
-                             page=key in (Qt.Key.Key_PageUp, Qt.Key.Key_PageDown))
+                self._reset_gesture()
+                self.advance(-1 if key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp) else 1)
             elif key in (Qt.Key.Key_Home, Qt.Key.Key_End):
                 self.cancel()
                 self._move(0 if key == Qt.Key.Key_Home else self.browser.verticalScrollBar().maximum())
@@ -309,20 +295,33 @@ class SectionScroller(QObject):
         if abs(delta.x()) > abs(delta.y()):
             return False
         if not pixel.isNull() or phase != Qt.ScrollPhase.NoScrollPhase:
-            if phase == Qt.ScrollPhase.ScrollBegin or self._gesture_start is None:
-                self.cancel()
-                self._gesture_start = self.browser.verticalScrollBar().value()
-            movement = pixel.y() if not pixel.isNull() else angle.y() / 3
-            self._gesture_delta += movement
-            bar = self.browser.verticalScrollBar()
-            bar.setValue(round(bar.value() - movement))
-            # Native trackpad momentum is already decelerated; do not synthesize it twice.
-            self._idle.start()
+            if phase == Qt.ScrollPhase.ScrollBegin:
+                self._idle.stop()
+                self._reset_gesture()
+            if phase == Qt.ScrollPhase.ScrollEnd:
+                self._reset_gesture()
+            elif phase != Qt.ScrollPhase.ScrollMomentum:
+                movement = pixel.y() if not pixel.isNull() else angle.y() / 3
+                if not self._gesture_flipped:
+                    if movement * self._gesture_delta < 0:
+                        self._gesture_delta = 0
+                    self._gesture_delta += movement
+                    if abs(self._gesture_delta) >= 60:
+                        self._gesture_flipped = True
+                        self.advance(1 if self._gesture_delta < 0 else -1)
+            # Phased gestures stay latched through pauses and native momentum.
+            if phase == Qt.ScrollPhase.NoScrollPhase:
+                self._idle.start()
         else:
-            self._wheel_delta += angle.y()
-            while abs(self._wheel_delta) >= 120:
-                direction = 1 if self._wheel_delta < 0 else -1
-                self.advance(direction)
-                self._wheel_delta += direction * 120
+            if self._target is not None:
+                self._wheel_delta = 0
+            else:
+                if angle.y() * self._wheel_delta < 0:
+                    self._wheel_delta = 0
+                self._wheel_delta += angle.y()
+                if abs(self._wheel_delta) >= 120:
+                    self.advance(1 if self._wheel_delta < 0 else -1)
+                    self._wheel_delta = 0
+            self._idle.start()
         event.accept()
         return True

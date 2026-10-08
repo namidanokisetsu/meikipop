@@ -139,46 +139,64 @@ class SectionScrollTests(unittest.TestCase):
     def finish_animation(self):
         self.scroller.animation.setCurrentTime(self.scroller.animation.duration())
 
-    def test_trackpad_moves_continuously_and_keeps_native_momentum(self):
+    def test_trackpad_holds_then_flips_once_ignoring_momentum(self):
         self.render(lines=4)
         self.scroller.set_enabled(True)
         self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
+        for movement in (-20, -25):
+            self.wheel(angle=0, pixel=movement, phase=Qt.ScrollPhase.ScrollUpdate)
+            self.assertEqual(self.bar.value(), 0)
+            self.assertIsNone(self.scroller._target)
         self.wheel(angle=0, pixel=-20, phase=Qt.ScrollPhase.ScrollUpdate)
-        self.assertEqual(self.bar.value(), 20)
-        self.wheel(angle=0, pixel=-25, phase=Qt.ScrollPhase.ScrollUpdate)
-        self.assertEqual(self.bar.value(), 45)
-        self.wheel(angle=0, pixel=-100, phase=Qt.ScrollPhase.ScrollMomentum)
-        self.assertEqual(self.bar.value(), 145)
-        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollEnd)
-        self.scroller._idle.timeout.emit()
         self.finish_animation()
-        self.assertIn(self.bar.value(), self.scroller.stops())
-        self.assertGreater(self.bar.value(), self.scroller.stops()[1])
+        second = self.scroller.stops()[1]
+        self.assertEqual(self.bar.value(), second)
+        for phase in (Qt.ScrollPhase.ScrollUpdate, Qt.ScrollPhase.ScrollMomentum):
+            self.wheel(angle=0, pixel=-500, phase=phase)
+            self.assertEqual(self.bar.value(), second)
+            self.assertIsNone(self.scroller._target)
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollEnd)
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
+        self.wheel(angle=0, pixel=65, phase=Qt.ScrollPhase.ScrollUpdate)
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), 0)
 
-    def test_unphased_trackpad_settles_after_idle(self):
+    def test_unphased_trackpad_requires_idle_before_another_flip(self):
         self.scroller.set_enabled(True)
         self.wheel(angle=0, pixel=-45)
+        self.assertEqual(self.bar.value(), 0)
         self.wheel(angle=0, pixel=-45)
-        self.assertEqual(self.bar.value(), 90)
-        target = min(self.scroller.stops(), key=lambda value: abs(value - 90))
-        self.scroller._idle.timeout.emit()
         self.finish_animation()
-        self.assertEqual(self.bar.value(), target)
+        self.assertEqual(self.bar.value(), self.scroller.stops()[1])
+        self.wheel(angle=0, pixel=-200)
+        self.assertIsNone(self.scroller._target)
+        self.scroller._idle.timeout.emit()
+        self.wheel(angle=0, pixel=-65)
+        self.finish_animation()
+        self.assertEqual(self.bar.value(), self.scroller.stops()[2])
 
-    def test_repeated_steps_retarget_and_reverse_without_jumping(self):
+    def test_wheel_burst_does_not_queue_or_skip_pages(self):
         self.scroller.set_enabled(True)
         stops = self.scroller.stops()
-        self.wheel()
-        self.assertEqual(self.bar.value(), 0)
+        self.wheel(angle=-1200)
         self.scroller.animation.setCurrentTime(60)
         self.assertGreater(self.bar.value(), 0)
         self.assertLess(self.bar.value(), stops[1])
         self.wheel()
         self.finish_animation()
-        self.assertEqual(self.bar.value(), stops[2])
+        self.assertEqual(self.bar.value(), stops[1])
         self.wheel(angle=120)
         self.finish_animation()
-        self.assertEqual(self.bar.value(), stops[1])
+        self.assertEqual(self.bar.value(), 0)
+
+    def test_small_gesture_and_orphan_momentum_do_not_move(self):
+        self.scroller.set_enabled(True)
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
+        self.wheel(angle=0, pixel=-25, phase=Qt.ScrollPhase.ScrollUpdate)
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollEnd)
+        self.wheel(angle=0, pixel=-500, phase=Qt.ScrollPhase.ScrollMomentum)
+        self.assertEqual(self.bar.value(), 0)
+        self.assertIsNone(self.scroller._target)
 
     def test_arrow_page_and_boundary_keys_preserve_text_selection(self):
         self.scroller.set_enabled(True)
