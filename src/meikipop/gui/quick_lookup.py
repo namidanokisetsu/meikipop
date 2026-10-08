@@ -651,7 +651,7 @@ class LocalDictionaryBrowser(RubyBrowser):
     def scrollContentsBy(self, dx, dy):
         super().scrollContentsBy(dx, dy)
         if hasattr(self, "section_scroll"):
-            self.section_scroll.header.move(0, 0)
+            self.section_scroll._update_header()
         self.scrolled.emit()
 
     def loadResource(self, resource_type, name):
@@ -1911,6 +1911,11 @@ class QuickLookupWindow(QDialog):
             self._autoplay()
 
     def eventFilter(self, watched, event):
+        if (event.type() == QEvent.Type.KeyPress and watched is getattr(self, "search", None)
+                and self.browser.section_scroll.enabled
+                and event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown)
+                and self.browser.section_scroll.eventFilter(self.browser, event)):
+            return True
         if (event.type() == QEvent.Type.Paint and hasattr(self, "browser")
                 and watched is self.browser.viewport() and self._document_revision is not None
                 and self._paint_revision != self._document_revision):

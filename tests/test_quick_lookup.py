@@ -51,6 +51,29 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_search_arrows_navigate_sticky_sections_without_editing_query(self):
+        browser = self.window.browser
+        browser.setHtml(render_result(SearchResult("猫", "ja", "en", tuple(
+            entry(source=f"Source {i}", definitions=("meaning\n" * 20,)) for i in range(4))),
+            expanded=tuple(f"Source {i}" for i in range(4))))
+        self.window.search.setText("猫")
+        self.window.search.selectAll()
+        browser.section_scroll.set_enabled(True)
+        browser.section_scroll.animation_enabled = False
+        self.window.show()
+        self.app.processEvents()
+        self.window.search.setFocus()
+        bar = browser.verticalScrollBar()
+        bar.setValue(0)
+        QTest.keyClick(self.window.search, Qt.Key.Key_Down)
+        self.assertGreater(bar.value(), 0)
+        self.assertEqual(self.window.search.text(), "猫")
+        self.assertEqual(self.window.search.selectedText(), "猫")
+        QTest.keyClick(self.window.search, Qt.Key.Key_Up)
+        self.assertEqual(bar.value(), 0)
+        QTest.keyClick(self.window.search, Qt.Key.Key_Down, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(bar.value(), 0)
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
