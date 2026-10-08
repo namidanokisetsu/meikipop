@@ -94,5 +94,6 @@ class DesktopAccessTests(unittest.TestCase):
                     patch("meikipop.utils.logger.setup_logging"), \
                     patch("meikipop.gui.single_instance.SingleInstance") as instance:
                 instance.return_value.start.return_value = False
-                self.assertEqual(main(arguments), 0)
+                    with patch("meikipop.utils.startup.hold_installer_mutex"):
+                        self.assertEqual(main(arguments), 0)
                 instance.return_value.start.assert_called_once_with("", background)
