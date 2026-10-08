@@ -289,12 +289,12 @@ class TranslationSetupTests(unittest.TestCase):
         self.assertEqual(load_profile_settings(self.dialog.settings, "ja").profile, "lightweight")
         self.assertEqual(load_profile_settings(self.dialog.settings, "tr").profile, "quality")
         changed.assert_not_called()
-        self.assertFalse(self.dialog.translation_endpoint.isEnabled())
+        self.assertTrue(self.dialog.translation_endpoint.isHidden())
 
     def test_custom_address_is_validated_before_saving_and_has_no_download_action(self):
         self.dialog.translation_mode.setCurrentIndex(2)
-        self.assertTrue(self.dialog.translation_endpoint.isEnabled())
-        self.assertFalse(self.dialog.model_button.isEnabled())
+        self.assertFalse(self.dialog.translation_endpoint.isHidden())
+        self.assertTrue(all(row.isHidden() for row in self.dialog.resources.model_rows.values()))
         self.dialog.translation_endpoint.setText("https://outside.invalid/v1")
         self.assertFalse(self.dialog.save_translation())
         self.assertFalse((self.translation_directory / "settings.json").exists())
@@ -320,7 +320,7 @@ class TranslationSetupTests(unittest.TestCase):
 
         manager = SimpleNamespace(install_model=install)
         with patch.dict(sys.modules, {"meikipop.scripts.translation_server": manager}):
-            self.dialog.choose_model()
+            self.dialog.resources.downloads["quality"].click()
             self.assertTrue(started.wait(2))
             self.assertFalse(self.dialog.translation_mode.isEnabled())
             self.dialog.cancel_operation()
@@ -331,7 +331,7 @@ class TranslationSetupTests(unittest.TestCase):
         self.assertIsNone(self.dialog.operation)
         self.assertNotEqual(called_threads[0], main_thread)
         self.assertIn("cancelled", self.dialog.status.text())
-        self.assertTrue(self.dialog.model_button.isEnabled())
+        self.assertTrue(self.dialog.resources.downloads["quality"].isEnabled())
 
 
 if __name__ == "__main__":

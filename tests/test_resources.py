@@ -31,7 +31,7 @@ class ResourceTests(unittest.TestCase):
                 (root / "model.gguf").write_bytes(b"partial")
                 self.assertFalse(translation_ready("lightweight"))
 
-    def test_removing_recommended_dictionary_clears_its_ready_indicator(self):
+    def test_removing_recommended_dictionary_restores_download_action(self):
         import threading
         import zipfile
         from meikipop.dictionary.library import import_yomitan, remove_dictionary
@@ -48,10 +48,10 @@ class ResourceTests(unittest.TestCase):
                     patch("meikipop.gui.resources.translation_ready", return_value=False):
                 dialog = SetupDialog(root / "library", settings, Mock())
                 try:
-                    self.assertEqual(dialog.resources.indicators["dictionary"].text(), "● Installed")
+                    self.assertTrue(dialog.resources.dictionary_install.isHidden())
                     remove_dictionary(root / "library", pack.name, lambda: None, threading.Event())
                     dialog.resources.refresh()
-                    self.assertEqual(dialog.resources.indicators["dictionary"].text(), "○ Not installed")
+                    self.assertFalse(dialog.resources.dictionary_install.isHidden())
                 finally:
                     dialog.deleteLater()
                     self.app.processEvents()
@@ -67,21 +67,20 @@ class ResourceTests(unittest.TestCase):
                 try:
                     resources = dialog.resources
                     self.assertEqual([dialog.tabs.tabText(i) for i in range(dialog.tabs.count())],
-                                     ["Lookup", "Dictionaries", "Appearance", "Integrations"])
+                                     ["Lookup", "Dictionaries", "Appearance", "Audio", "Translation", "Anki"])
                     dialog.show_anki()
-                    self.assertIs(dialog.tabs.currentWidget(), dialog.integrations_tab)
-                    self.assertIs(dialog.integration_pages.currentWidget(), dialog.anki)
+                    self.assertIs(dialog.tabs.currentWidget(), dialog.anki_tab)
                     dialog.show_audio()
-                    self.assertIs(dialog.integration_pages.currentWidget(), dialog.audio_tab)
+                    self.assertIs(dialog.tabs.currentWidget(), dialog.audio_tab)
                     self.assertFalse(resources.downloads["lightweight"].isEnabled())
                     self.assertTrue(resources.downloads["quality"].isEnabled())
                     dialog.translation_mode.setCurrentIndex(dialog.translation_mode.findData("lightweight"))
                     self.assertEqual(load_profile_settings(settings, "ja").profile, "lightweight")
-                    self.assertIn("used by this profile", resources.indicators["lightweight"].text())
+                    self.assertTrue(resources.model_rows["lightweight"].isHidden())
                     dialog.sync_profile("tr")
                     self.assertEqual(load_profile_settings(settings, "tr").profile, "quality")
                     self.assertFalse(resources.downloads["lightweight"].isEnabled())
-                    self.assertNotIn("used by this profile", resources.indicators["lightweight"].text())
+                    self.assertFalse(resources.model_rows["quality"].isHidden())
                     with patch.object(dialog, "begin_operation") as install:
                         resources.downloads["quality"].click()
                         install.assert_called_once_with([], profile="quality")
@@ -99,10 +98,59 @@ class ResourceTests(unittest.TestCase):
                 try:
                     self.assertFalse(dialog.translation_advanced.isChecked())
                     self.assertTrue(dialog.translation_advanced_widget.isHidden())
-                    self.assertTrue(dialog.translation_autostart.isHidden())
                     self.assertTrue(load_profile_settings(settings, "ja").auto_start)
                     dialog.translation_advanced.click()
                     self.assertFalse(dialog.translation_advanced_widget.isHidden())
                 finally:
                     dialog.deleteLater()
                     self.app.processEvents()
+
+    def test_empty_japanese_settings_only_offer_actionable_downloads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            with patch("meikipop.gui.resources.ocr_ready", return_value=True), \
+                    patch("meikipop.gui.resources.translation_ready", return_value=False):
+                dialog = SetupDialog(Path(directory) / "library", settings, Mock())
+                try:
+                    self.assertTrue(dialog.resources.base_install.isHidden())
+                    self.assertTrue(dialog.resources.ocr_section.isHidden())
+                    self.assertTrue(dialog.combine_frequencies.isHidden())
+                    self.assertTrue(dialog.packs.isHidden())
+                    self.assertTrue(dialog.translation_endpoint.isHidden())
+                    with patch.object(dialog, "begin_operation") as install:
+                        dialog.resources.dictionary_install.click()
+                    dictionaries = install.call_args.kwargs["recommended"]
+                    self.assertEqual([item.pack_title for item in dictionaries],
+                                     ["Jitendex", "KANJIDIC", "BCCWJ", "Kanjium Pitch Accents"])
+                finally:
+                    dialog.deleteLater()
+                    self.app.processEvents()
+
+    def test_recommended_batch_keeps_successful_imports_after_a_failure(self):
+        from meikipop.dictionary.catalog import recommendations
+        from meikipop.gui.dictionary_manager import SetupOperation
+        dictionaries = recommendations("ja")
+        operation = SetupOperation([], "/unused", recommended=dictionaries)
+        results = []
+        operation.finished.connect(lambda status, changed: results.append((status, changed)))
+        with patch("meikipop.dictionary.import_job.background_import", side_effect=[
+                ("Installed", True), RuntimeError("Offline"), ("Installed", True), ("Installed", True)]) as install:
+            operation._run()
+        self.assertEqual(install.call_count, 4)
+        self.assertEqual(results, [("Kanji · KANJIDIC: Offline", True)])
+
+    def test_cancelling_recommended_batch_stops_before_next_dictionary(self):
+        from meikipop.dictionary.catalog import recommendations
+        from meikipop.gui.dictionary_manager import SetupOperation
+        operation = SetupOperation([], "/unused", recommended=recommendations("ja"))
+        results = []
+        operation.finished.connect(lambda status, changed: results.append((status, changed)))
+
+        def install(*args):
+            operation.cancelled.set()
+            return "Installed", True
+
+        with patch("meikipop.dictionary.import_job.background_import", side_effect=install) as download:
+            operation._run()
+        self.assertEqual(download.call_count, 1)
+        self.assertEqual(results, [("Download cancelled.", True)])

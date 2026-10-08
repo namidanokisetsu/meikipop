@@ -1,6 +1,6 @@
 """Compact, keyboard-accessible disclosure for optional settings."""
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QToolButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QToolButton, QVBoxLayout, QWidget
 
 
 class SettingsSection(QWidget):
@@ -19,3 +19,16 @@ class SettingsSection(QWidget):
         self.toggle.toggled.connect(content.setVisible)
         self.toggle.toggled.connect(lambda opened: self.toggle.setArrowType(
             Qt.ArrowType.DownArrow if opened else Qt.ArrowType.RightArrow))
+
+
+class StatusLabel(QLabel):
+    def __init__(self):
+        super().__init__()
+        self.hide()
+
+    def setText(self, text):
+        super().setText(text)
+        self.setVisible(bool(text))
+
+    def clear(self):
+        self.setText("")

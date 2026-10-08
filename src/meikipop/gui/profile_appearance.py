@@ -75,10 +75,10 @@ class ProfileAppearance(QWidget):
         detail_form.addRow(self.snap_scrolling)
         self.font = QFontComboBox()
         detail_form.addRow("Font", self.font)
-        self.headword_furigana = QCheckBox("Furigana")
-        detail_form.addRow("Headword reading", self.headword_furigana)
-        self.definition_furigana = QCheckBox("Furigana")
-        detail_form.addRow("Definition readings", self.definition_furigana)
+        self.headword_furigana = QCheckBox("Headword furigana")
+        detail_form.addRow(self.headword_furigana)
+        self.definition_furigana = QCheckBox("Definition furigana")
+        detail_form.addRow(self.definition_furigana)
         self.controls = {}
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),

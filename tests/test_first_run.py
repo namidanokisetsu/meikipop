@@ -73,7 +73,7 @@ class FirstRunTests(unittest.TestCase):
     def test_language_plan_uses_supported_models_and_native_mac_ocr(self):
         from meikipop.gui.language_setup import language_plan
         japanese = language_plan("ja", platform="win32")
-        self.assertEqual([task.kind for task in japanese], ["dictionary", "ocr", "translation"])
+        self.assertEqual([task.kind for task in japanese], ["dictionary"] * 4 + ["ocr", "translation"])
         self.assertEqual(japanese[-1].value, "lightweight")
         turkish = language_plan("tr", platform="darwin")
         self.assertEqual([task.kind for task in turkish], ["dictionary", "morphology", "translation"])

@@ -17,6 +17,9 @@ class RecommendedDictionary:
     website: str
     pack_title: str = ""
 
+    def matches(self, metadata):
+        return metadata["language"] == self.language and metadata["title"].startswith(self.pack_title or self.title)
+
 
 def recommendations(language):
     language = language_code(language)
@@ -25,7 +28,16 @@ def recommendations(language):
     if language == "ja":
         return (RecommendedDictionary("Jitendex", "ja",
                 "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip",
-                "https://jitendex.org/pages/downloads.html", "Jitendex"),)
+                "https://jitendex.org/pages/downloads.html", "Jitendex"),
+                RecommendedDictionary("Kanji · KANJIDIC", "ja",
+                "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/KANJIDIC_english.zip",
+                "https://github.com/yomidevs/jmdict-yomitan", "KANJIDIC"),
+                RecommendedDictionary("Frequency · BCCWJ", "ja",
+                "https://raw.githubusercontent.com/Kuuuube/yomitan-dictionaries/main/dictionaries/BCCWJ_SUW_LUW_combined.zip",
+                "https://github.com/Kuuuube/yomitan-dictionaries", "BCCWJ"),
+                RecommendedDictionary("Pitch · Kanjium", "ja",
+                "https://raw.githubusercontent.com/FooSoft/yomichan/dictionaries/kanjium_pitch_accents.zip",
+                "https://github.com/toasted-nutbread/yomichan-pitch-accent-dictionary", "Kanjium Pitch Accents"))
     return (RecommendedDictionary("Wiktionary · English definitions", language,
             f"https://huggingface.co/datasets/daxida/wty-release/resolve/main/latest/dict/{language}/en/wty-{language}-en.zip?download=true",
             "https://yomidevs.github.io/wiktionary-to-yomitan/download/", f"wty-{language}-en"),)

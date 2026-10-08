@@ -6,14 +6,14 @@ import threading
 from PyQt6.QtCore import QObject, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget,
-    QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
+    QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from meikipop.dictionary.library import Library, default_library_path, language_code, save_preferences
 from meikipop.dictionary.translation import TranslationSettings, load_settings, load_profile_settings, save_profile_settings
 from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
-from meikipop.gui.settings_section import SettingsSection
+from meikipop.gui.settings_section import SettingsSection, StatusLabel
 from meikipop.language.profiles import configured_profiles, default_partner
 
 
@@ -46,6 +46,23 @@ class SetupOperation(QObject):
             pass
 
     def _run(self):
+        if isinstance(self.recommended, tuple):
+            from meikipop.dictionary.import_job import background_import
+            changed, errors = False, []
+            for dictionary in self.recommended:
+                if self.cancelled.is_set():
+                    break
+                try:
+                    status, installed = background_import([], self.directory, dictionary.language, dictionary,
+                                                         lambda text: self._emit(self.progress, text), self.cancelled)
+                    changed |= installed
+                    if not installed:
+                        errors.append(f"{dictionary.title}: {status}")
+                except Exception as error:
+                    errors.append(f"{dictionary.title}: {error}")
+            status = "Download cancelled." if self.cancelled.is_set() else "Dictionaries installed."
+            self._emit(self.finished, "\n".join(errors) or status, changed)
+            return
         if self.paths or self.recommended:
             try:
                 from meikipop.dictionary.import_job import background_import
@@ -159,42 +176,18 @@ class SetupDialog(QDialog):
         self.remove_button = QPushButton("Remove")
         self.remove_button.clicked.connect(self.remove_dictionary)
         actions.addWidget(self.remove_button)
-        self.apply = QPushButton("Apply")
-        self.apply.clicked.connect(self.save_dictionaries)
-        self.apply.hide()
-        dictionary_layout.addLayout(actions)
-        recommended_row = QHBoxLayout()
-        self.recommended = QComboBox()
-        self.recommended.setAccessibleName("Recommended dictionaries")
-        recommended_row.addWidget(self.recommended, 1)
-        self.install_button = QPushButton("Install")
-        self.install_button.clicked.connect(self.install_dictionary)
-        recommended_row.addWidget(self.install_button)
-        dictionary_layout.addLayout(recommended_row)
+        actions.addStretch()
+        dictionary_layout.insertLayout(0, actions)
         self.combine_frequencies = QCheckBox("Combine frequency rankings")
         self.combine_frequencies.setToolTip("Harmonic mean across enabled rank dictionaries; best matching rank per dictionary")
         self.combine_frequencies.toggled.connect(self.save_frequency_display)
         dictionary_layout.addWidget(self.combine_frequencies)
-        self.morphology_row = QWidget()
-        morphology_layout = QHBoxLayout(self.morphology_row)
-        morphology_layout.setContentsMargins(0, 0, 0, 0)
-        self.morphology = QCheckBox("Find base forms")
-        self.morphology.setToolTip("Try an optional Stanza model after dictionary forms miss. Enabling this does not install a model.")
-        self.morphology.toggled.connect(self.save_morphology)
-        morphology_layout.addWidget(self.morphology)
-        morphology_layout.addStretch()
-        self.morphology_status = QLabel()
-        morphology_layout.addWidget(self.morphology_status)
-        self.morphology_button = QPushButton("Install model")
-        self.morphology_button.clicked.connect(lambda: self.begin_operation([], morphology=self.profile.currentData()))
-        morphology_layout.addWidget(self.morphology_button)
-        dictionary_layout.addWidget(self.morphology_row)
-
+        dictionary_layout.addStretch()
         translation = QWidget()
         translation_layout = QVBoxLayout(translation)
         translation_form = QFormLayout()
         self.translation_advanced_widget = QWidget()
-        advanced_form = QFormLayout(self.translation_advanced_widget)
+        advanced_form = self.translation_advanced_form = QFormLayout(self.translation_advanced_widget)
         self.translation_pair_label = QLabel()
         self.translation_partner = QComboBox()
         for code, name in LANGUAGE_NAMES.items():
@@ -216,9 +209,6 @@ class SetupDialog(QDialog):
         self.translation_model = QLineEdit()
         self.translation_model.setAccessibleName("Local translation server model name")
         advanced_form.addRow("Server model", self.translation_model)
-        self.translation_autostart = QCheckBox("Start installed model when translating")
-        self.translation_autostart.setParent(self)
-        self.translation_autostart.hide()
         self.translation_stream = QCheckBox("Stream translation")
         advanced_form.addRow(self.translation_stream)
         self.translation_warm = QCheckBox("Keep model warm")
@@ -236,9 +226,6 @@ class SetupDialog(QDialog):
         translation_layout.addWidget(self.translation_advanced)
         translation_layout.addWidget(self.translation_advanced_widget)
         self.translation_advanced_widget.hide()
-        self.model_button = QPushButton("Download selected model")
-        self.model_button.clicked.connect(self.choose_model)
-        translation_layout.addWidget(self.model_button)
         translation_layout.addStretch()
         translation_error = ""
         try:
@@ -250,7 +237,6 @@ class SetupDialog(QDialog):
             translation_settings.profile if translation_settings.provider == "server" else "custom"))
         self.translation_endpoint.setText(translation_settings.endpoint)
         self.translation_model.setText(translation_settings.model)
-        self.translation_autostart.setChecked(True)
         self.translation_stream.setChecked(translation_settings.stream)
         self.translation_warm.setChecked(translation_settings.keep_warm)
         self.translation_mode.currentIndexChanged.connect(self.update_translation_controls)
@@ -271,12 +257,15 @@ class SetupDialog(QDialog):
         shortcut_layout.addRow("Screen lookup key", self.scan_key)
         shortcut_layout.addRow("Screen lookup mouse", self.scan_mouse)
         self.pin_shortcut = ShortcutEdit("c", "C")
+        self.pin_shortcut.setMaximumWidth(190)
+        self.pin_shortcut.enabled.setText("Key")
+        self.pin_shortcut.enabled.setToolTip("Enable keyboard pinning")
         self.pin_shortcut.setToolTip("Pin the preview while holding the screen lookup shortcut")
-        shortcut_layout.addRow("Pin preview", self.pin_shortcut)
         default_search = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
         self.shortcut = ShortcutEdit(settings.value("hotkey", default_search),
                                      settings.value("hotkey_preset", shortcut_preset()))
-        shortcut_layout.addRow("Look up text (all languages)", self.shortcut)
+        self.shortcut.setToolTip("Look up selected or copied text. Shared by all languages.")
+        shortcut_layout.addRow("Text lookup", self.shortcut)
         self.selected_text = QCheckBox("Look up selected text automatically")
         shortcut_layout.addRow(self.selected_text)
         self.selected_text.toggled.connect(self.save_text_triggers)
@@ -292,12 +281,17 @@ class SetupDialog(QDialog):
         scan_layout.addRow(self.freeze_while_held)
         self.freeze_while_held.toggled.connect(lambda _: self.autosave(self.save_scan_settings))
         self.pin_gesture = QComboBox()
-        for label, code in (("Scan key + left click", "left"), ("Scan key + middle click", "middle"),
+        for label, code in (("Left click", "left"), ("Middle click", "middle"),
                             ("Popup click only", "popup")):
             self.pin_gesture.addItem(label, code)
         self.pin_gesture.setCurrentIndex(max(0, self.pin_gesture.findData(settings.value("pin_gesture", "left"))))
-        self.pin_gesture.setToolTip("Pin the current preview without moving the pointer to it.")
-        shortcut_layout.addRow("Pin with mouse", self.pin_gesture)
+        self.pin_gesture.setToolTip("Mouse button to pin while holding a screen lookup shortcut")
+        pin_controls = QWidget()
+        pin_layout = QHBoxLayout(pin_controls)
+        pin_layout.setContentsMargins(0, 0, 0, 0)
+        pin_layout.addWidget(self.pin_shortcut)
+        pin_layout.addWidget(self.pin_gesture)
+        shortcut_layout.insertRow(2, "Pin while holding lookup", pin_controls)
         self.ja_ocr_provider = QComboBox()
         self.ja_ocr_provider.addItem("MeikiOCR (CPU)", "meikiocr")
         self.ja_ocr_provider.addItem("PaddleOCR (multilingual)", "paddle")
@@ -338,23 +332,14 @@ class SetupDialog(QDialog):
         component_link.setOpenExternalLinks(True)
         component_layout.addWidget(component_link)
         scan_layout.addRow(self.screenai_controls)
-        self.ocr_install = QPushButton("Install OCR model")
-        self.ocr_install.clicked.connect(lambda: self.begin_operation([], ocr=self.current_ocr_control().currentData()))
-        scan_layout.addRow(self.ocr_install)
         def show_component_controls():
             provider = self.current_ocr_control()
             self.screenai_controls.setVisible(provider.currentData() == "screenai")
-            self.ocr_install.hide()
         self.show_component_controls = show_component_controls
         self.ja_ocr_provider.currentIndexChanged.connect(show_component_controls)
         self.tr_ocr_provider.currentIndexChanged.connect(show_component_controls)
         self.other_ocr_provider.currentIndexChanged.connect(show_component_controls)
         show_component_controls()
-        if sys.platform != "win32":
-            click_note = QLabel("Clicks outside the popup also reach the underlying app.")
-            click_note.setWordWrap(True)
-            scan_layout.addRow(click_note)
-
         from meikipop.gui.profile_appearance import ProfileAppearance
         self.appearance = ProfileAppearance(settings, self.profile.currentData, self.apply_appearance)
         audio = QWidget()
@@ -372,10 +357,14 @@ class SetupDialog(QDialog):
         audio_form.addRow("Volume", self.audio_volume)
         self.audio_database = QLineEdit()
         self.audio_database.setPlaceholderText("Local Audio Server android.db")
-        audio_detail_form.addRow("Local database", self.audio_database)
-        audio_browse = QPushButton("Choose database…")
+        audio_browse = QPushButton("Browse…")
         audio_browse.clicked.connect(self.choose_audio)
-        audio_detail_form.addRow(audio_browse)
+        self.audio_database_row = QWidget()
+        database_layout = QHBoxLayout(self.audio_database_row)
+        database_layout.setContentsMargins(0, 0, 0, 0)
+        database_layout.addWidget(self.audio_database, 1)
+        database_layout.addWidget(audio_browse)
+        audio_detail_form.addRow("Local database", self.audio_database_row)
         from meikipop.gui.audio_sources import AudioSources
         self.audio_sources = AudioSources()
         self.audio_sources.changed.connect(lambda: self.autosave(self.save_audio))
@@ -391,7 +380,7 @@ class SetupDialog(QDialog):
         if hasattr(parent, "update_anki"):
             self.anki.changed.connect(parent.update_anki)
 
-        self.status = QLabel()
+        self.status = StatusLabel()
         self.audio_sources.failed.connect(self.status.setText)
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -415,7 +404,6 @@ class SetupDialog(QDialog):
             control.currentIndexChanged.connect(lambda _: self.autosave(self.save_translation))
         for control in (self.translation_endpoint, self.translation_model):
             control.editingFinished.connect(lambda: self.autosave(self.save_translation))
-        self.translation_autostart.toggled.connect(lambda _: self.autosave(self.save_translation))
         self.translation_stream.toggled.connect(lambda _: self.autosave(self.save_translation))
         self.translation_warm.toggled.connect(lambda _: self.autosave(lambda: self.save_translation(cancel=False)))
         for control in (self.scan_key, self.scan_mouse):
@@ -447,27 +435,16 @@ class SetupDialog(QDialog):
         lookup_layout = QVBoxLayout(lookup)
         lookup_layout.addWidget(shortcuts)
         self.screen_section = SettingsSection("Screen recognition", scanning)
-        self.screen_section.toggle.setChecked(not self.resources.ocr_install.isHidden())
+        self.screen_section.toggle.setChecked(not self.resources.ocr_section.isHidden())
         lookup_layout.addWidget(self.screen_section)
         lookup_layout.addStretch()
         self.lookup_tab = add_page(lookup, "Lookup")
         add_page(dictionaries, "Dictionaries")
         add_page(self.appearance, "Appearance")
-        self.integrations = QWidget()
-        integrations_layout = QVBoxLayout(self.integrations)
-        self.integration_choice = QComboBox()
-        self.integration_choice.setAccessibleName("Integration")
-        self.integration_pages = QStackedWidget()
-        for title, page in (("Audio", audio), ("Translation", translation), ("Anki", self.anki)):
-            self.integration_choice.addItem(title)
-            self.integration_pages.addWidget(page)
-        self.integration_choice.currentIndexChanged.connect(self.integration_pages.setCurrentIndex)
-        integrations_layout.addWidget(self.integration_choice)
-        integrations_layout.addWidget(self.integration_pages)
-        self.integrations_tab = add_page(self.integrations, "Integrations")
+        self.audio_tab = add_page(audio, "Audio")
+        self.translation_tab = add_page(translation, "Translation")
+        self.anki_tab = add_page(self.anki, "Anki")
         tabs.setCurrentWidget(self.lookup_tab)
-        for control in (self.recommended, self.install_button, self.model_button, self.morphology_row, self.ocr_install):
-            control.hide()
         tabs.currentChanged.connect(lambda: self.resources.refresh())
         if translation_error:
             self.status.setText(translation_error)
@@ -477,12 +454,10 @@ class SetupDialog(QDialog):
             callback()
 
     def show_audio(self):
-        self.tabs.setCurrentWidget(self.integrations_tab)
-        self.integration_choice.setCurrentIndex(0)
+        self.tabs.setCurrentWidget(self.audio_tab)
 
     def show_anki(self):
-        self.tabs.setCurrentWidget(self.integrations_tab)
-        self.integration_choice.setCurrentIndex(2)
+        self.tabs.setCurrentWidget(self.anki_tab)
 
     def reload(self, preserve=False):
         selected = self.packs.currentItem().data(Qt.ItemDataRole.UserRole) if self.packs.currentItem() else None
@@ -498,8 +473,8 @@ class SetupDialog(QDialog):
             for path, metadata, _ in packs:
                 if self.profile.findData(metadata["language"]) < 0:
                     self.profile.addItem(language_name(metadata["language"]), metadata["language"])
-                item = QListWidgetItem(f'{metadata["title"]}  ·  {language_name(metadata["language"])}'
-                                       f'  ·  {int(metadata.get("entries", 0)):,}')
+                item = QListWidgetItem(metadata["title"])
+                item.setToolTip(f'{int(metadata.get("entries", 0)):,} entries')
                 item.setData(Qt.ItemDataRole.UserRole, path.name)
                 item.setData(Qt.ItemDataRole.UserRole + 1, metadata["language"])
                 item.setData(Qt.ItemDataRole.UserRole + 2, metadata["title"])
@@ -585,16 +560,11 @@ class SetupDialog(QDialog):
             self.packs.setCurrentRow(target)
             self.save_dictionaries()
 
-    def install_dictionary(self):
-        dictionary = self.recommended.currentData()
-        if dictionary:
-            self.begin_operation([], recommended=dictionary)
-
     def remove_dictionary(self):
         item = self.packs.currentItem()
         if item is None or item.isHidden():
             return
-        title = item.text().split("  ·  ")[0]
+        title = item.text()
         if QMessageBox.question(self, "Remove dictionary", f"Remove {title}?") == QMessageBox.StandardButton.Yes:
             self.begin_operation([], remove=item.data(Qt.ItemDataRole.UserRole))
 
@@ -606,6 +576,7 @@ class SetupDialog(QDialog):
                               if item.checkState() != Qt.CheckState.Checked],
                              [item.data(Qt.ItemDataRole.UserRole) for item in items])
             self.dictionaries_changed.emit()
+            self.resources.refresh()
             self.status.clear()
         except OSError as error:
             self.status.setText(str(error))
@@ -631,7 +602,7 @@ class SetupDialog(QDialog):
             if self.parent() is not None:
                 self.parent().set_mode(self.profile.currentData())
                 self.parent().scan_settings_changed.emit()
-            self.status.setText(warning if isinstance(warning, str) and warning else "Saved.")
+            self.status.setText(warning if isinstance(warning, str) and warning else "")
         except (ValueError, OSError, RuntimeError) as error:
             self.status.setText(str(error))
 
@@ -657,7 +628,7 @@ class SetupDialog(QDialog):
             window.set_mode(self.profile.currentData())
             window._render()
             window.scan_settings_changed.emit()
-        self.status.setText("Saved.")
+        self.status.clear()
         if hasattr(self, "resources"):
             self.resources.refresh()
 
@@ -677,18 +648,8 @@ class SetupDialog(QDialog):
             with QSignalBlocker(control):
                 control.setChecked(self.settings.value(f"profiles/{code}/{key}", False, bool))
         self.status.clear()
-        from meikipop.dictionary.catalog import recommendations
-        self.recommended.clear()
-        for dictionary in recommendations(code):
-            self.recommended.addItem(dictionary.title, dictionary)
-        if self.recommended.count() == 0:
-            self.recommended.addItem("Import a dictionary ZIP", None)
-        self.install_button.setEnabled(self.recommended.currentData() is not None and self.operation is None)
         with QSignalBlocker(self.combine_frequencies):
             self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
-        with QSignalBlocker(self.morphology):
-            self.morphology.setChecked(self.settings.value(f"profiles/{code}/morphology", False, bool))
-        self.update_morphology_controls()
         bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
         self.pin_shortcut.set_value(self.settings.value(f"profiles/{code}/pin_shortcut", "c"),
                                     self.settings.value(f"profiles/{code}/pin_shortcut_preset", "C"))
@@ -730,7 +691,6 @@ class SetupDialog(QDialog):
         self.translation_mode.setCurrentIndex(self.translation_mode.findData(translation.profile if translation.provider == "server" else "custom"))
         self.translation_endpoint.setText(translation.endpoint)
         self.translation_model.setText(translation.model)
-        self.translation_autostart.setChecked(True)
         self.translation_pair_label.setText(language_name(code) + " \u2194")
         self.translation_advanced.setChecked(translation.provider == "custom" or any(
             self.settings.value(f"profiles/{code}/translation_{key}", "auto") != "auto" for key in ("source", "target")))
@@ -772,29 +732,6 @@ class SetupDialog(QDialog):
         if self.parent() is not None:
             self.parent()._render()
 
-    def save_morphology(self, enabled):
-        code = self.profile.currentData()
-        self.settings.setValue(f"profiles/{code}/morphology", enabled)
-        self.dictionaries_changed.emit()
-        if self.parent() is not None:
-            self.parent().scan_settings_changed.emit()
-        self.status.clear()
-        self.update_morphology_controls()
-
-    def update_morphology_controls(self):
-        from meikipop.language.support import STANZA_LANGUAGES
-        from meikipop.language.stanza_analyzer import default_model_dir, model_status
-        code = self.profile.currentData()
-        supported = code in STANZA_LANGUAGES and code != "ja"
-        self.morphology_row.hide()
-        self.morphology.setEnabled(supported and self.operation is None)
-        status = model_status(code) if supported else "Unavailable"
-        self.morphology_status.setText(status)
-        self.morphology_status.setToolTip(str(default_model_dir(code)))
-        self.morphology_button.setText("Reinstall model" if status == "Installed" else "Install model")
-        self.morphology_button.setToolTip(f"Download Stanza support and the {language_name(code)} base-form model")
-        self.morphology_button.setEnabled(supported and self.operation is None)
-
     def sync_profile(self, code):
         with QSignalBlocker(self.profile):
             if self.profile.findData(code) < 0:
@@ -826,12 +763,11 @@ class SetupDialog(QDialog):
         if path != self.audio_sources.path:
             self.audio_sources.load(order, path)
         self.show_audio_controls()
-        self.status.setText("Saved.")
+        self.status.clear()
 
     def show_audio_controls(self):
         local = any(source == "database" or source.startswith("db:") for source in self.audio_sources.order())
-        for widget in (self.audio_database, self.audio_browse):
-            self.audio_form.setRowVisible(widget, local)
+        self.audio_form.setRowVisible(self.audio_database_row, local)
 
     def save_autoplay(self):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/audio_autoplay_mode", self.audio_autoplay.currentData())
@@ -853,13 +789,11 @@ class SetupDialog(QDialog):
 
     def update_translation_controls(self):
         custom = self.translation_mode.currentData() == "custom"
-        self.translation_endpoint.setEnabled(custom)
-        self.translation_model.setEnabled(custom)
+        self.translation_advanced_form.setRowVisible(self.translation_endpoint, custom)
+        self.translation_advanced_form.setRowVisible(self.translation_model, custom)
         if custom:
             self.translation_advanced.setChecked(True)
-        self.translation_autostart.setEnabled(not custom)
-        self.translation_warm.setEnabled(not custom)
-        self.model_button.setEnabled(not custom)
+        self.translation_advanced_form.setRowVisible(self.translation_warm, not custom)
         if hasattr(self, "resources"):
             self.resources.refresh()
 
@@ -875,7 +809,7 @@ class SetupDialog(QDialog):
                 provider="custom" if mode == "custom" else "server",
                 profile=mode if mode != "custom" else "quality",
                 endpoint=self.translation_endpoint.text(), model=self.translation_model.text(),
-                auto_start=self.translation_autostart.isChecked(), stream=self.translation_stream.isChecked(),
+                auto_start=True, stream=self.translation_stream.isChecked(),
                 keep_warm=self.translation_warm.isChecked()))
             self.settings.setValue(f"profiles/{code}/target", self.translation_partner.currentData())
             for key, control in (("source", self.translation_source), ("target", self.translation_target)):
@@ -889,32 +823,26 @@ class SetupDialog(QDialog):
                     window.foreign.setCurrentIndex(window.foreign.findData(self.translation_partner.currentData()))
                 if cancel:
                     window._edited()
-            self.status.setText("Saved.")
+            self.status.clear()
             return True
         except (ValueError, OSError) as error:
             self.status.setText(str(error))
             return False
 
-    def choose_model(self):
-        if self.translation_mode.currentData() != "custom" and self.save_translation():
-            self.begin_operation([], profile=self.translation_mode.currentData())
-
     def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None):
         if self.operation is not None:
             return
         self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology, ocr)
-        self.ocr_install.setEnabled(False)
         self.operation.refresh.connect(self.dictionaries_changed)
         self.operation.progress.connect(self.status.setText)
         self.operation.finished.connect(self._finished)
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
-        self.update_morphology_controls()
-        for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
-                        self.model_button, self.packs, self.up, self.down, self.apply, self.language,
+        for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button,
+                        self.packs, self.up, self.down, self.language,
                         self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
-                        self.translation_model, self.translation_autostart):
+                        self.translation_model):
             control.setEnabled(False)
         self.operation.start()
         self.resources.refresh()
@@ -930,19 +858,16 @@ class SetupDialog(QDialog):
         if component:
             self.screenai_directory.setText(component)
             self.settings.setValue("screenai_directory", component)
-        self.ocr_install.setEnabled(True)
         self.operation = None
         self.cancel_button.setVisible(False)
-        for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
-                        self.model_button, self.packs, self.up, self.down, self.apply, self.language,
+        for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button,
+                        self.packs, self.up, self.down, self.language,
                         self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target):
             control.setEnabled(True)
         self.update_translation_controls()
-        self.update_morphology_controls()
         self.reload(preserve=True)
         self.resources.refresh()
-        self.install_button.setEnabled(self.recommended.currentData() is not None)
         self.status.setText(status)
         if changed:
             self.dictionaries_changed.emit()

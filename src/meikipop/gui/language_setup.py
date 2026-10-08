@@ -22,7 +22,7 @@ def language_plan(language, translation="lightweight", platform=None):
     if provider != "vision":
         tasks.append(SetupTask("ocr", "Screen recognition", provider))
     if language != "ja" and language in STANZA_LANGUAGES:
-        tasks.append(SetupTask("morphology", "Base-form model", language))
+        tasks.append(SetupTask("morphology", "Word-form support", language))
     if language in TRANSLATION_LANGUAGES:
         tasks.append(SetupTask("translation", "Local translation", translation))
     return tasks
@@ -32,7 +32,7 @@ def install_task(task, directory, progress, cancelled):
     if task.kind == "dictionary":
         from meikipop.dictionary.library import Library
         with closing(Library(directory)) as library:
-            if any(meta["language"] == task.value.language and meta["title"].startswith(task.value.pack_title or task.value.title)
+            if any(task.value.matches(meta)
                    for _, meta, _ in library.packs):
                 return ""
         from meikipop.dictionary.import_job import background_import
