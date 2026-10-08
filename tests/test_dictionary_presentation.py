@@ -55,7 +55,7 @@ class DictionaryPresentationTests(unittest.TestCase):
         self.assertIn("Persistently\nExplanation\nExplanation body", text)
         self.assertIn("Example sentences\n", text)
         self.assertIn("Example one", text)
-        self.assertIn("Link to Bunpro", text)
+        self.assertNotIn("Link to Bunpro", text)
         self.assertEqual(definition["content"][0], "【 Meaning 】")
 
     def test_grammar_preview_selects_meaning_and_expansion_preserves_examples(self):
