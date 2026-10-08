@@ -60,6 +60,9 @@ class DesktopInput(QObject):
         self.pin_pending = threading.Event()
         self.pin_gesture = "popup"
         self._consumed_pin = None
+        self._darwin_consumed_pin = None
+        self._darwin_pin_key = None
+        self._darwin_escape = False
         self._escape_down = False
         self._pin_binding = ""
         self._pin_hotkey = None
@@ -68,11 +71,15 @@ class DesktopInput(QObject):
         self._last_click = None
         self._press_point = None
         self.double_click_seconds = double_click_ms / 1000
+        keyboard_options = {"win32_event_filter": self.filter_key} if sys.platform == "win32" else {}
+        if sys.platform == "darwin":
+            keyboard_options["darwin_intercept"] = self.darwin_key_intercept
         self.keys = KeyboardListener(on_press=lambda key: self.key(key, True),
-                                      on_release=lambda key: self.key(key, False),
-                                      **({"win32_event_filter": self.filter_key} if sys.platform == "win32" else {}))
-        self.clicks = mouse.Listener(on_click=self.click,
-                                     **({"win32_event_filter": self.filter_mouse} if sys.platform == "win32" else {}))
+                                      on_release=lambda key: self.key(key, False), **keyboard_options)
+        mouse_options = {"win32_event_filter": self.filter_mouse} if sys.platform == "win32" else {}
+        if sys.platform == "darwin":
+            mouse_options["darwin_intercept"] = self.darwin_intercept
+        self.clicks = mouse.Listener(on_click=self.click, **mouse_options)
         self.shortcuts = None
         self.set_shortcuts(clipboard_hotkey, search_hotkey)
         self.keys.start()
@@ -94,6 +101,8 @@ class DesktopInput(QObject):
 
     def key(self, key, down):
         if sys.platform != "win32" and down and key == keyboard.Key.esc and self.visible.is_set():
+            if sys.platform == "darwin":
+                self._darwin_escape = True
             self.dismissed.emit()
         token = normalise_pynput_key(key)
         if token:
@@ -101,7 +110,15 @@ class DesktopInput(QObject):
             self.hold_changed.emit(self.activation.active)
         if self._pin_hotkey is not None and sys.platform != "win32":
             canonical = self.keys.canonical(key)
+            pending = self.pin_pending.is_set()
             (self._pin_hotkey.press if down else self._pin_hotkey.release)(canonical)
+            if sys.platform == "darwin" and down and token is None and not pending and self.pin_pending.is_set():
+                # The native event tap sees this after the pynput callback.
+                # Retain the physical key code so only this shortcut is
+                # withheld from the source application.
+                self._darwin_pin_key = getattr(key, "vk", None)
+                if self._darwin_pin_key is None:
+                    self._darwin_pin_key = getattr(getattr(key, "value", None), "vk", None)
 
     def set_pin_shortcut(self, value):
         if value == self._pin_binding:
@@ -162,16 +179,54 @@ class DesktopInput(QObject):
             return False
         return True
 
+    def darwin_intercept(self, event_type, event):
+        """Suppress only a pin click's down/up pair on macOS."""
+        from pynput.mouse._darwin import Quartz
+        button = None
+        if event_type in (Quartz.kCGEventLeftMouseDown, Quartz.kCGEventLeftMouseUp):
+            button = mouse.Button.left
+        elif event_type in (Quartz.kCGEventOtherMouseDown, Quartz.kCGEventOtherMouseUp):
+            number = Quartz.CGEventGetIntegerValueField(event, Quartz.kCGMouseEventButtonNumber)
+            if number == Quartz.kCGMouseButtonCenter:
+                button = mouse.Button.middle
+        if button is None or self._darwin_consumed_pin is None or button != self._darwin_consumed_pin:
+            return event
+        if event_type in (Quartz.kCGEventLeftMouseUp, Quartz.kCGEventOtherMouseUp):
+            self._darwin_consumed_pin = None
+        return None
+
+    def darwin_key_intercept(self, event_type, event):
+        """Suppress only an eligible pin shortcut or Escape pair on macOS."""
+        from pynput.keyboard import _darwin as Quartz
+        if event_type not in (Quartz.kCGEventKeyDown, Quartz.kCGEventKeyUp):
+            return event
+        key_code = Quartz.CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventKeycode)
+        if (self._darwin_escape and key_code == 53) or key_code == self._darwin_pin_key:
+            if event_type == Quartz.kCGEventKeyUp:
+                if key_code == self._darwin_pin_key:
+                    self._darwin_pin_key = None
+                if key_code == 53:
+                    self._darwin_escape = False
+            return None
+        return event
+
     def click(self, x, y, button, down):
         pin_requested = (down and sys.platform != "win32"
                          and self._request_pin(getattr(button, "name", "")))
+        if pin_requested and sys.platform == "darwin":
+            self._darwin_consumed_pin = button
         token = normalise_pynput_button(button)
         if token:
             self.activation.update(token, down)
             self.hold_changed.emit(self.activation.active)
+        if (sys.platform == "darwin" and not down
+                and button == self._darwin_consumed_pin):
+            # The native event tap consumes the matching release. Avoid
+            # turning the pin gesture into a regular click or double-click.
+            return
         if down:
-            # macOS observes the pin click without suppressing it. Do not also
-            # dismiss the popup through its ordinary outside-click callback.
+            # Do not also dismiss the popup through its ordinary outside-click
+            # callback; the native event tap consumes this pin gesture.
             if not pin_requested:
                 self.clicked.emit()
             if button == mouse.Button.left:
@@ -191,6 +246,9 @@ class DesktopInput(QObject):
     def shutdown(self):
         self.pin_ready.clear()
         self.pin_pending.clear()
+        self._darwin_consumed_pin = None
+        self._darwin_pin_key = None
+        self._darwin_escape = False
         for listener in (self.keys, self.clicks, self.shortcuts):
             if listener:
                 listener.stop()

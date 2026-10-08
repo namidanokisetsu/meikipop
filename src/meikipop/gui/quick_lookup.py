@@ -1767,13 +1767,10 @@ class QuickLookupWindow(QDialog):
                 self._normal_size = self.size()
         if checked:
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
-            if sys.platform == "darwin" and QApplication.platformName() != "offscreen":
-                from meikipop.utils.window_focus import activate_application
-                self._opening_search = True
-                activate_application()
-                QTimer.singleShot(300, lambda: setattr(self, "_opening_search", False))
-            self.activateWindow()
-            self.browser.setFocus(Qt.FocusReason.MouseFocusReason)
+            from meikipop.utils.window_focus import focus_pinned_popup
+            self._opening_search = sys.platform == "darwin"
+            focus_pinned_popup(self, self.browser)
+            QTimer.singleShot(300, lambda: setattr(self, "_opening_search", False))
             if self._peek and self._result is not None:
                 self._expanded.update(entry.source for entry in self._result.entries)
                 self._kanji_expanded = True

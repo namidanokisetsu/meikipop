@@ -1041,12 +1041,12 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry(),), "猫", peek=True)
         with patch("meikipop.gui.quick_lookup.sys.platform", "darwin"), \
                 patch.object(QApplication, "platformName", return_value="cocoa"), \
-                patch("meikipop.utils.window_focus.activate_application") as activate, \
+                patch("meikipop.utils.window_focus.focus_pinned_popup") as focus, \
                 patch("meikipop.gui.quick_lookup.QTimer.singleShot") as timer, \
                 patch.object(self.window, "isActiveWindow", return_value=False):
             self.window.pin.setChecked(True)
             self.window._dismiss_if_inactive()
-        activate.assert_called_once_with()
+        focus.assert_called_once_with(self.window, self.window.browser)
         self.assertTrue(self.window.isVisible())
         self.assertTrue(self.window.is_pinned)
         callback = next(call.args[1] for call in timer.call_args_list if call.args[0] == 300)

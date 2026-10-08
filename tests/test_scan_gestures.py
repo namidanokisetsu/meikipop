@@ -87,6 +87,88 @@ class ScanGestureTests(unittest.TestCase):
             self.input.click(10, 20, mouse.Button.left, True)
         clicked.assert_called_once_with()
 
+    def test_macos_pin_click_intercept_consumes_only_matching_down_and_up(self):
+        self.ready()
+        quartz = SimpleNamespace(kCGEventLeftMouseDown=1, kCGEventLeftMouseUp=2,
+                                 kCGEventOtherMouseDown=25, kCGEventOtherMouseUp=26,
+                                 kCGMouseEventButtonNumber=3, kCGMouseButtonCenter=2)
+        event = object()
+        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"), \
+                patch("pynput.mouse._darwin.Quartz", quartz):
+            self.input.click(10, 20, mouse.Button.left, True)
+            self.assertIsNone(self.input.darwin_intercept(1, event))
+            self.input.click(10, 20, mouse.Button.left, False)
+            self.assertIsNone(self.input.darwin_intercept(2, event))
+            self.assertIs(self.input.darwin_intercept(1, event), event)
+
+    def test_macos_unrelated_events_pass_through_without_a_pin(self):
+        quartz = SimpleNamespace(kCGEventLeftMouseDown=1, kCGEventLeftMouseUp=2,
+                                 kCGEventOtherMouseDown=25, kCGEventOtherMouseUp=26,
+                                 kCGMouseEventButtonNumber=3, kCGMouseButtonCenter=2,
+                                 kCGEventMouseMoved=5, kCGEventScrollWheel=22)
+        event = object()
+        with patch("pynput.mouse._darwin.Quartz", quartz):
+            self.assertIs(self.input.darwin_intercept(5, event), event)
+            self.assertIs(self.input.darwin_intercept(22, event), event)
+
+    def test_macos_listener_uses_pynput_darwin_intercept_option(self):
+        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener") as keyboard_listener, \
+                patch("meikipop.gui.turkish.desktop_input.mouse.Listener") as mouse_listener:
+            probe = DesktopInput("shift", "", "", 400)
+        try:
+            self.assertEqual(keyboard_listener.call_args.kwargs["darwin_intercept"], probe.darwin_key_intercept)
+            self.assertEqual(mouse_listener.call_args.kwargs["darwin_intercept"], probe.darwin_intercept)
+        finally:
+            probe.shutdown()
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS listener backend")
+    def test_actual_macos_listeners_store_interceptors_without_starting_hooks(self):
+        from meikipop.gui.turkish.desktop_input import KeyboardListener
+        with patch.object(KeyboardListener, "start"), patch.object(KeyboardListener, "stop"), \
+                patch.object(KeyboardListener, "join"), patch.object(mouse.Listener, "start"), \
+                patch.object(mouse.Listener, "stop"), patch.object(mouse.Listener, "join"):
+            probe = DesktopInput("shift", "", "", 400)
+            try:
+                self.assertEqual(probe.keys._intercept, probe.darwin_key_intercept)
+                self.assertEqual(probe.clicks._intercept, probe.darwin_intercept)
+            finally:
+                probe.shutdown()
+
+    def test_macos_escape_intercept_consumes_release_after_dismissal(self):
+        self.input.visible.set()
+        quartz = SimpleNamespace(kCGEventKeyDown=10, kCGEventKeyUp=11,
+                                 kCGKeyboardEventKeycode=9,
+                                 CGEventGetIntegerValueField=lambda event, field: 53)
+        event = object()
+        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"), \
+                patch.multiple("pynput.keyboard._darwin", kCGEventKeyDown=10, kCGEventKeyUp=11,
+                                kCGKeyboardEventKeycode=9,
+                                CGEventGetIntegerValueField=quartz.CGEventGetIntegerValueField):
+            self.input.key(keyboard.Key.esc, True)
+            self.assertIsNone(self.input.darwin_key_intercept(10, event))
+            self.input.visible.clear()
+            self.input.key(keyboard.Key.esc, False)
+            self.assertIsNone(self.input.darwin_key_intercept(11, event))
+            self.assertIs(self.input.darwin_key_intercept(10, event), event)
+
+    def test_macos_pin_shortcut_intercept_consumes_eligible_key_pair(self):
+        self.ready()
+        self.input.set_pin_shortcut("c")
+        self.input.keys.canonical.side_effect = lambda key: keyboard.KeyCode.from_char("c")
+        quartz = SimpleNamespace(kCGEventKeyDown=10, kCGEventKeyUp=11,
+                                 kCGKeyboardEventKeycode=9,
+                                 CGEventGetIntegerValueField=lambda event, field: 8)
+        event = object()
+        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"), \
+                patch.multiple("pynput.keyboard._darwin", kCGEventKeyDown=10, kCGEventKeyUp=11,
+                                kCGKeyboardEventKeycode=9,
+                                CGEventGetIntegerValueField=quartz.CGEventGetIntegerValueField):
+            self.input.key(keyboard.KeyCode.from_vk(8), True)
+            self.assertIsNone(self.input.darwin_key_intercept(10, event))
+            self.input.key(keyboard.KeyCode.from_vk(8), False)
+            self.assertIsNone(self.input.darwin_key_intercept(11, event))
+            self.assertIs(self.input.darwin_key_intercept(10, event), event)
+
     @unittest.skipUnless(sys.platform == "win32", "Windows native hook")
     def test_pin_key_consumes_press_repeats_and_release_only_for_ready_preview(self):
         self.input.set_pin_shortcut("c")
