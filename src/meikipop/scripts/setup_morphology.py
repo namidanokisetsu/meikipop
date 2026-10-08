@@ -73,6 +73,8 @@ def install(language, progress=None, cancelled=None):
 
 
 def main():
+    from meikipop.utils.model_cache import configure_model_cache
+    configure_model_cache()
     from meikipop.dictionary.library import language_code
     from meikipop.language.stanza_analyzer import setup_models
     parser = argparse.ArgumentParser(description=__doc__)

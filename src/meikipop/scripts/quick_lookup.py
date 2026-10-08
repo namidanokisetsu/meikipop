@@ -4,6 +4,10 @@ import sys
 
 
 def main(argv=None):
+    from meikipop.utils.model_cache import configure_model_cache
+    configure_model_cache()
+    from meikipop.utils.startup import hold_installer_mutex
+    hold_installer_mutex()
     parser = argparse.ArgumentParser(description="Meikipop dictionary search")
     parser.add_argument("text", nargs="?", default="")
     parser.add_argument("--library", help="Dictionary library directory")
@@ -36,7 +40,8 @@ def main(argv=None):
         try:
             setup_models(args.setup_ocr)
         except Exception as error:
-            print(f"{type(error).__name__}: {error}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
             return 1
         return 0
     if args.setup_morphology:
@@ -45,7 +50,8 @@ def main(argv=None):
             setup_models(language=args.setup_morphology)
             StanzaAnalyzer(language=args.setup_morphology)
         except Exception as error:
-            print(f"{type(error).__name__}: {error}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
             return 1
         return 0
 

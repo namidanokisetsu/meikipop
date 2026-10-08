@@ -3,6 +3,9 @@ import os
 import sys
 from pathlib import Path
 from platformdirs import user_cache_dir
+from meikipop.utils.model_cache import configure_model_cache
+
+configure_model_cache()
 
 if sys.platform == "darwin":
     import certifi

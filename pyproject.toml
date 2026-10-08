@@ -32,6 +32,7 @@ dependencies = [
     "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
     "lxml",
     "platformdirs",
+    "huggingface-hub>=2.1.1",
 ]
 
 [project.scripts]

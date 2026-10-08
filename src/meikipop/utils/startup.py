@@ -9,6 +9,24 @@ logger = logging.getLogger(__name__)
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "meikipop"
+_installer_mutex = None
+
+
+def hold_installer_mutex():
+    """Keep the Windows installer from changing files/settings while we run."""
+    global _installer_mutex
+    if sys.platform != "win32" or _installer_mutex is not None:
+        return
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateMutexW
+    create.argtypes = (ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR)
+    create.restype = wintypes.HANDLE
+    _installer_mutex = create(None, False, "Local\\MeikipopDesktop")
+    if not _installer_mutex:
+        raise ctypes.WinError(ctypes.get_last_error())
+    # Windows closes the handle on process exit, after all settings are flushed.
 
 
 def startup_command() -> str:
