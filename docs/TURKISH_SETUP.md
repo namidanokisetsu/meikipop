@@ -6,14 +6,15 @@ Updated: 2026-10-08
 
 For normal installation, download the Windows setup EXE or macOS DMG from the
 [latest release](https://github.com/namidanokisetsu/meikipop/releases/latest).
-A new installation starts with Japanese only. Adding a language profile offers its
-recommended downloads once, in one optional checklist. **Later** dismisses it permanently;
-all downloads remain available in Settings. Every item is optional, including Jitendex.
-Translation defaults unchecked, with Lightweight or Quality choices. There is no separate setup menu.
-Settings has four tabs: **Lookup**, **Dictionaries**, **Appearance**, and **Integrations**.
-Dictionary and base-form downloads are in Dictionaries; OCR downloads are under
-Lookup → Screen recognition. Audio, optional translation downloads, and Anki are in
-Integrations. Downloads stay explicit, and installed translation/OCR models are shared
+On Windows and macOS, first launch asks for a language, then offers its recommended
+downloads. Every item starts checked and can be unticked before **Install**; **Later**
+skips downloads. Adding a language offers the same checklist once.
+Settings has six tabs: **Lookup**, **Dictionaries**, **Appearance**, **Audio**,
+**Translation**, and **Anki**. Dictionaries offers one download action for missing
+recommendations; Japanese includes Jitendex (JMdict-based definitions), KANJIDIC,
+BCCWJ frequency, and Kanjium pitch. Other Yomitan ZIPs can be imported.
+Word-form support appears only when an optional model is missing; OCR downloads
+are under Lookup → Screen recognition. Downloads stay explicit, and installed translation/OCR models are shared
 across languages. Base-form models are used automatically once installed.
 Appearance shows theme, text size, and opacity; Customize reveals detailed typography
 and reading controls. Settings save immediately. The language selector scopes preferences;
@@ -193,7 +194,7 @@ it defaults on and does not change what Copy sentence copies.
 Dictionary sections labeled **More** stay collapsed when pinned; click their label
 to open or close them independently. Back restores opened sections.
 
-**Settings → Shortcuts** configures one text-lookup shortcut and optional automatic selection.
+**Settings → Lookup** configures one text-lookup shortcut and optional automatic selection.
 Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected
 text, preserving the clipboard, or uses the clipboard if nothing is selected. The prefilled
 input remains selected for immediate typing and follows the profile's translation options.
@@ -217,16 +218,15 @@ outside Git. Additional local Yomitan packs can be added through the same UI.
 
 Exact entries and imported forms remain first. Russian also tries е/ё spelling
 variants after a miss, using the installed dictionary and forms without a model.
-**Settings → Dictionaries → Find base forms** enables optional Stanza models for
-the selected non-Japanese profile. **Install model** installs its dependencies and
-language model in the Python desktop installation; the checkbox alone never downloads.
-The adjacent status distinguishes missing support from missing models.
+**Settings → Dictionaries → Download word-form support** installs an optional
+Stanza model for the selected non-Japanese profile. Installed models are used
+automatically; there is no separate enable switch.
 Japanese keeps its bundled rules. Models run in lookup workers, with original OCR
 sentence context where available; results are labeled as lemma matches.
 
 Models live with app data at `languages/<code>/stanza/1.14.0` (under
 `%LOCALAPPDATA%/meikipop` on Windows), separate from dictionary ZIPs and translation
-models. The status tooltip shows the full path. Equivalent explicit setup:
+models. Equivalent explicit setup:
 
 ```powershell
 .venv-desktop/Scripts/python -m meikipop.scripts.setup_morphology ru --install
@@ -242,10 +242,10 @@ ambiguous. The default workflow needs no NLP models.
 
 ## Screen lookup
 
-Set a screen lookup key or mouse shortcut in **Settings → Shortcuts**, then hold it over text; the default
+Set a screen lookup key or mouse shortcut in **Settings → Lookup**, then hold it over text; the default
 activation is Shift. The preview stays beside the word until a different result appears. While
 holding the scan key, left-click anywhere to pin the current result and expand
-its dictionaries, or press **C**. **Shortcuts → Pin preview** records another key
+its dictionaries, or press **C**. **Lookup → Pin while holding lookup** records another key
 or disables keyboard pinning per profile. Pinning stops following; a click outside or a fresh scan elsewhere dismisses it. Release
 hides an unpinned preview after a short grace period. Close or Escape dismisses
 the current scan until the trigger is released.

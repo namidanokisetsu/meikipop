@@ -1,4 +1,4 @@
-﻿"""One-time resource suggestions for a newly added language profile."""
+"""One-time resource suggestions for a newly added language profile."""
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout,
                             QLabel, QPushButton, QProgressBar, QVBoxLayout)
@@ -6,6 +6,46 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLa
 
 def needs_setup(settings):
     return not settings.allKeys()
+
+
+class FirstLanguage(QDialog):
+    def __init__(self, settings):
+        super().__init__()
+        from meikipop.gui.quick_lookup import LANGUAGE_NAMES
+        from meikipop.language.support import AVAILABLE_LANGUAGES
+        self.settings = settings
+        self.setWindowTitle("Meikipop Setup")
+        self.setMinimumWidth(360)
+        layout = QVBoxLayout(self)
+        self.language = QComboBox()
+        self.language.addItem("Choose a language…", None)
+        for code, name in sorted(LANGUAGE_NAMES.items(), key=lambda item: item[1].casefold()):
+            if code in AVAILABLE_LANGUAGES:
+                self.language.addItem(name, code)
+        form = QFormLayout()
+        form.addRow("Lookup language", self.language)
+        layout.addLayout(form)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        self.continue_button = QPushButton("Continue")
+        self.continue_button.setEnabled(False)
+        self.continue_button.setDefault(True)
+        self.continue_button.clicked.connect(self.accept)
+        buttons.addWidget(self.continue_button)
+        layout.addLayout(buttons)
+        self.language.currentIndexChanged.connect(lambda: self.continue_button.setEnabled(self.language.currentData() is not None))
+
+    def accept(self):
+        code = self.language.currentData()
+        if code is None:
+            return
+        from meikipop.language.profiles import default_partner
+        self.settings.setValue("initial_language", code)
+        self.settings.setValue("profile", code)
+        if not self.settings.contains(f"profiles/{code}/target"):
+            self.settings.setValue(f"profiles/{code}/target", default_partner(code))
+        self.settings.sync()
+        super().accept()
 
 
 class LanguageSuggestion(QDialog):
@@ -19,11 +59,11 @@ class LanguageSuggestion(QDialog):
         self.setWindowTitle(language_name(self.language))
         self.resize(480, 300)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Suggested downloads. Everything is optional."))
+        layout.addWidget(QLabel("Choose what to download."))
         self.choices = []
         for task in language_plan(self.language):
             check = QCheckBox(task.label)
-            check.setChecked(task.kind != "translation")
+            check.setChecked(True)
             layout.addWidget(check)
             self.choices.append((task, check))
         form = QFormLayout()
@@ -33,7 +73,7 @@ class LanguageSuggestion(QDialog):
         self.translation.addItem("Quality (8 GB)", "quality")
         form.addRow("Translation model", self.translation)
         form.setRowVisible(self.translation, any(task.kind == "translation" for task, check in self.choices))
-        self.translation.setEnabled(False)
+        self.translation.setEnabled(any(task.kind == "translation" for task, check in self.choices))
         for task, check in self.choices:
             if task.kind == "translation":
                 check.toggled.connect(self.translation.setEnabled)
@@ -48,9 +88,9 @@ class LanguageSuggestion(QDialog):
         buttons.addStretch()
         self.later = QPushButton("Later")
         self.later.clicked.connect(self.reject)
-        self.later.setDefault(True)
         buttons.addWidget(self.later)
-        self.install = QPushButton("Install selected")
+        self.install = QPushButton("Install")
+        self.install.setDefault(True)
         self.install.clicked.connect(self.accept)
         buttons.addWidget(self.install)
         layout.addLayout(buttons)
@@ -92,9 +132,7 @@ class LanguageSuggestion(QDialog):
         from meikipop.dictionary.translation import load_profile_settings, save_profile_settings
         code = self.language
         for task, value in completed:
-            if task.kind == "morphology":
-                self.window.settings.setValue(f"profiles/{code}/morphology", True)
-            elif task.kind == "ocr":
+            if task.kind == "ocr":
                 self.window.settings.setValue(f"profiles/{code}/ocr_provider", task.value)
                 if value:
                     self.window.settings.setValue("screenai_directory", value)
@@ -125,12 +163,10 @@ class LanguageSuggestion(QDialog):
         super().reject()
 
 
-def offer_resources(window, code):
+def offer_resources(window, code, *, force=False):
     key = f"profiles/{code}/resources_suggested"
-    if window.settings.value(key, False, bool):
+    if not force and window.settings.value(key, False, bool):
         return None
-    window.settings.setValue(key, True)
-    window.settings.sync()
     suggestions = getattr(window, "_resource_suggestions", None)
     if suggestions is None:
         window._resource_suggestions = suggestions = {}
@@ -141,4 +177,6 @@ def offer_resources(window, code):
     from meikipop.utils.window_focus import activate_application
     activate_application()
     suggestion.activateWindow()
+    window.settings.setValue(key, True)
+    window.settings.sync()
     return suggestion

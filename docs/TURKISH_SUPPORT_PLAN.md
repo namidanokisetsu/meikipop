@@ -99,8 +99,9 @@ clients remain explicit compatibility entrypoints.
    dictionary forms miss. Stanza has a shared
    [processor API](https://stanfordnlp.github.io/stanza/pipeline.html) with
    [language-specific models](https://stanfordnlp.github.io/stanza/download_models.html),
-   rather than one model for every language. Dictionaries exposes **Find base forms**,
-   installation status and explicit **Install model**; enabling it never downloads.
+   rather than one model for every language. Dictionaries offers **Download word-form
+   support** only for a supported language with a missing model; installed models
+   are used automatically.
    Setup installs only the required processors and dependencies. Imports remain lazy,
    runtime offline and worker-bound; Japanese never invokes neural analysis.
 
@@ -186,10 +187,16 @@ clients remain explicit compatibility entrypoints.
   self-signed identity from Actions secrets; PR builds remain ad-hoc signed.
   Permission retention across updates still needs hands-on acceptance. Windows
   publisher signing and Apple notarization still require release credentials.
-  Selecting a language offers individually optional dictionaries and supported
-  models. Translation defaults unchecked, with lightweight/quality choices;
-  Later starts without downloads. New installations have Japanese only; Turkish
-  appears after explicit addition or dictionary import. The tray has no setup menu.
+  Windows and macOS first launch asks for a language before offering dictionaries
+  and supported models. Suggestions start checked, can be unticked individually,
+  and download only after Install; Later skips downloads. New profiles use the
+  chosen language without adding Japanese. Existing profiles remain unchanged.
+  Settings exposes Audio, Translation, and Anki as separate tabs. Pin keyboard and
+  mouse controls share one row; built-in readiness labels and obsolete hidden
+  installers are removed. Recommended dictionaries download as one missing-resource
+  batch, retaining completed imports on cancellation or failure. Japanese includes
+  Jitendex, KANJIDIC, BCCWJ frequency, and Kanjium pitch; ZIP imports remain available.
+  The tray has no setup menu.
   Green is the new default appearance,
   with percentage background opacity available for every theme. Popup expansion
   preserves an above-text preview's lower edge and fits within the display. ZIP imports run
@@ -215,11 +222,11 @@ Implementation lives in `dictionary/library.py`, `dictionary/search.py`,
 `gui/dictionary_manager.py`, and `gui/unified_ocr.py`. The retained Turkish
 client lives under `gui/turkish/`. See [setup and usage](TURKISH_SETUP.md).
 
-Settings groups Lookup, Dictionaries, Appearance and Integrations. Explicit downloads sit beside
+Settings has Lookup, Dictionaries, Appearance, Audio, Translation, and Anki tabs. Explicit downloads sit beside
 their feature; detailed appearance/audio controls are collapsed and Anki setup appears only when enabled.
 The separate legacy clients retain their layouts; Japanese theme edits are staged until Save,
 and missing activation is rejected instead of silently restoring Shift.
 Translation models share one installation across profiles, with separate per-profile selection.
-Dictionary removal clears the recommended pack indicator; manual imports stay in Dictionaries.
+Dictionary removal restores its recommended download action; manual imports stay in Dictionaries.
 Packaged OCR includes the PaddleX extras metadata checked at runtime. Model setup errors preserve
 underlying exceptions and validate loaded Stanza/Paddle models before reporting success.

@@ -9,7 +9,7 @@ import zipfile
 
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QApplication, QWidget
-from meikipop.gui.first_run import LanguageSuggestion, needs_setup
+from meikipop.gui.first_run import FirstLanguage, LanguageSuggestion, needs_setup
 
 
 class FirstRunTests(unittest.TestCase):
@@ -36,6 +36,36 @@ class FirstRunTests(unittest.TestCase):
         self.settings.setValue("profile", "ja")
         self.assertFalse(needs_setup(self.settings))
 
+    def test_first_language_has_no_default_and_does_not_add_japanese(self):
+        from meikipop.language.profiles import configured_profiles
+        picker = FirstLanguage(self.settings)
+        self.addCleanup(picker.deleteLater)
+        self.assertIsNone(picker.language.currentData())
+        picker.accept()
+        self.assertFalse(self.settings.allKeys())
+        picker.language.setCurrentIndex(picker.language.findData("tr"))
+        picker.accept()
+        self.assertEqual(self.settings.value("profile"), "tr")
+        self.assertEqual(configured_profiles(self.settings), ("tr",))
+        self.assertFalse(needs_setup(self.settings))
+
+    def test_reopening_setup_preserves_existing_profile_preferences(self):
+        self.settings.setValue("profiles/tr/target", "ru")
+        self.settings.setValue("profiles/ja/scan_bindings", "alt")
+        picker = FirstLanguage(self.settings)
+        self.addCleanup(picker.deleteLater)
+        picker.language.setCurrentIndex(picker.language.findData("tr"))
+        picker.accept()
+        self.assertEqual(self.settings.value("profiles/tr/target"), "ru")
+        self.assertEqual(self.settings.value("profiles/ja/scan_bindings"), "alt")
+
+    def test_closing_language_picker_leaves_first_run_pending(self):
+        picker = FirstLanguage(self.settings)
+        self.addCleanup(picker.deleteLater)
+        picker.language.setCurrentIndex(picker.language.findData("ru"))
+        picker.reject()
+        self.assertTrue(needs_setup(self.settings))
+
     def test_suggestion_is_shown_once_per_profile_even_after_later(self):
         from meikipop.gui.first_run import offer_resources
         first = offer_resources(self.window, "ja")
@@ -55,6 +85,7 @@ class FirstRunTests(unittest.TestCase):
         self.assertIsNone(self.wizard.operation)
 
     def test_dictionary_is_optional_and_translation_uses_selected_size(self):
+        self.assertTrue(all(check.isChecked() for task, check in self.wizard.choices))
         for task, check in self.wizard.choices:
             check.setChecked(task.kind == "translation")
         self.wizard.translation.setCurrentIndex(1)
@@ -67,7 +98,7 @@ class FirstRunTests(unittest.TestCase):
             self.wizard.accept()
         setup.assert_called_once()
         setup.return_value.thread.start.assert_called_once()
-        self.assertFalse(any(task.kind == "translation" for task in setup.call_args.args[0]))
+        self.assertTrue(any(task.kind == "translation" for task in setup.call_args.args[0]))
         self.wizard.operation = None
 
     def test_language_plan_uses_supported_models_and_native_mac_ocr(self):

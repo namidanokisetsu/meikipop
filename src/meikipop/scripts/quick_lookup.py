@@ -109,10 +109,14 @@ def main(argv=None):
     if not instance.start(args.text, background):
         return 0
     app.aboutToQuit.connect(instance.shutdown)
-    from meikipop.gui.first_run import needs_setup, offer_resources
+    from meikipop.gui.first_run import FirstLanguage, needs_setup, offer_resources
     settings = QSettings("Meikipop", "QuickLookup")
     settings.setFallbacksEnabled(False)
-    first_run = args.setup or needs_setup(settings)
+    fresh_install = needs_setup(settings)
+    if (fresh_install or args.setup) and FirstLanguage(settings).exec() != 1:
+        instance.shutdown()
+        return 0
+    first_run = args.setup or fresh_install
     window = QuickLookupWindow(args.library, settings=settings)
     def open_requested(text=""):
         if sys.platform == "darwin" and not text:
@@ -182,7 +186,7 @@ def main(argv=None):
     except (ValueError, OSError, RuntimeError) as error:
         window.show_message(str(error))
     if first_run:
-        QTimer.singleShot(0, lambda: offer_resources(window, window.preferred_foreign))
+        QTimer.singleShot(0, lambda: offer_resources(window, window.preferred_foreign, force=args.setup))
     elif not background and (args.text or sys.platform != "darwin"):
         QTimer.singleShot(0, lambda: open_requested(args.text))
     return app.exec()
