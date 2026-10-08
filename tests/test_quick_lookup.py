@@ -178,12 +178,32 @@ class QuickLookupTests(unittest.TestCase):
         self.window._render()
         self.assertIn("last meaning", self.window.browser.toPlainText())
         self.assertEqual(self.settings.value("profiles/ja/collapsed_dictionaries", [], type=list), ["Monolingual"])
+
         self.window._link(QUrl("expand:1"))
         self.assertNotIn("first meaning", self.window.browser.toPlainText())
         self.window.set_compact_preview(False)
         self.assertNotIn("first meaning", self.window.browser.toPlainText())
 
+    def test_pin_keeps_expanded_preview_and_collapsed_dictionary_defaults(self):
+        self.settings.setValue("profiles/ja/expanded_dictionaries", ["Full"])
+        self.settings.setValue("profiles/ja/collapsed_dictionaries", ["Closed"])
+        entries = tuple(entry(source=source, definitions=tuple(f"{source} meaning {i}" for i in range(6)))
+                        for source in ("Full", "Preview", "Closed"))
+        self.window.show_entries(entries, "猫", peek=True)
+        self.window.pin.setChecked(True)
+        text = self.window.browser.toPlainText()
+        self.assertIn("Full meaning 5", text)
+        self.assertIn("Preview meaning 0", text)
+        self.assertNotIn("Preview meaning 5", text)
+        self.assertNotIn("Closed meaning 0", text)
+        self.window._link(QUrl("expand:1"))
+        self.assertIn("Preview meaning 5", self.window.browser.toPlainText())
+        self.window.pin.setChecked(False)
+        self.window.pin.setChecked(True)
+        self.assertIn("Preview meaning 5", self.window.browser.toPlainText())
+
     def test_pinned_dictionary_toggle_matches_display_and_preserves_scroll(self):
+        self.settings.setValue("profiles/ja/expanded_dictionaries", ['First', 'Second', 'Third'])
         for compact in (True, False):
             with self.subTest(compact=compact):
                 self.window.hide()
@@ -236,24 +256,32 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry(source="Monolingual", definitions=("mono definition",)),), "猫")
         dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
         try:
-            self.assertFalse(dialog.start_collapsed.isEnabled())
+            self.assertFalse(dialog.dictionary_display.isEnabled())
             dialog.packs.setCurrentRow(0)
-            self.assertTrue(dialog.start_collapsed.isEnabled())
-            dialog.start_collapsed.setChecked(True)
+            self.assertTrue(dialog.dictionary_display.isEnabled())
+            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("collapsed"))
             self.assertEqual(self.settings.value("profiles/ja/collapsed_dictionaries", [], type=list), ["Monolingual"])
             self.assertEqual(dialog.packs.currentItem().checkState(), Qt.CheckState.Checked)
             self.assertNotIn("mono definition", self.window.browser.toPlainText())
             dialog.sync_profile("tr")
-            self.assertFalse(dialog.start_collapsed.isEnabled())
+            self.assertFalse(dialog.dictionary_display.isEnabled())
             self.assertEqual(self.settings.value("profiles/tr/collapsed_dictionaries", [], type=list), [])
             dialog.sync_profile("ja")
-            self.assertTrue(dialog.start_collapsed.isChecked())
+            self.assertEqual(dialog.dictionary_display.currentData(), "collapsed")
             import_yomitan(archive, self.temp.name)
             dialog.reload()
-            self.assertTrue(dialog.start_collapsed.isChecked())
-            dialog.start_collapsed.setChecked(False)
+            self.assertEqual(dialog.dictionary_display.currentData(), "collapsed")
+            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("preview"))
             self.assertEqual(self.settings.value("profiles/ja/collapsed_dictionaries", [], type=list), [])
             self.assertIn("mono definition", self.window.browser.toPlainText())
+            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("expanded"))
+            self.assertEqual(self.settings.value("profiles/ja/expanded_dictionaries", [], type=list), ["Monolingual"])
+            self.assertIn("Monolingual", self.window._expanded)
+            dialog.reload()
+            self.assertEqual(dialog.dictionary_display.currentData(), "expanded")
+            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("preview"))
+            self.assertEqual(self.settings.value("profiles/ja/expanded_dictionaries", [], type=list), [])
+            self.assertNotIn("Monolingual", self.window._expanded)
         finally:
             dialog.deleteLater()
 
@@ -510,6 +538,8 @@ class QuickLookupTests(unittest.TestCase):
             block = block.next()
 
     def test_compact_preview_keeps_complete_senses_with_a_bounded_height(self):
+        self.window.set_mode("tr")
+        self.settings.setValue("profiles/tr/expanded_dictionaries", ['Turkish Monolingual'])
         long_sense = "A complete definition with several clauses. " * 12
         for list_tag in ("ol", "div"):
             with self.subTest(list_tag=list_tag):
@@ -557,6 +587,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window._context, "")
 
     def test_jitendex_preview_reduces_nesting_and_separates_tags(self):
+        self.settings.setValue("profiles/ja/expanded_dictionaries", ['Dictionary'])
         definitions = ({"type": "structured-content", "content": [
             {"tag": "ul", "data": {"content": "sense-groups"}, "content": {
                 "tag": "li", "data": {"content": "sense-group"}, "content": [

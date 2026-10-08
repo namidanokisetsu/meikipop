@@ -1266,16 +1266,16 @@ class QuickLookupWindow(QDialog):
     def collapsed_dictionaries(self):
         return set(self.settings.value(f"profiles/{self.preferred_foreign}/collapsed_dictionaries", [], type=list))
 
-    def set_dictionary_collapsed(self, source, collapsed):
-        if collapsed:
+    def set_dictionary_display(self, source, mode):
+        self._collapsed.discard(source)
+        self._expanded.discard(source)
+        if mode == "collapsed":
             self._collapsed.add(source)
-            self._expanded.discard(source)
-        else:
-            self._collapsed.discard(source)
+        elif mode == "expanded":
             self._expanded.add(source)
         self._render()
 
-    def _display(self, result, remember=True, expanded=(), details_expanded=None, collapsed=None, kanji_details=None):
+    def _display(self, result, remember=True, expanded=None, details_expanded=None, collapsed=None, kanji_details=None):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
             result.text, result.source, result.target)
         previous_context = getattr(self, "_result_context", "")
@@ -1298,6 +1298,11 @@ class QuickLookupWindow(QDialog):
             self._kanji_details = set(kanji_details)
         elif self._new_chain or not same:
             self._kanji_details.clear()
+        if expanded is not None:
+            self._expanded = set(expanded)
+        elif self._new_chain or not same:
+            self._expanded = set(self.settings.value(
+                f"profiles/{self.preferred_foreign}/expanded_dictionaries", [], type=list))
         self._new_chain = False
         self._result = result
         self._display_revision = self.revision
@@ -1307,7 +1312,6 @@ class QuickLookupWindow(QDialog):
         if not same:
             self._result_screenshot = None
         self._result_input = self.search.text().strip()
-        self._expanded = set(expanded)
         self._render()
         self.back.setEnabled(bool(self._history))
         self.back.setVisible(bool(self._history))
@@ -1887,8 +1891,6 @@ class QuickLookupWindow(QDialog):
             self._opening_search = sys.platform == "darwin"
             focus_pinned_popup(self, self.browser)
             QTimer.singleShot(300, lambda: setattr(self, "_opening_search", False))
-            if self._peek and self._result is not None:
-                self._expanded.update(entry.source for entry in self._result.entries)
         self.context_label.hide()
         self.actions_row.setVisible(checked or not self._peek)
         self._place_actions()

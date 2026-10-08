@@ -40,6 +40,7 @@ class DictionaryCollapseTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_pinned_middle_school_dictionary_minus_reduces_content(self):
+        self.window.settings.setValue("profiles/ja/expanded_dictionaries", ["Middle-school monolingual"])
         definitions = tuple(f"Meaning {index}: " + "x" * 120 for index in range(4))
         result = SearchResult("fixture", "ja", "en", (_entry("Middle-school monolingual", definitions),))
 

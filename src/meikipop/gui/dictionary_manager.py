@@ -148,11 +148,14 @@ class SetupDialog(QDialog):
         self.packs.setAccessibleName("Installed dictionaries, in priority order")
         self.packs.setToolTip("Checked dictionaries are enabled. Higher dictionaries appear first.")
         dictionary_layout.addWidget(self.packs, 1)
-        self.start_collapsed = QCheckBox("Start collapsed")
-        self.start_collapsed.setToolTip("Show only this dictionary's heading in expanded results")
-        self.start_collapsed.toggled.connect(self.save_dictionary_display)
+        self.dictionary_display = QComboBox()
+        self.dictionary_display.setAccessibleName("Default dictionary display")
+        for label, value in (("Expanded", "expanded"), ("Preview", "preview"), ("Collapsed", "collapsed")):
+            self.dictionary_display.addItem(label, value)
+        self.dictionary_display.setToolTip("Initial display for this dictionary; pinning keeps this choice")
+        self.dictionary_display.currentIndexChanged.connect(self.save_dictionary_display)
         self.packs.currentItemChanged.connect(self.update_dictionary_display)
-        dictionary_layout.addWidget(self.start_collapsed)
+        dictionary_layout.addWidget(self.dictionary_display)
         actions = QHBoxLayout()
         self.import_button = QPushButton("Import ZIPs…")
         self.import_button.clicked.connect(self.choose_dictionaries)
@@ -501,26 +504,35 @@ class SetupDialog(QDialog):
         item = self.packs.currentItem()
         valid = (item is not None and item.data(Qt.ItemDataRole.UserRole + 1) == self.profile.currentData()
                  and item.data(Qt.ItemDataRole.UserRole + 3))
-        self.start_collapsed.setEnabled(bool(valid))
-        self.start_collapsed.setVisible(bool(valid))
-        with QSignalBlocker(self.start_collapsed):
-            sources = self.settings.value(f"profiles/{self.profile.currentData()}/collapsed_dictionaries", [], type=list)
-            self.start_collapsed.setChecked(bool(valid) and item.data(Qt.ItemDataRole.UserRole + 2) in sources)
+        self.dictionary_display.setEnabled(bool(valid))
+        self.dictionary_display.setVisible(bool(valid))
+        mode = "preview"
+        if valid:
+            source = item.data(Qt.ItemDataRole.UserRole + 2)
+            for candidate in ("expanded", "collapsed"):
+                sources = self.settings.value(f"profiles/{self.profile.currentData()}/{candidate}_dictionaries", [], type=list)
+                if source in sources:
+                    mode = candidate
+        with QSignalBlocker(self.dictionary_display):
+            self.dictionary_display.setCurrentIndex(self.dictionary_display.findData(mode))
 
-    def save_dictionary_display(self, collapsed):
+    def save_dictionary_display(self, *_):
         item = self.packs.currentItem()
-        if self._loading or item is None or not self.start_collapsed.isEnabled():
+        if self._loading or item is None or not self.dictionary_display.isEnabled():
             return
-        key = f"profiles/{self.profile.currentData()}/collapsed_dictionaries"
-        sources = set(self.settings.value(key, [], type=list))
         source = item.data(Qt.ItemDataRole.UserRole + 2)
-        if collapsed:
-            sources.add(source)
-        else:
+        mode = self.dictionary_display.currentData()
+        profile = self.profile.currentData()
+        for candidate in ("expanded", "collapsed"):
+            key = f"profiles/{profile}/{candidate}_dictionaries"
+            sources = set(self.settings.value(key, [], type=list))
             sources.discard(source)
-        self.settings.setValue(key, sorted(sources))
-        if self.parent() is not None:
-            self.parent().set_dictionary_collapsed(source, collapsed)
+            if mode == candidate:
+                sources.add(source)
+            self.settings.setValue(key, sorted(sources))
+        parent = self.parent()
+        if parent is not None and parent.preferred_foreign == profile:
+            parent.set_dictionary_display(source, mode)
 
     def choose_profile(self):
         from meikipop.language.support import support_summary
