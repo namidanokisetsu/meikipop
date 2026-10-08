@@ -127,14 +127,14 @@ class SectionScrollTests(unittest.TestCase):
         self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", entries), expanded=("Source",)))
         self.app.processEvents()
         self.scroller.set_enabled(True)
-        second = self.scroller._top(self.scroller._headings[1])
+        second = self.scroller.boundaries()[1][0]
         stops = self.scroller.stops()
         height = self.browser.viewport().height() - self.scroller.header.height()
         self.assertIn(second, stops)
         self.assertEqual(max(stop for stop in stops if stop < second), second - height)
         self.bar.setValue(second)
         self.assertFalse(self.scroller.header.isVisible())
-        self.assertEqual(self.browser.cursorRect(self.browser.document().find("犬")).top(), 0)
+        self.assertGreaterEqual(self.browser.cursorRect(self.browser.document().find("犬")).top(), 0)
 
     def finish_animation(self):
         self.scroller.animation.setCurrentTime(self.scroller.animation.duration())
@@ -166,11 +166,17 @@ class SectionScrollTests(unittest.TestCase):
         self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", entries), expanded=("Source",)))
         self.app.processEvents()
         self.scroller.set_enabled(True)
-        second = self.scroller._top(self.scroller._headings[1])
+        second = self.scroller.boundaries()[1][0]
         self.wheel(angle=0, pixel=-10000)
+        self.assertEqual(self.bar.value(), second - self.browser.viewport().height())
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
+        self.wheel(angle=0, pixel=-10)
         self.assertEqual(self.bar.value(), second)
+        self.wheel(angle=0, pixel=-10000, phase=Qt.ScrollPhase.ScrollMomentum)
+        self.assertEqual(self.bar.value(), second)
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
         self.wheel(angle=0, pixel=10000)
-        self.assertEqual(self.bar.value(), 0)
+        self.assertEqual(self.bar.value(), second - self.browser.viewport().height())
 
     def test_mouse_wheel_retargets_smooth_motion(self):
         self.render(lines=20)
@@ -218,7 +224,7 @@ class SectionScrollTests(unittest.TestCase):
         self.assertTrue(self.scroller.header.isVisible())
         self.assertEqual(self.scroller.header.pos(), QPoint(0, 0))
         self.assertEqual(self.scroller.header.toPlainText().strip(), "猫")
-        second = self.scroller._top(self.scroller._headings[1])
+        second = self.scroller.boundaries()[1][0]
         height = self.scroller.header.height()
         self.bar.setValue(second - height)
         self.assertEqual(self.scroller.header.pos(), QPoint(0, 0))
@@ -228,7 +234,7 @@ class SectionScrollTests(unittest.TestCase):
         self.assertEqual(self.scroller.header.y() + height, second - self.bar.value())
         self.bar.setValue(second)
         self.assertFalse(self.scroller.header.isVisible())
-        self.bar.setValue(second + 5)
+        self.bar.setValue(self.scroller._top(self.scroller._headings[1]) + 5)
         self.assertTrue(self.scroller.header.isVisible())
         self.assertEqual(self.scroller.header.pos(), QPoint(0, 0))
         self.assertEqual(self.scroller.header.toPlainText().strip(), "犬")
@@ -321,6 +327,55 @@ class SectionScrollTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(len(self.scroller.section_tops()), 3)
         self.assertEqual(len(set(self.scroller.section_tops())), 3)
+
+    def test_short_final_kanji_panel_can_align_at_top_without_stale_headword(self):
+        result = SearchResult("賛成票", "ja", "en", (
+            Entry("vote", "賛成票", "さんせいひょう", "Source", "ja", ("vote in favor\n" * 12,)),),
+            kanji=(KanjiEntry("票", meanings=("ballot",)),))
+        self.browser.resize(400, 360)
+        self.browser.setHtml(render_result(result, expanded=("Source",)))
+        self.app.processEvents()
+        normal_maximum = self.bar.maximum()
+        self.scroller.set_enabled(True)
+        self.app.processEvents()
+        top = self.scroller.boundaries()[-1][0]
+        self.assertGreater(top, normal_maximum)
+        self.assertGreaterEqual(self.bar.maximum(), top)
+        self.wheel(angle=0, pixel=-10000)
+        if self.bar.value() < top:
+            self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
+            self.wheel(angle=0, pixel=-10)
+        self.assertEqual(self.bar.value(), top)
+        self.assertFalse(self.scroller.header.isVisible())
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
+        self.wheel(angle=0, pixel=20)
+        self.assertLess(self.bar.value(), top)
+        self.scroller.set_enabled(False)
+        self.app.processEvents()
+        self.assertEqual(self.browser.document().rootFrame().frameFormat().bottomMargin(),
+                         self.browser.document().documentMargin())
+
+    def test_short_headword_hides_following_section_until_next_gesture(self):
+        entries = tuple(Entry(str(i), term, "", "Source", "ja", ("meaning",))
+                        for i, term in enumerate(("猫", "犬", "鳥")))
+        self.browser.resize(400, 360)
+        self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", entries)))
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        self.app.processEvents()
+        second, third = [top for top, _ in self.scroller.boundaries()[1:]]
+        self.assertLess(second, self.browser.viewport().height())
+        self.assertEqual(self.browser.viewport().mask().boundingRect().height(), second)
+        self.wheel(angle=0, pixel=-10, phase=Qt.ScrollPhase.ScrollUpdate)
+        self.assertEqual(self.bar.value(), second)
+        self.assertEqual(self.browser.viewport().mask().boundingRect().height(), third - second)
+        self.wheel(angle=0, pixel=-100, phase=Qt.ScrollPhase.ScrollMomentum)
+        self.assertEqual(self.bar.value(), second)
+        self.wheel(angle=0, phase=Qt.ScrollPhase.ScrollBegin)
+        self.wheel(angle=0, pixel=-10, phase=Qt.ScrollPhase.ScrollUpdate)
+        self.assertEqual(self.bar.value(), third)
+        self.scroller.set_enabled(False)
+        self.assertTrue(self.browser.viewport().mask().isEmpty())
 
 
 if __name__ == "__main__":

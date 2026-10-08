@@ -1,8 +1,8 @@
 """Optional animated section navigation with a persistent lexical heading."""
 from bisect import bisect_left, bisect_right
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QTimer, Qt
-from PyQt6.QtGui import QColor, QPainter, QTextCursor
+from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSignalBlocker, QTimer, Qt, pyqtSlot
+from PyQt6.QtGui import QColor, QPainter, QRegion, QTextCursor, QTextFormat
 from PyQt6.QtWidgets import QApplication, QProgressBar
 
 from meikipop.gui.ruby import RubyBrowser
@@ -41,8 +41,14 @@ class SectionScroller(QObject):
         self.preview = False
         self._positions = None
         self._headings = []
+        self._boundaries = []
         self._heading = None
         self._target = None
+        self._boundary_latched = False
+        self._gesture_idle = QTimer(self)
+        self._gesture_idle.setSingleShot(True)
+        self._gesture_idle.setInterval(180)
+        self._gesture_idle.timeout.connect(self._reset_gesture)
         from meikipop.utils.window_focus import reduce_motion_enabled
         self.animation_enabled = not reduce_motion_enabled()
         self.animation = QPropertyAnimation(browser.verticalScrollBar(), b"value", self)
@@ -67,8 +73,16 @@ class SectionScroller(QObject):
         browser.document().contentsChanged.connect(self._document_changed)
         browser.verticalScrollBar().valueChanged.connect(self._update_header)
         browser.verticalScrollBar().valueChanged.connect(self._update_progress)
-        browser.verticalScrollBar().rangeChanged.connect(lambda *_: self._refresh.start(0))
+        browser.verticalScrollBar().rangeChanged.connect(self._schedule_refresh)
         self._scrollbar_policy = browser.verticalScrollBarPolicy()
+
+    @pyqtSlot()
+    def _reset_gesture(self):
+        self._boundary_latched = False
+
+    @pyqtSlot(int, int)
+    def _schedule_refresh(self, *_):
+        self._refresh.start(0)
 
     def set_enabled(self, enabled):
         if self.enabled != bool(enabled):
@@ -95,9 +109,12 @@ class SectionScroller(QObject):
 
     def _document_changed(self):
         self.cancel()
+        self._boundary_latched = False
+        self.browser.viewport().clearMask()
         self._positions = None
         self._heading = None
         self._headings = []
+        self._boundaries = []
         self._refresh.start(0)
 
     def _index(self):
@@ -105,6 +122,7 @@ class SectionScroller(QObject):
             return
         positions = set()
         self._headings = []
+        self._boundaries = []
         block = self.browser.document().begin()
         while block.isValid():
             names = set(block.charFormat().anchorNames())
@@ -119,6 +137,12 @@ class SectionScroller(QObject):
                 iterator += 1
             if any(name.startswith("scroll-headword-") for name in names):
                 self._headings.append(block.position())
+            if block.position() in self._headings or "scroll-section-kanji" in names:
+                boundary = block
+                previous = block.previous()
+                if previous.isValid() and previous.blockFormat().hasProperty(QTextFormat.Property.BlockTrailingHorizontalRulerWidth):
+                    boundary = previous
+                self._boundaries.append((boundary.position(), block.position() if block.position() in self._headings else None))
             block = block.next()
         self._positions = sorted(positions)
 
@@ -131,14 +155,50 @@ class SectionScroller(QObject):
         self._index()
         return [0, *(max(0, self._top(position)) for position in self._positions[1:])]
 
+    def boundaries(self):
+        self._index()
+        document = self.browser.document()
+        layout = document.documentLayout()
+        return [(max(0, round(layout.blockBoundingRect(document.findBlock(position)).top())), heading)
+                for position, heading in self._boundaries]
+
     def section_starts(self):
         tops = self.section_tops()
         heading = self.header.height() if self._headings and not self.preview else 0
-        return [0, *(max(0, top - (0 if position in self._headings else heading))
+        major = {heading if heading is not None else position: top
+                 for (position, heading), (top, _) in zip(self._boundaries, self.boundaries())}
+        return [0, *(major.get(position, max(0, top - heading))
                      for position, top in zip(self._positions[1:], tops[1:]))]
+
+    def _align_section_end(self):
+        document = self.browser.document()
+        frame = document.rootFrame()
+        fmt = frame.frameFormat()
+        margin = document.documentMargin()
+        boundaries = self.boundaries()
+        if self.enabled and not self.preview and boundaries:
+            # A short last section still needs enough scroll range to reach the top.
+            content_height = document.size().height() - fmt.bottomMargin()
+            margin = max(margin, boundaries[-1][0] + self.browser.viewport().height() - content_height)
+        if abs(fmt.bottomMargin() - margin) > .5:
+            fmt.setBottomMargin(margin)
+            with QSignalBlocker(document):
+                frame.setFrameFormat(fmt)
+
+    def _update_clip(self):
+        viewport = self.browser.viewport()
+        if not self.enabled or self.preview:
+            viewport.clearMask()
+            return
+        scroll = self.browser.verticalScrollBar().value()
+        following = [top for top, _ in self.boundaries() if top > scroll and top > self.browser.document().documentMargin()]
+        height = min(viewport.height(), following[0] - scroll) if following else viewport.height()
+        viewport.setMask(QRegion(0, 0, viewport.width(), max(1, height)))
 
     def _refresh_header(self):
         self._index()
+        self._align_section_end()
+        self._update_clip()
         self._update_progress()
         visible = self.enabled and not self.preview and bool(self._headings)
         if not visible:
@@ -180,15 +240,19 @@ class SectionScroller(QObject):
             self.progress.update()
 
     def _update_header(self):
+        self._update_clip()
         if not self.enabled or self.preview or not self._headings:
             return
         scroll = self.browser.verticalScrollBar().value()
-        tops = [self._top(pos) for pos in self._headings]
-        index = max(0, bisect_right(tops, scroll) - 1)
-        position = self._headings[index]
-        offset = min(0, tops[index + 1] - scroll - self.header.height()) if index + 1 < len(tops) else 0
+        boundaries = self.boundaries()
+        index = max(0, bisect_right([top for top, _ in boundaries], scroll) - 1)
+        _, position = boundaries[index]
+        if position is None:
+            self.header.hide()
+            return
+        offset = min(0, boundaries[index + 1][0] - scroll - self.header.height()) if index + 1 < len(boundaries) else 0
         self.header.move(0, offset)
-        self.header.setVisible(tops[index] < scroll)
+        self.header.setVisible(self._top(position) < scroll)
         if self._heading == position:
             return
         self._heading = position
@@ -255,18 +319,31 @@ class SectionScroller(QObject):
         self._index()
         bar = self.browser.verticalScrollBar()
         value = self._target if animate and self._target is not None else bar.value()
-        boundaries = sorted({0, bar.maximum(), *(min(bar.maximum(), self._top(pos))
-                                                for pos in self._headings[1:])})
+        boundaries = sorted({0, *(min(bar.maximum(), top) for top, _ in self.boundaries()[1:])})
         target = value + movement
+        crossed = False
         if movement > 0:
-            target = min(target, boundaries[min(bisect_right(boundaries, value), len(boundaries) - 1)])
+            index = bisect_right(boundaries, value)
+            if index < len(boundaries):
+                boundary = boundaries[index]
+                tail = max(value, boundary - self.browser.viewport().height())
+                target = boundary if tail == value else min(target, tail)
+                crossed = target in (tail, boundary) and target != value
+            else:
+                target = min(target, bar.maximum())
         elif movement < 0:
-            target = max(target, boundaries[max(0, bisect_left(boundaries, value) - 1)])
+            boundary = boundaries[max(0, bisect_left(boundaries, value) - 1)]
+            if value in boundaries:
+                target = max(boundary, value - self.browser.viewport().height())
+                crossed = target != value
+            else:
+                target = max(target, boundary)
         if animate:
             self._move(round(target))
         else:
             self.cancel()
             bar.setValue(round(target))
+        return crossed
 
     def eventFilter(self, watched, event):
         kind = event.type()
@@ -299,11 +376,15 @@ class SectionScroller(QObject):
         delta = pixel if not pixel.isNull() else angle
         if abs(delta.x()) > abs(delta.y()):
             return False
-        if not pixel.isNull() or phase != Qt.ScrollPhase.NoScrollPhase:
-            # Native trackpad updates already include smooth motion and momentum.
-            self.scroll_by(-pixel.y() if not pixel.isNull() else -angle.y() / 3)
-        else:
-            movement = -angle.y() / 120 * QApplication.wheelScrollLines() * self.browser.verticalScrollBar().singleStep()
-            self.scroll_by(movement, animate=True)
+        if phase in (Qt.ScrollPhase.ScrollBegin, Qt.ScrollPhase.ScrollEnd):
+            self._boundary_latched = False
+        if not self._boundary_latched:
+            if not pixel.isNull() or phase != Qt.ScrollPhase.NoScrollPhase:
+                self._boundary_latched = self.scroll_by(-pixel.y() if not pixel.isNull() else -angle.y() / 3)
+            else:
+                movement = -angle.y() / 120 * QApplication.wheelScrollLines() * self.browser.verticalScrollBar().singleStep()
+                self._boundary_latched = self.scroll_by(movement, animate=True)
+        if phase == Qt.ScrollPhase.NoScrollPhase:
+            self._gesture_idle.start()
         event.accept()
         return True
