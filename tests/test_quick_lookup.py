@@ -160,6 +160,35 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_compact_preview(False)
         self.assertNotIn("first meaning", self.window.browser.toPlainText())
 
+    def test_pinned_dictionary_toggle_matches_display_and_preserves_scroll(self):
+        for compact in (True, False):
+            with self.subTest(compact=compact):
+                self.window.hide()
+                self.window.set_compact_preview(compact)
+                lead = entry(source="First", definitions=tuple(f"Lead {i}" for i in range(20)))
+                target = entry(source="Second", definitions=("one", "two", "three", "Fourth sense"))
+                tail = entry(source="Third", definitions=tuple(f"Tail {i}" for i in range(30)))
+                self.window.show_entries((lead, target, tail), "猫", peek=True)
+                self.window.pin.setChecked(True)
+                self.app.processEvents()
+                browser = self.window.browser
+                bar = browser.verticalScrollBar()
+                bar.setValue(20)
+                scroll = bar.value()
+                self.assertGreater(scroll, 0)
+                for expanded in (False, True, False):
+                    before = browser.toHtml()
+                    self.assertIn('href="expand:1"', before)
+                    self.assertEqual("Fourth sense" in browser.toPlainText(), not expanded)
+                    self.window._link(QUrl("expand:1"))
+                    self.app.processEvents()
+                    self.assertEqual("Second" in self.window._expanded, expanded)
+                    self.assertEqual("Fourth sense" in browser.toPlainText(), expanded)
+                    cursor = browser.document().find("Second")
+                    cursor.movePosition(cursor.MoveOperation.EndOfBlock, cursor.MoveMode.KeepAnchor)
+                    self.assertIn("−" if expanded else "+", cursor.selectedText())
+                    self.assertEqual(bar.value(), scroll)
+
     def test_back_restores_manual_dictionary_expansion_and_new_lookup_uses_defaults(self):
         self.settings.setValue("profiles/ja/collapsed_dictionaries", ["Dictionary"])
         self.window._display(SearchResult("猫", "ja", "en", (entry(),)))

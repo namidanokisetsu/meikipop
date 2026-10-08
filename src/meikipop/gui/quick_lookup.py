@@ -1209,7 +1209,7 @@ class QuickLookupWindow(QDialog):
                 return
             compact = self.compact_preview()
             expanded = self._expanded
-            if self._peek and not compact:
+            if self._peek and not self.is_pinned and not compact:
                 expanded = {entry.source for entry in self._result.entries}
             show_source, source_text = self._peek, None
             if self._peek and self.is_pinned:
@@ -1239,7 +1239,7 @@ class QuickLookupWindow(QDialog):
             block_text, offset = anchor.block().text(), self.browser.cursorRect(anchor).top()
             mark("html_begin", self.revision)
             self.browser.setHtml(render_result(self._result, expanded,
-                                               self._kanji_expanded or self._peek and not compact,
+                                               self._kanji_expanded or self._peek and not self.is_pinned and not compact,
                                                preview=self._peek and not self.is_pinned and compact,
                                                overlay_actions=(self.audio_actions.sizeHint().width() + 8) if self._peek and self.is_pinned else 0,
                                                show_source=show_source, source_text=source_text,
@@ -1358,7 +1358,6 @@ class QuickLookupWindow(QDialog):
             else:
                 self._expanded.add(source)
             self._render()
-            self.browser.scrollToAnchor(f"dictionary-{index}")
         elif url.scheme() == "suggest" and 0 <= index < len(self._result.suggestions):
             self.lookup_word(str(self._result.suggestions[index]))
 
