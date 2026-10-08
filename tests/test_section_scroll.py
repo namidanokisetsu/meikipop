@@ -49,6 +49,36 @@ class SectionScrollTests(unittest.TestCase):
         self.app.sendEvent(self.browser.viewport(), event)
         return event
 
+    def test_progress_uses_equal_sections_and_interpolates_long_sections(self):
+        value = SearchResult("word", "en", "ja", tuple(
+            Entry(str(i), "word", "", f"Source {i}", "en", ("line\n" * lines,))
+            for i, lines in enumerate((3, 20, 14))))
+        self.browser.setHtml(render_result(value, expanded=tuple(e.source for e in value.entries)))
+        self.app.processEvents()
+        scroller = self.browser.section_scroll
+        scroller.set_enabled(True)
+        self.app.processEvents()
+        bar = self.browser.verticalScrollBar()
+        self.assertTrue(scroller.progress.isVisible())
+        self.assertEqual(self.browser.verticalScrollBarPolicy(), Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        starts = [max(0, top - scroller.header.height()) for top in scroller.section_tops()]
+        for i, start in enumerate(starts):
+            bar.setValue(start)
+            self.assertAlmostEqual(scroller.progress_fraction(), i / 3)
+        bar.setValue(round((starts[1] + starts[2]) / 2))
+        self.assertAlmostEqual(scroller.progress_fraction(), .5, places=2)
+        bar.setValue(bar.maximum())
+        self.assertEqual(scroller.progress.value(), 1000)
+        self.browser.resize(340, 190)
+        self.app.processEvents()
+        self.assertGreater(scroller.progress.x(), self.browser.viewport().geometry().right())
+        self.browser.setHtml("Short")
+        self.app.processEvents()
+        self.assertFalse(scroller.progress.isVisible())
+        scroller.set_enabled(False)
+        self.assertEqual(self.browser.viewportMargins().right(), 0)
+        self.assertEqual(self.browser.verticalScrollBarPolicy(), Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
     def test_default_uses_normal_wheel_scrolling(self):
         self.assertFalse(self.scroller.enabled)
         self.wheel()

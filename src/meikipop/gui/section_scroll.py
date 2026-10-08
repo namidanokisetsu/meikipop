@@ -2,12 +2,35 @@
 from bisect import bisect_left, bisect_right
 
 from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QTimer, Qt
-from PyQt6.QtGui import QTextCursor
+from PyQt6.QtGui import QColor, QPainter, QTextCursor
+from PyQt6.QtWidgets import QProgressBar
 
 from meikipop.gui.ruby import RubyBrowser
 
 
 SECTION_PREFIX = "scroll-section-"
+
+
+class ReadingProgress(QProgressBar):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setRange(0, 1000)
+        self.setValue(0)
+        self.setOrientation(Qt.Orientation.Vertical)
+        self.setTextVisible(False)
+        self.setAccessibleName("Reading progress")
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.hide()
+
+    def paintEvent(self, event):
+        from meikipop.config.config import config
+        from meikipop.gui.popup_style import surface_colors
+        colors = surface_colors(config.color_background, config.color_foreground)
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(colors["border"]))
+        painter.fillRect(0, 0, self.width(), round(self.height() * self.value() / 1000),
+                         QColor(config.color_highlight_word))
 
 
 class SectionScroller(QObject):
@@ -43,11 +66,15 @@ class SectionScroller(QObject):
         self.header.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.header.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.header.hide()
+        self.progress = ReadingProgress(browser)
+        self._viewport_margins = browser.viewportMargins()
         self.header.viewport().installEventFilter(self)
         browser.installEventFilter(self)
         browser.viewport().installEventFilter(self)
         browser.document().contentsChanged.connect(self._document_changed)
         browser.verticalScrollBar().valueChanged.connect(self._update_header)
+        browser.verticalScrollBar().valueChanged.connect(self._update_progress)
+        browser.verticalScrollBar().rangeChanged.connect(lambda *_: self._refresh.start(0))
         self._scrollbar_policy = browser.verticalScrollBarPolicy()
 
     def set_enabled(self, enabled):
@@ -56,6 +83,9 @@ class SectionScroller(QObject):
             self.cancel()
             self.browser.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff if enabled else self._scrollbar_policy)
+            margins = self._viewport_margins
+            self.browser.setViewportMargins(margins.left(), margins.top(),
+                                            margins.right() + (7 if enabled else 0), margins.bottom())
             self._refresh_header()
 
     def set_preview(self, preview):
@@ -113,6 +143,7 @@ class SectionScroller(QObject):
 
     def _refresh_header(self):
         self._index()
+        self._update_progress()
         visible = self.enabled and not self.preview and bool(self._headings)
         if not visible:
             self.header.hide()
@@ -126,6 +157,33 @@ class SectionScroller(QObject):
         self.header.setGeometry(0, 0, self.browser.viewport().width(), height)
         self._heading = None
         self._update_header()
+        self._update_progress()
+
+    def progress_fraction(self):
+        bar = self.browser.verticalScrollBar()
+        maximum = bar.maximum()
+        if not maximum:
+            return 0.0
+        heading = self.header.height() if self._headings and not self.preview else 0
+        boundaries = sorted({0, maximum, *(min(maximum, max(0, top - heading))
+                                         for top in self.section_tops())})
+        value = bar.value()
+        if value >= maximum:
+            return 1.0
+        index = max(0, bisect_right(boundaries, value) - 1)
+        start, end = boundaries[index:index + 2]
+        return (index + (value - start) / (end - start)) / (len(boundaries) - 1)
+
+    def _update_progress(self):
+        visible = self.enabled and self.browser.verticalScrollBar().maximum() > 0
+        self.progress.setVisible(visible)
+        if visible:
+            viewport = self.browser.viewport().geometry()
+            self.progress.setGeometry(viewport.right() + 3, viewport.top() + 4,
+                                      2, max(1, viewport.height() - 8))
+            self.progress.setValue(round(1000 * self.progress_fraction()))
+            self.progress.raise_()
+            self.progress.update()
 
     def _update_header(self):
         if not self.enabled or self.preview or not self._headings:
