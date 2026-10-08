@@ -189,9 +189,12 @@ class SectionScroller(QObject):
         if not self.enabled or self.preview or not self._headings:
             return
         scroll = self.browser.verticalScrollBar().value()
-        index = max(0, bisect_right([self._top(pos) for pos in self._headings], scroll + 1) - 1)
+        tops = [self._top(pos) for pos in self._headings]
+        index = max(0, bisect_right(tops, scroll) - 1)
         position = self._headings[index]
-        self.header.setVisible(self._top(position) < scroll)
+        offset = min(0, tops[index + 1] - scroll - self.header.height()) if index + 1 < len(tops) else 0
+        self.header.move(0, offset)
+        self.header.setVisible(tops[index] < scroll)
         if self._heading == position:
             return
         self._heading = position
