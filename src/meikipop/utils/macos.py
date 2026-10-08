@@ -1,4 +1,4 @@
-"""macOS screen-capture permission checks, imported only when OCR is enabled."""
+"""macOS permissions requested when their features start."""
 import sys
 
 
@@ -9,8 +9,8 @@ class InputMonitoringPermissionError(RuntimeError):
 def require_input_monitoring_permission() -> None:
     if sys.platform != "darwin":
         return
-    from Quartz import CGPreflightListenEventAccess
-    if not CGPreflightListenEventAccess():
+    from Quartz import CGPreflightListenEventAccess, CGRequestListenEventAccess
+    if not CGPreflightListenEventAccess() and not CGRequestListenEventAccess():
         raise InputMonitoringPermissionError(
             "Allow Meikipop in System Settings > Privacy & Security > Input Monitoring, then reopen Meikipop."
         )
@@ -24,8 +24,7 @@ def require_screen_capture_permission(*, request_access: bool = False) -> None:
     except ImportError as error:
         raise RuntimeError("Screen capture needs Meikipop's macOS dependencies.") from error
     if not CGPreflightScreenCaptureAccess():
-        # Request only from the user's explicit Enable Screen Lookup action,
-        # never from a repeated frame capture or startup.
+        # Request when screen lookup starts, never during frame capture.
         if request_access:
             from Quartz import CGRequestScreenCaptureAccess
             if CGRequestScreenCaptureAccess():

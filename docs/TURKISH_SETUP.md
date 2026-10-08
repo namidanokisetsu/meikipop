@@ -24,7 +24,9 @@ on demand. Manual direction, streaming, and keep-warm controls remain under Adva
 
 
 
-On macOS, allow **Input Monitoring** for global shortcuts, **Accessibility** for
+On macOS, Meikipop requests Screen Recording when screen lookup starts and Input
+Monitoring when global input starts, including at launch for enabled features.
+Allow **Input Monitoring** for global shortcuts, **Accessibility** for
 copying selected text from other apps, and **Screen Recording** for OCR in
 System Settings → Privacy & Security, then reopen Meikipop. Shortcuts can be
 recorded and saved before permission is granted. Command and Control are separate;

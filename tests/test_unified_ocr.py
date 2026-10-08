@@ -346,6 +346,24 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.assertTrue(self.window.search.isEnabled())
         self.window.show_message.assert_called_once_with("Screen Recording")
 
+    def test_startup_requests_screen_permission_only_for_enabled_scan(self):
+        for bindings in ("shift", ""):
+            with self.subTest(bindings=bindings):
+                window = FakeWindow()
+                window.settings = Mock()
+                window.settings.value.side_effect = lambda key, default=None, *args: (
+                    bindings if key.endswith("/scan_bindings") else default)
+                with patch("meikipop.gui.unified_ocr.sys.platform", "darwin"), \
+                        patch("meikipop.utils.macos.require_screen_capture_permission",
+                              side_effect=RuntimeError("Screen Recording")) as permission:
+                    controller = UnifiedOCR(window)
+                if bindings:
+                    permission.assert_called_once_with(request_access=True)
+                else:
+                    permission.assert_not_called()
+                controller.shutdown()
+                window.deleteLater()
+
     def test_capture_bounds_remain_stable_for_nearby_words(self):
         geometry = QRect(0, 0, 1920, 1080)
         first = self.controller._capture_bounds(QPoint(800, 500), geometry, ("display", 1.0))

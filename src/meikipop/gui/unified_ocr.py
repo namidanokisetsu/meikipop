@@ -314,9 +314,7 @@ class UnifiedOCR(QObject):
             window.dismiss_button.clicked.connect(self.dismiss)
         window.installEventFilter(self)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
-        self._starting = True
         self.reload_settings()
-        self._starting = False
 
     @property
     def enabled(self):
@@ -426,7 +424,7 @@ class UnifiedOCR(QObject):
                 self.input.activation.set_bindings(bindings)
                 self.holding = False
             if bool(bindings) != self.enabled:
-                self.set_enabled(bool(bindings), request_access=not getattr(self, "_starting", False))
+                self.set_enabled(bool(bindings))
 
     def _sync_pin_ready(self):
         if self.input and hasattr(self.input, "pin_ready"):

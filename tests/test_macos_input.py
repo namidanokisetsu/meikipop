@@ -71,7 +71,8 @@ class InputPermissionTests(unittest.TestCase):
         self.assertIsNone(window._keys)
 
     def test_denied_monitoring_is_actionable_and_never_starts_thread(self):
-        modules = {"Quartz": Mock(CGPreflightListenEventAccess=Mock(return_value=False))}
+        modules = {"Quartz": Mock(CGPreflightListenEventAccess=Mock(return_value=False),
+                                  CGRequestListenEventAccess=Mock(return_value=False))}
         with patch("sys.platform", "darwin"), patch.dict(sys.modules, modules):
             with self.assertRaisesRegex(RuntimeError, "Input Monitoring"):
                 require_input_monitoring_permission()
@@ -79,6 +80,19 @@ class InputPermissionTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     TextHotKeys({"<cmd>+d": Mock()}).start()
             start.assert_not_called()
+
+    def test_monitoring_requests_missing_access(self):
+        quartz = Mock(CGPreflightListenEventAccess=Mock(return_value=False),
+                      CGRequestListenEventAccess=Mock(return_value=True))
+        with patch("sys.platform", "darwin"), patch.dict(sys.modules, {"Quartz": quartz}):
+            require_input_monitoring_permission()
+        quartz.CGRequestListenEventAccess.assert_called_once_with()
+
+    def test_monitoring_does_not_request_granted_access(self):
+        quartz = Mock(CGPreflightListenEventAccess=Mock(return_value=True))
+        with patch("sys.platform", "darwin"), patch.dict(sys.modules, {"Quartz": quartz}):
+            require_input_monitoring_permission()
+        quartz.CGRequestListenEventAccess.assert_not_called()
 
     def test_other_platforms_do_not_call_macos_permission_api(self):
         with patch("sys.platform", "win32"), patch.dict(sys.modules, {"Quartz": None}):
