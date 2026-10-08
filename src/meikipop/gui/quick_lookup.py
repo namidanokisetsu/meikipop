@@ -266,9 +266,6 @@ class _GlossConverter(StructuredContentConverter):
                     self.supplements.append(("Forms", self._node_to_html(supplement)))
                 return ""
             if semantic_kind == "attribution":
-                self.clipped = True
-                if self.expanded:
-                    self.supplements.append(("", self._node_to_html(dict(node, data={}))))
                 return ""
             if not self.expanded and semantic_kind in ("explanation", "extrainfo"):
                 self.clipped = True

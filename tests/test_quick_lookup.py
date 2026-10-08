@@ -580,7 +580,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertLess(self.window.browser.cursorRect(cursor).x(), 80)
         self.window.pin.setChecked(True)
         self.assertIn("alternate form", self.window.browser.toPlainText())
-        self.assertIn("JMdict footer", self.window.browser.toPlainText())
+        self.assertNotIn("JMdict footer", self.window.browser.toPlainText())
 
     def test_copy_is_explicit_and_manual_search_clears_live_context(self):
         with patch.object(QApplication, "clipboard") as clipboard:
