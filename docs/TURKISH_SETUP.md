@@ -6,6 +6,11 @@ Updated: 2026-10-08
 
 For normal installation, download the Windows setup EXE or macOS DMG from the
 [latest release](https://github.com/namidanokisetsu/meikipop/releases/latest).
+Windows uninstall offers to remove settings, language profiles, and app-managed
+downloads. Choose Yes for a clean reinstall. Upgrades and silent uninstalls keep data.
+For unattended cleanup, pass `/REMOVEUSERDATA=1` to the uninstaller.
+Managed model caches stay inside Meikipop's data folder; Windows downloads use
+regular files so they also work when link traversal is restricted.
 On Windows and macOS, first launch asks for a language, then offers its recommended
 downloads. Every item starts checked and can be unticked before **Install**; **Later**
 skips downloads. Adding a language offers the same checklist once.
@@ -105,6 +110,7 @@ with Copy and Close at the right. Back restores the previous result and sentence
 Dictionary sections have independent previews and expansion controls. **Appearance → Snap scrolling**
 keeps the current headword visible and scrolls continuously within long sections.
 The next section stays hidden until a new scroll gesture crosses its measured boundary.
+The sentence shares the first definition's page; headword sections have no divider line.
 Page Up/Down page through long sections; Home/End reach the ends.
 It defaults off for each language and respects reduced motion.
 In **Dictionaries**, select a definition dictionary and choose **Expanded**, **Preview**,
@@ -174,9 +180,8 @@ Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
 **Settings → Appearance** defaults to Green: black at 80% opacity, soft green accents
 and pale text. Monochrome Dark, Light and Custom remain available.
-Background opacity uses 0-100% and is available for every theme. Changes apply immediately; Custom starts with the profile's saved
-colors and remembers them when switching presets. Removed dark presets migrate to
-Monochrome Dark, keeping saved colors in Custom. Appearance remains independent per profile.
+Background opacity uses 0-100% and is available for every theme. Changes apply immediately;
+Custom remembers its own colors when switching presets. Appearance remains independent per profile.
 Japanese definition readings appear above their text. Headwords keep the full word
 and bracketed reading by default; **Appearance → Headword reading → Furigana**
 switches the heading to an above-text reading too.
@@ -283,8 +288,8 @@ or the [official Chromium package directory](https://chrome-infra-packages.appsp
 Download the package matching the operating system and Python CPU architecture,
 extract the complete archive, and choose its folder with **Browse**. Keep the
 native library and model files together in `resources/`. Installed components
-under the app's `screen_ai` directory, the legacy `~/.config/screen_ai` directory,
-and supported Chrome profile locations are discovered automatically. Restart
+under the app's `screen_ai` directory and supported Chrome profile locations
+are discovered automatically. Restart
 Meikipop after replacing a component already loaded in the process. Google's
 macOS component uses `libchromescreenai.so` despite being a macOS binary; the
 adapter follows the [Meikikai native bridge](https://github.com/hectahertz/meikikai/tree/50efb401/src/meikikai/ocr/providers/chrome_screen_ai).

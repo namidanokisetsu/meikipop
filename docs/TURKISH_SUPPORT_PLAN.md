@@ -58,11 +58,10 @@ clients remain explicit compatibility entrypoints.
    best rank per dictionary; counts and nonnumeric labels are excluded. Optional per-source
    display labels each dictionary inline. Kanji summaries use up to three columns; clicking
    a character reveals complete details from every enabled kanji pack. Themes are Green,
-   Monochrome Dark, Light and Custom; removed
-   dark presets migrate to Monochrome Dark while saved colors seed Custom once.
+   Monochrome Dark, Light and Custom; Custom retains its own palette.
    Unchanged render identities preserve documents and selections; fitting is coalesced.
-   Selection lookup inside results is independently opt-in for new profiles, with
-   a one-time migration preserving existing behavior. The Turkish compatibility
+   Selection lookup inside results is independently opt-in for each profile.
+   The Turkish compatibility
    browser retains immediate double-click lookup without a duplicate release request.
    Pin freezes a preview; existing dismissal and fresh-scan actions leave it.
    Windows and macOS consume eligible pin gestures and their releases. Pinned results
@@ -185,14 +184,19 @@ clients remain explicit compatibility entrypoints.
   and base-form models explicitly; frozen builds use bundled setup workers.
   Existing settings skip the initial suggestion. Later dismisses each profile's
   resource suggestion permanently; individual installers remain in Settings.
-  Installer upgrades/uninstall preserve user data. macOS releases use a persistent
+  Windows uninstall offers removal of profiles, settings and app-managed downloads;
+  upgrades and silent uninstalls preserve data. A process mutex prevents uninstall
+  while the app or setup workers are running. Managed model caches live under the
+  app data directory and avoid Windows symlinks. macOS releases use a persistent
   self-signed identity from Actions secrets; PR builds remain ad-hoc signed.
   Permission retention across updates still needs hands-on acceptance. Windows
   publisher signing and Apple notarization still require release credentials.
   Windows and macOS first launch asks for a language before offering dictionaries
   and supported models. Suggestions start checked, can be unticked individually,
   and download only after Install; Later skips downloads. New profiles use the
-  chosen language without adding Japanese. Existing profiles remain unchanged.
+  chosen language without adding Japanese or Turkish. Obsolete preference migrations
+  and fallback keys are removed; dictionary packs use the current schema, with explicit
+  reimport rebuilding older packs from their ZIP. Existing configured profiles remain.
   Settings exposes Audio, Translation, and Anki as separate tabs. Pin keyboard and
   mouse controls share one row; built-in readiness labels and obsolete hidden
   installers are removed. Recommended dictionaries download as one missing-resource
