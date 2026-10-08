@@ -1,4 +1,4 @@
-Updated: 2026-10-07
+Updated: 2026-10-08
 
 # Shared popup setup
 
@@ -10,16 +10,17 @@ A new installation starts with Japanese only. Adding a language profile offers i
 recommended downloads once, in one optional checklist. **Later** dismisses it permanently;
 all downloads remain available in Settings. Every item is optional, including Jitendex.
 Translation defaults unchecked, with Lightweight or Quality choices. There is no separate setup menu.
-**Settings / Resources** lists all dictionary, OCR, base-form and translation downloads.
-Green indicators report available files; the current OCR and translation selections appear
-at the top. **Use** selects an installed translation model for the current profile.
-Translation weights and the Paddle OCR model are shared across profiles, with one copy
-per model. Base-form models and dictionaries belong to their respective languages. Installed
-base-form models are used automatically. Translation detects the input language
-within the displayed language pair; manual direction, streaming and keep-warm
-controls are under Advanced. Installed local models start when translation is requested.
-Deleting a dictionary removes its ready indicator. Dictionaries keeps import, removal,
-priority and enable controls; OCR and Translation keep configuration controls.
+Settings has four tabs: **Lookup**, **Dictionaries**, **Appearance**, and **Integrations**.
+Dictionary and base-form downloads are in Dictionaries; OCR downloads are under
+Lookup → Screen recognition. Audio, optional translation downloads, and Anki are in
+Integrations. Downloads stay explicit, and installed translation/OCR models are shared
+across languages. Base-form models are used automatically once installed.
+Appearance shows theme, text size, and opacity; Customize reveals detailed typography
+and reading controls. Settings save immediately. The language selector scopes preferences;
+the text lookup shortcut is shared by all languages.
+Translation detects the input language within the selected pair and starts installed models
+on demand. Manual direction, streaming, and keep-warm controls remain under Advanced.
+
 
 
 On macOS, allow **Input Monitoring** for global shortcuts, **Accessibility** for
@@ -56,7 +57,7 @@ separate Turkish client and its existing settings.
 Open **Settings → Dictionaries → Import ZIPs** and select local Yomitan archives.
 Definition, forms, frequency, Japanese pitch and kanji packs are indexed on disk without
 replacing `dictionary.pkl`. Enable packs and move them up or down; changes save immediately.
-Download recommended packs in **Resources**, or select an installed pack in Dictionaries
+Download recommended packs in **Dictionaries**, or select an installed pack in Dictionaries
 and press **Remove**. Removal deletes all revisions of that dictionary so an older copy cannot reappear.
 Cancellation keeps completed imports and discards the unfinished pack.
 Imports run in a separate process; closing Settings leaves them running. CRC
@@ -98,12 +99,12 @@ other previews grow down when space allows, switching upward near the bottom edg
 scan leave the result. Entering a preview pauses its dismissal grace; leaving rearms it.
 Search also supports edge and corner resizing. Imported frequency, inflection and kanji information uses compact labels.
 Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, taking
-the best matching rank per dictionary. **Dictionaries → Combine frequency ranks**
+the best matching rank per dictionary. **Dictionaries → Combine frequency rankings**
 switches between the combined number and compact dictionary-labelled values. Counts and nonnumeric
 bands are excluded from the mean.
 Click a kanji in the compact row to show its complete details from all enabled kanji packs.
-Import a Yomitan pitch dictionary with the Japanese profile selected. **Dictionaries →
-Pitch accent** controls its display: overlines mark high morae, ꜜ marks a drop,
+Import and enable a Yomitan pitch dictionary with the Japanese profile selected.
+Accents appear automatically: overlines mark high morae, ꜜ marks a drop,
 and brackets show the supplied accent number or H/L pattern. Sources and alternative
 accents remain separate. Reimport an older mixed pack to add previously skipped pitch data.
 The copy button previews its sentence on hover; action icons have short tooltips.

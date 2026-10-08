@@ -86,9 +86,9 @@ class ProfileThemeTests(unittest.TestCase):
                 self.assertTrue(settings.value('profiles/ja/headword_furigana', False, bool))
                 profile[0] = 'tr'
                 widget.reload()
-                self.assertFalse(widget.form.isRowVisible(widget.headword_furigana))
-                self.assertFalse(widget.form.isRowVisible(widget.definition_furigana))
-                self.assertFalse(widget.form.isRowVisible(widget.controls['furigana_scale']))
+                self.assertFalse(widget.detail_form.isRowVisible(widget.headword_furigana))
+                self.assertFalse(widget.detail_form.isRowVisible(widget.definition_furigana))
+                self.assertFalse(widget.detail_form.isRowVisible(widget.controls['furigana_scale']))
                 widget.save()
                 self.assertFalse(settings.contains('profiles/tr/headword_furigana'))
                 self.assertFalse(settings.contains('profiles/tr/definition_furigana'))
@@ -97,7 +97,7 @@ class ProfileThemeTests(unittest.TestCase):
                 widget.reload()
                 self.assertTrue(widget.headword_furigana.isChecked())
                 self.assertTrue(widget.definition_furigana.isChecked())
-                self.assertTrue(widget.form.isRowVisible(widget.headword_furigana))
+                self.assertTrue(widget.detail_form.isRowVisible(widget.headword_furigana))
                 self.assertEqual(widget.controls['furigana_scale'].value(), 60)
             finally:
                 widget.deleteLater()

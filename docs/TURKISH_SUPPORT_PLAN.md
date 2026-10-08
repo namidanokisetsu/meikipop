@@ -24,7 +24,8 @@ clients remain explicit compatibility entrypoints.
    Japanese pitch packs retain reading-specific alternatives, source labels, tags,
    nasal/devoicing markers and numeric or H/L patterns. Schema 3 keeps older packs
    readable; reimport adds pitch metadata transactionally with live readers.
-   The optional Japanese pitch display uses high-mora overlines and downstep marks.
+   Enabled Japanese pitch dictionaries automatically show high-mora overlines and downstep marks,
+   without a separate display switch.
    This adapts [Chibipop's pitch approach](https://github.com/stellarie/chibipop/blob/main/src/dict/pitch.rs)
    to our existing SQLite library and Qt HTML rather than its Rust renderer.
 
@@ -208,7 +209,10 @@ Implementation lives in `dictionary/library.py`, `dictionary/search.py`,
 `gui/dictionary_manager.py`, and `gui/unified_ocr.py`. The retained Turkish
 client lives under `gui/turkish/`. See [setup and usage](TURKISH_SETUP.md).
 
-Resources tab groups explicit downloads, reports file readiness and names current OCR/translation selections.
+Settings groups Lookup, Dictionaries, Appearance and Integrations. Explicit downloads sit beside
+their feature; detailed appearance/audio controls are collapsed and Anki setup appears only when enabled.
+The separate legacy clients retain their layouts; Japanese theme edits are staged until Save,
+and missing activation is rejected instead of silently restoring Shift.
 Translation models share one installation across profiles, with separate per-profile selection.
 Dictionary removal clears the recommended pack indicator; manual imports stay in Dictionaries.
 Packaged OCR includes the PaddleX extras metadata checked at runtime. Model setup errors preserve

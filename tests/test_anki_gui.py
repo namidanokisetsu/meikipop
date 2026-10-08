@@ -59,15 +59,18 @@ class AnkiGuiTests(unittest.TestCase):
         with patch("meikipop.gui.anki.AnkiClient") as client:
             panel.load("ja")
             client.assert_not_called()
+            self.assertTrue(panel.options.isHidden())
             client.return_value.catalog.return_value = (["Japanese"], ["Basic"])
             client.return_value.names.return_value = ["Front", "Back", "Reading"]
             panel.enabled.setChecked(True)
+            self.assertFalse(panel.options.isHidden())
             self.wait_until(lambda: panel.status.text() == "Connected.")
         panel._field_controls["Reading"].setCurrentIndex(panel._field_controls["Reading"].findData("reading"))
         self.assertEqual(load_settings(self.settings, "ja").fields,
                          {"Front": "expression", "Back": "glossary", "Reading": "reading"})
         panel.load("tr")
         self.assertFalse(panel.enabled.isChecked())
+        self.assertTrue(panel.options.isHidden())
         self.assertFalse(panel.shortcut.enabled.isChecked())
         panel.load("ja")
         self.assertEqual(panel._field_controls["Reading"].currentData(), "reading")

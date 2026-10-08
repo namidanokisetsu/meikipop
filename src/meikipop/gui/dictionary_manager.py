@@ -6,13 +6,14 @@ import threading
 from PyQt6.QtCore import QObject, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget,
-    QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from meikipop.dictionary.library import Library, default_library_path, language_code, save_preferences
 from meikipop.dictionary.translation import TranslationSettings, load_settings, load_profile_settings, save_profile_settings
 from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
+from meikipop.gui.settings_section import SettingsSection
 from meikipop.language.profiles import configured_profiles, default_partner
 
 
@@ -115,6 +116,7 @@ class SetupDialog(QDialog):
         for code in configured_profiles(settings):
             self.profile.addItem(language_name(code), code)
         self.profile.setCurrentIndex(max(0, self.profile.findData(settings.value("profile", settings.value("source", "ja")))))
+        profile_row.addWidget(QLabel("Language"))
         profile_row.addWidget(self.profile, 1)
         self.add_profile_button = QPushButton("Add language…")
         self.add_profile_button.clicked.connect(self.choose_profile)
@@ -169,14 +171,10 @@ class SetupDialog(QDialog):
         self.install_button.clicked.connect(self.install_dictionary)
         recommended_row.addWidget(self.install_button)
         dictionary_layout.addLayout(recommended_row)
-        self.combine_frequencies = QCheckBox("Combine frequency ranks")
+        self.combine_frequencies = QCheckBox("Combine frequency rankings")
         self.combine_frequencies.setToolTip("Harmonic mean across enabled rank dictionaries; best matching rank per dictionary")
         self.combine_frequencies.toggled.connect(self.save_frequency_display)
         dictionary_layout.addWidget(self.combine_frequencies)
-        self.show_pitch = QCheckBox("Pitch accent")
-        self.show_pitch.setToolTip("Show accents from enabled Japanese pitch dictionaries")
-        self.show_pitch.toggled.connect(self.save_pitch_display)
-        dictionary_layout.addWidget(self.show_pitch)
         self.morphology_row = QWidget()
         morphology_layout = QHBoxLayout(self.morphology_row)
         morphology_layout.setContentsMargins(0, 0, 0, 0)
@@ -191,7 +189,6 @@ class SetupDialog(QDialog):
         self.morphology_button.clicked.connect(lambda: self.begin_operation([], morphology=self.profile.currentData()))
         morphology_layout.addWidget(self.morphology_button)
         dictionary_layout.addWidget(self.morphology_row)
-        tabs.addTab(dictionaries, "Dictionaries")
 
         translation = QWidget()
         translation_layout = QVBoxLayout(translation)
@@ -209,8 +206,8 @@ class SetupDialog(QDialog):
         for label, control in (("From", self.translation_source), ("To", self.translation_target)):
             advanced_form.addRow(label, control)
         self.translation_mode = QComboBox()
-        self.translation_mode.addItem("Quality · Hy-MT2-7B Q8_0 (8 GB)", "quality")
-        self.translation_mode.addItem("Lightweight · Hy-MT2-1.8B Q8_0 (2 GB)", "lightweight")
+        self.translation_mode.addItem("Quality (8 GB)", "quality")
+        self.translation_mode.addItem("Lightweight (1.9 GB)", "lightweight")
         self.translation_mode.addItem("Custom local server", "custom")
         translation_form.addRow("Model", self.translation_mode)
         self.translation_endpoint = QLineEdit()
@@ -243,7 +240,6 @@ class SetupDialog(QDialog):
         self.model_button.clicked.connect(self.choose_model)
         translation_layout.addWidget(self.model_button)
         translation_layout.addStretch()
-        tabs.addTab(translation, "Translation")
         translation_error = ""
         try:
             translation_settings = load_profile_settings(settings, self.profile.currentData())
@@ -280,19 +276,18 @@ class SetupDialog(QDialog):
         default_search = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
         self.shortcut = ShortcutEdit(settings.value("hotkey", default_search),
                                      settings.value("hotkey_preset", shortcut_preset()))
-        shortcut_layout.addRow("Look up text", self.shortcut)
+        shortcut_layout.addRow("Look up text (all languages)", self.shortcut)
         self.selected_text = QCheckBox("Look up selected text automatically")
         shortcut_layout.addRow(self.selected_text)
         self.selected_text.toggled.connect(self.save_text_triggers)
         self.selection_lookup = QCheckBox("Look up selection inside results")
         shortcut_layout.addRow(self.selection_lookup)
         self.selection_lookup.toggled.connect(lambda _: self.autosave(self.save_selection_policy))
-        tabs.addTab(shortcuts, "Shortcuts")
 
         scanning = QWidget()
         scan_layout = QFormLayout(scanning)
         self.scan_layout = scan_layout
-        self.freeze_while_held = QCheckBox("Freeze while held")
+        self.freeze_while_held = QCheckBox("Freeze capture while holding the lookup key")
         self.freeze_while_held.setToolTip("One screenshot per hold. Release to refresh; the video keeps playing.")
         scan_layout.addRow(self.freeze_while_held)
         self.freeze_while_held.toggled.connect(lambda _: self.autosave(self.save_scan_settings))
@@ -359,13 +354,15 @@ class SetupDialog(QDialog):
             click_note = QLabel("Clicks outside the popup also reach the underlying app.")
             click_note.setWordWrap(True)
             scan_layout.addRow(click_note)
-        tabs.addTab(scanning, "OCR")
 
         from meikipop.gui.profile_appearance import ProfileAppearance
         self.appearance = ProfileAppearance(settings, self.profile.currentData, self.apply_appearance)
-        tabs.addTab(self.appearance, "Appearance")
         audio = QWidget()
-        audio_form = QFormLayout(audio)
+        audio_layout = QVBoxLayout(audio)
+        audio_form = QFormLayout()
+        audio_layout.addLayout(audio_form)
+        audio_details = QWidget()
+        audio_detail_form = QFormLayout(audio_details)
         self.audio_autoplay = QComboBox()
         for label, mode in (("Off", "off"), ("On lookup", "lookup"), ("When pinned", "pin")):
             self.audio_autoplay.addItem(label, mode)
@@ -375,22 +372,22 @@ class SetupDialog(QDialog):
         audio_form.addRow("Volume", self.audio_volume)
         self.audio_database = QLineEdit()
         self.audio_database.setPlaceholderText("Local Audio Server android.db")
-        audio_form.addRow("Local database", self.audio_database)
+        audio_detail_form.addRow("Local database", self.audio_database)
         audio_browse = QPushButton("Choose database…")
         audio_browse.clicked.connect(self.choose_audio)
-        audio_form.addRow(audio_browse)
+        audio_detail_form.addRow(audio_browse)
         from meikipop.gui.audio_sources import AudioSources
         self.audio_sources = AudioSources()
         self.audio_sources.changed.connect(lambda: self.autosave(self.save_audio))
-        audio_form.addRow("Source priority", self.audio_sources)
-        self.audio_form = audio_form
+        audio_detail_form.addRow("Source priority", self.audio_sources)
+        audio_layout.addWidget(SettingsSection("Sources", audio_details))
+        audio_layout.addStretch()
+        self.audio_form = audio_detail_form
         self.audio_browse = audio_browse
-        tabs.addTab(audio, "Audio")
         self.audio_tab = audio
         self.audio_autoplay.currentIndexChanged.connect(self.save_autoplay)
         from meikipop.gui.anki import AnkiSettingsPanel
         self.anki = AnkiSettingsPanel(settings)
-        tabs.addTab(self.anki, "Anki")
         if hasattr(parent, "update_anki"):
             self.anki.changed.connect(parent.update_anki)
 
@@ -433,8 +430,42 @@ class SetupDialog(QDialog):
         self.audio_database.editingFinished.connect(lambda: self.autosave(self.save_audio))
         from meikipop.gui.resources import ResourcesPanel
         self.resources = ResourcesPanel(self)
-        tabs.insertTab(0, self.resources, "Resources")
-        tabs.setCurrentWidget(self.resources)
+        dictionary_layout.insertWidget(0, self.resources.dictionary_section)
+        scan_layout.addRow(self.resources.ocr_section)
+        translation_layout.insertWidget(1, self.resources.translation_section)
+
+        # Keep one destination per task, with downloads beside the feature they enable.
+        def add_page(widget, title):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll.setWidget(widget)
+            tabs.addTab(scroll, title)
+            return scroll
+
+        lookup = QWidget()
+        lookup_layout = QVBoxLayout(lookup)
+        lookup_layout.addWidget(shortcuts)
+        self.screen_section = SettingsSection("Screen recognition", scanning)
+        self.screen_section.toggle.setChecked(not self.resources.ocr_install.isHidden())
+        lookup_layout.addWidget(self.screen_section)
+        lookup_layout.addStretch()
+        self.lookup_tab = add_page(lookup, "Lookup")
+        add_page(dictionaries, "Dictionaries")
+        add_page(self.appearance, "Appearance")
+        self.integrations = QWidget()
+        integrations_layout = QVBoxLayout(self.integrations)
+        self.integration_choice = QComboBox()
+        self.integration_choice.setAccessibleName("Integration")
+        self.integration_pages = QStackedWidget()
+        for title, page in (("Audio", audio), ("Translation", translation), ("Anki", self.anki)):
+            self.integration_choice.addItem(title)
+            self.integration_pages.addWidget(page)
+        self.integration_choice.currentIndexChanged.connect(self.integration_pages.setCurrentIndex)
+        integrations_layout.addWidget(self.integration_choice)
+        integrations_layout.addWidget(self.integration_pages)
+        self.integrations_tab = add_page(self.integrations, "Integrations")
+        tabs.setCurrentWidget(self.lookup_tab)
         for control in (self.recommended, self.install_button, self.model_button, self.morphology_row, self.ocr_install):
             control.hide()
         tabs.currentChanged.connect(lambda: self.resources.refresh())
@@ -446,10 +477,12 @@ class SetupDialog(QDialog):
             callback()
 
     def show_audio(self):
-        self.tabs.setCurrentWidget(self.audio_tab)
+        self.tabs.setCurrentWidget(self.integrations_tab)
+        self.integration_choice.setCurrentIndex(0)
 
     def show_anki(self):
-        self.tabs.setCurrentWidget(self.anki)
+        self.tabs.setCurrentWidget(self.integrations_tab)
+        self.integration_choice.setCurrentIndex(2)
 
     def reload(self, preserve=False):
         selected = self.packs.currentItem().data(Qt.ItemDataRole.UserRole) if self.packs.currentItem() else None
@@ -653,9 +686,6 @@ class SetupDialog(QDialog):
         self.install_button.setEnabled(self.recommended.currentData() is not None and self.operation is None)
         with QSignalBlocker(self.combine_frequencies):
             self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
-        self.show_pitch.setVisible(code == "ja")
-        with QSignalBlocker(self.show_pitch):
-            self.show_pitch.setChecked(self.settings.value("profiles/ja/show_pitch", True, bool))
         with QSignalBlocker(self.morphology):
             self.morphology.setChecked(self.settings.value(f"profiles/{code}/morphology", False, bool))
         self.update_morphology_controls()
@@ -742,11 +772,6 @@ class SetupDialog(QDialog):
         if self.parent() is not None:
             self.parent()._render()
 
-    def save_pitch_display(self, enabled):
-        self.settings.setValue("profiles/ja/show_pitch", enabled)
-        if self.parent() is not None:
-            self.parent()._render()
-
     def save_morphology(self, enabled):
         code = self.profile.currentData()
         self.settings.setValue(f"profiles/{code}/morphology", enabled)
@@ -830,6 +855,8 @@ class SetupDialog(QDialog):
         custom = self.translation_mode.currentData() == "custom"
         self.translation_endpoint.setEnabled(custom)
         self.translation_model.setEnabled(custom)
+        if custom:
+            self.translation_advanced.setChecked(True)
         self.translation_autostart.setEnabled(not custom)
         self.translation_warm.setEnabled(not custom)
         self.model_button.setEnabled(not custom)
@@ -885,6 +912,7 @@ class SetupDialog(QDialog):
         self.update_morphology_controls()
         for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
                         self.model_button, self.packs, self.up, self.down, self.apply, self.language,
+                        self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
                         self.translation_model, self.translation_autostart):
             control.setEnabled(False)
@@ -907,6 +935,7 @@ class SetupDialog(QDialog):
         self.cancel_button.setVisible(False)
         for control in (self.import_button, self.install_button, self.remove_button, self.profile, self.add_profile_button,
                         self.model_button, self.packs, self.up, self.down, self.apply, self.language,
+                        self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target):
             control.setEnabled(True)
         self.update_translation_controls()

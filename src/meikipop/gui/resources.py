@@ -1,9 +1,9 @@
-"""Resource readiness and explicit downloads in one settings tab."""
+"""Resource readiness and explicit downloads beside each feature."""
 import json
 from pathlib import Path
 
 from PyQt6.QtCore import QSignalBlocker
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 
 def ocr_ready(provider, component_directory=""):
@@ -52,14 +52,15 @@ class ResourcesPanel(QWidget):
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
-        layout = QVBoxLayout(self)
-        self.indicators, self.downloads, self.uses = {}, {}, {}
-        self.active = QLabel()
-        self.active.setWordWrap(True)
-        layout.addWidget(self.active)
-        layout.addWidget(QLabel("Dictionaries"))
+        self.hide()
+        self.indicators, self.downloads, self.model_rows = {}, {}, {}
+
+        self.dictionary_section = QWidget(self)
+        layout = QVBoxLayout(self.dictionary_section)
+        layout.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
         self.dictionary = QComboBox()
+        self.dictionary.setAccessibleName("Recommended dictionary")
         self.dictionary.currentIndexChanged.connect(self.refresh_dictionary_state)
         row.addWidget(self.dictionary, 1)
         self.dictionary_install = QPushButton("Download dictionary")
@@ -67,41 +68,36 @@ class ResourcesPanel(QWidget):
         row.addWidget(self.dictionary_install)
         layout.addLayout(row)
         layout.addWidget(self.indicator("dictionary"))
-        layout.addWidget(QLabel("Screen recognition"))
         row = QHBoxLayout()
-        self.ocr = QComboBox()
-        self.ocr.currentIndexChanged.connect(self.select_ocr)
-        row.addWidget(self.ocr, 1)
-        self.ocr_install = QPushButton()
-        self.ocr_install.clicked.connect(lambda: owner.begin_operation([], ocr=self.ocr.currentData()))
-        row.addWidget(self.ocr_install)
-        layout.addLayout(row)
-        layout.addWidget(self.indicator("ocr"))
-        row = QHBoxLayout()
-        self.base_forms = QLabel("Base forms")
-        row.addWidget(self.base_forms)
         row.addWidget(self.indicator("morphology"), 1)
-        self.base_install = QPushButton("Download Stanza")
+        self.base_install = QPushButton("Download base forms")
         self.base_install.clicked.connect(lambda: owner.begin_operation([], morphology=owner.profile.currentData()))
         row.addWidget(self.base_install)
         layout.addLayout(row)
-        layout.addWidget(QLabel("Translation models (shared by all profiles)"))
-        for name, label, size in (("lightweight", "Hy-MT2 1.8B", "1.9 GB"), ("quality", "Hy-MT2 7B", "8 GB")):
-            row = QHBoxLayout()
-            column = QVBoxLayout()
-            column.addWidget(QLabel(label))
-            column.addWidget(self.indicator(name))
-            row.addLayout(column, 1)
-            use = QPushButton("Use")
-            use.clicked.connect(lambda checked=False, name=name: self.select_translation(name))
-            self.uses[name] = use
-            row.addWidget(use)
+
+        self.ocr_section = QWidget(self)
+        layout = QHBoxLayout(self.ocr_section)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.indicator("ocr"), 1)
+        self.ocr_install = QPushButton()
+        self.ocr_install.clicked.connect(lambda: owner.begin_operation([], ocr=owner.current_ocr_control().currentData()))
+        layout.addWidget(self.ocr_install)
+
+        self.translation_section = QWidget(self)
+        layout = QVBoxLayout(self.translation_section)
+        layout.setContentsMargins(0, 0, 0, 0)
+        for name, size in (("lightweight", "1.9 GB"), ("quality", "8 GB")):
+            widget = QWidget()
+            row = QHBoxLayout(widget)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addWidget(self.indicator(name), 1)
             download = QPushButton(f"Download {size}")
+            download.setToolTip("Installed models are shared by all languages")
             download.clicked.connect(lambda checked=False, name=name: owner.begin_operation([], profile=name))
             self.downloads[name] = download
+            self.model_rows[name] = widget
             row.addWidget(download)
-            layout.addLayout(row)
-        layout.addStretch()
+            layout.addWidget(widget)
         self.refresh()
 
     def indicator(self, name):
@@ -112,15 +108,6 @@ class ResourcesPanel(QWidget):
     def state(self, name, ready, text):
         label = self.indicators[name]
         label.setText(("\u25cf " if ready else "\u25cb ") + text)
-        label.setStyleSheet("color:#80D69B;" if ready else "color:#AAAAAA;")
-
-    def select_ocr(self):
-        provider = self.owner.current_ocr_control()
-        provider.setCurrentIndex(provider.findData(self.ocr.currentData()))
-
-    def select_translation(self, name):
-        self.owner.translation_mode.setCurrentIndex(self.owner.translation_mode.findData(name))
-        self.refresh()
 
     def refresh(self):
         owner = self.owner
@@ -128,7 +115,6 @@ class ResourcesPanel(QWidget):
         if not code:
             return
         busy = owner.operation is not None
-        self.active.setText(f"OCR: {owner.current_ocr_control().currentText()}\nTranslation: {owner.translation_mode.currentText()}")
         from meikipop.dictionary.library import Library
         library = Library(owner.directory)
         try:
@@ -143,31 +129,26 @@ class ResourcesPanel(QWidget):
         self.refresh_dictionary_state()
         self.dictionary_install.setEnabled(self.dictionary.currentData() is not None and not busy)
         provider = owner.current_ocr_control()
-        with QSignalBlocker(self.ocr):
-            self.ocr.clear()
-            for index in range(provider.count()):
-                self.ocr.addItem(provider.itemText(index), provider.itemData(index))
-                self.ocr.model().item(index).setEnabled(provider.model().item(index).isEnabled())
-            self.ocr.setCurrentIndex(provider.currentIndex())
         ready = ocr_ready(provider.currentData(), owner.screenai_directory.text())
-        self.state("ocr", ready, "Installed and selected" if ready else "Selected, download needed")
+        self.state("ocr", ready, "Ready" if ready else "Download needed")
         self.ocr_install.setText("Download " + provider.currentText().split(" (")[0])
-        self.ocr_install.setEnabled(not busy and not ready and provider.currentData() != "vision")
-        self.ocr.setEnabled(not busy)
+        self.ocr_install.setVisible(not ready)
+        self.ocr_install.setEnabled(not busy and provider.currentData() != "vision")
         from meikipop.language.stanza_analyzer import model_status
         from meikipop.language.support import STANZA_LANGUAGES
         supported = code in STANZA_LANGUAGES and code != "ja"
         ready = code == "ja" or supported and model_status(code) == "Installed"
-        self.state("morphology", ready, "Built-in Japanese rules" if code == "ja" else
-                   "Installed and used" if ready else "Not installed" if supported else "Unavailable")
-        self.base_install.setEnabled(supported and not ready and not busy)
+        self.state("morphology", ready, "Base forms: built in" if code == "ja" else
+                   "Base forms: ready" if ready else "Base forms: download needed" if supported else "Base forms: unavailable")
+        self.base_install.setVisible(supported and not ready)
+        self.base_install.setEnabled(not busy)
         for name in self.downloads:
             ready = translation_ready(name)
             selected = owner.translation_mode.currentData() == name
             self.state(name, ready, "Installed, used by this profile" if ready and selected else
                        "Installed" if ready else "Selected, download needed" if selected else "Not installed")
-            self.uses[name].setText("Using" if selected else "Use")
-            self.uses[name].setEnabled(ready and not selected and not busy)
+            self.model_rows[name].setVisible(selected)
+            self.downloads[name].setVisible(not ready)
             self.downloads[name].setEnabled(not ready and not busy)
 
     def refresh_dictionary_state(self):

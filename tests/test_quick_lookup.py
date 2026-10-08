@@ -1486,12 +1486,21 @@ class QuickLookupTests(unittest.TestCase):
             focus.assert_called_once_with(self.window)
             self.assertFalse(self.window._passive_text)
 
+    def test_pitch_display_follows_dictionary_data_despite_old_toggle(self):
+        from meikipop.dictionary.pitch import Pitch
+        self.settings.setValue("profiles/ja/show_pitch", False)
+        pitched = replace(entry(), pitches=(Pitch("Accent dictionary", "ねこ", 1),))
+        self.window._display(SearchResult("猫", "ja", "en", (pitched,)))
+        self.assertIn("ꜜ", self.window.browser.toPlainText())
+        self.window._display(SearchResult("猫", "ja", "en", (entry(),)))
+        self.assertNotIn("ꜜ", self.window.browser.toPlainText())
+
     def test_recording_active_shortcut_does_not_open_search(self):
         import sys
         self.settings.setValue('hotkey', '<cmd>+<shift>+d' if sys.platform == 'darwin' else '<ctrl>+<shift>+d')
         self.window.open_settings()
         dialog = self.window._setup
-        dialog.tabs.setCurrentIndex(next(index for index in range(dialog.tabs.count()) if dialog.tabs.tabText(index) == "Shortcuts"))
+        dialog.tabs.setCurrentIndex(next(index for index in range(dialog.tabs.count()) if dialog.tabs.tabText(index) == "Lookup"))
         dialog.shortcut.recorder.setFocus()
         self.app.processEvents()
         self.assertIs(self.app.focusWidget(), dialog.shortcut.recorder)

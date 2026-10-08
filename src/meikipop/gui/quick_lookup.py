@@ -422,7 +422,7 @@ def _compact_context(text, font, width):
 
 def render_result(result, expanded=(), preview=False, overlay_actions=False, show_source=True,
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
-                  definition_furigana=False, show_pitch=True, collapsed=(), kanji_details=()):
+                  definition_furigana=False, collapsed=(), kanji_details=()):
     """Share lexical headings while preserving the configured dictionary order."""
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
@@ -470,7 +470,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         else:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{escape(display_term)}{reading_html}</h2>')
         parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies))
-        if show_pitch and result.source == "ja":
+        if result.source == "ja":
             from meikipop.dictionary.pitch import render_pitches
             parts.append(render_pitches(pitch for entries in dictionaries.values() for entry in entries
                                         for pitch in entry.pitches))
@@ -1266,7 +1266,6 @@ class QuickLookupWindow(QDialog):
                         self.audio_actions.sizeHint().width(), show_source, source_text if show_source else None,
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
                         self.settings.value("profiles/ja/definition_furigana", True, bool),
-                        self.settings.value("profiles/ja/show_pitch", True, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool),
                         tuple(sorted(self._collapsed)), tuple(sorted(self._kanji_details)))
             if identity == self._render_identity:
@@ -1283,7 +1282,6 @@ class QuickLookupWindow(QDialog):
                                                details_expanded=self._details_expanded,
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
                                                definition_furigana=self.settings.value("profiles/ja/definition_furigana", True, bool),
-                                               show_pitch=self.settings.value("profiles/ja/show_pitch", True, bool),
                                                collapsed=self._collapsed,
                                                kanji_details=self._kanji_details,
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))

@@ -66,10 +66,16 @@ class ResourceTests(unittest.TestCase):
                 dialog = SetupDialog(Path(directory) / "library", settings, Mock())
                 try:
                     resources = dialog.resources
-                    self.assertEqual(dialog.tabs.tabText(0), "Resources")
+                    self.assertEqual([dialog.tabs.tabText(i) for i in range(dialog.tabs.count())],
+                                     ["Lookup", "Dictionaries", "Appearance", "Integrations"])
+                    dialog.show_anki()
+                    self.assertIs(dialog.tabs.currentWidget(), dialog.integrations_tab)
+                    self.assertIs(dialog.integration_pages.currentWidget(), dialog.anki)
+                    dialog.show_audio()
+                    self.assertIs(dialog.integration_pages.currentWidget(), dialog.audio_tab)
                     self.assertFalse(resources.downloads["lightweight"].isEnabled())
                     self.assertTrue(resources.downloads["quality"].isEnabled())
-                    resources.uses["lightweight"].click()
+                    dialog.translation_mode.setCurrentIndex(dialog.translation_mode.findData("lightweight"))
                     self.assertEqual(load_profile_settings(settings, "ja").profile, "lightweight")
                     self.assertIn("used by this profile", resources.indicators["lightweight"].text())
                     dialog.sync_profile("tr")

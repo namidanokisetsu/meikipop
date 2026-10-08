@@ -3,9 +3,10 @@ import sys
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFontComboBox, QFormLayout,
-                            QPushButton, QSpinBox, QWidget)
+                            QPushButton, QSpinBox, QVBoxLayout, QWidget)
 from meikipop.config.config import config
 from meikipop.gui.themes import THEMES, theme_name
+from meikipop.gui.settings_section import SettingsSection
 
 KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions",
         "color_background", "color_foreground", "color_highlight_word", "color_highlight_reading",
@@ -56,7 +57,11 @@ class ProfileAppearance(QWidget):
         self._preview_timer.setInterval(40)
         self._preview_timer.timeout.connect(self._apply_preview)
         self._loading = True
-        form = self.form = QFormLayout(self)
+        layout = QVBoxLayout(self)
+        form = self.form = QFormLayout()
+        layout.addLayout(form)
+        details = QWidget()
+        detail_form = self.detail_form = QFormLayout(details)
         self.theme = QComboBox()
         self.theme.addItems(THEMES)
         form.addRow("Theme", self.theme)
@@ -64,34 +69,37 @@ class ProfileAppearance(QWidget):
         self.compact_preview.setToolTip("Pin to expand the full entry")
         form.addRow(self.compact_preview)
         self.pinned_sentence = QCheckBox("Show sentence when pinned")
-        form.addRow(self.pinned_sentence)
+        detail_form.addRow(self.pinned_sentence)
         self.snap_scrolling = QCheckBox("Snap scrolling")
         self.snap_scrolling.setToolTip("Scroll between dictionary sections")
-        form.addRow(self.snap_scrolling)
+        detail_form.addRow(self.snap_scrolling)
         self.font = QFontComboBox()
-        form.addRow("Font", self.font)
+        detail_form.addRow("Font", self.font)
         self.headword_furigana = QCheckBox("Furigana")
-        form.addRow("Headword reading", self.headword_furigana)
+        detail_form.addRow("Headword reading", self.headword_furigana)
         self.definition_furigana = QCheckBox("Furigana")
-        form.addRow("Definition readings", self.definition_furigana)
+        detail_form.addRow("Definition readings", self.definition_furigana)
         self.controls = {}
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
                 ("font_size_definitions", "Definition size", 10, 48),
                 ("furigana_scale", "Furigana size (%)", 30, 100),
-                ("scale", "Scale (%)", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
+                ("scale", "Text size (%)", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
             widget = QSpinBox()
             widget.setRange(minimum, maximum)
             if key == "background_opacity":
                 widget.setSuffix("%")
             self.controls[key] = widget
-            form.addRow(label, widget)
+            (form if key in ("scale", "background_opacity") else detail_form).addRow(label, widget)
         for key, label in (("color_background", "Background"), ("color_foreground", "Text"),
                            ("color_highlight_word", "Word"), ("color_highlight_reading", "Reading")):
             button = QPushButton()
             button.clicked.connect(lambda _, key=key: self.pick_color(key))
             self.controls[key] = button
             form.addRow(label, button)
+        self.details = SettingsSection("Customize", details)
+        layout.addWidget(self.details)
+        layout.addStretch()
         self.reload()
         self.theme.currentTextChanged.connect(self.apply_theme)
         self.font.currentFontChanged.connect(self.save)
@@ -120,10 +128,10 @@ class ProfileAppearance(QWidget):
         self.snap_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/snap_scrolling", False, bool))
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
-        self.form.setRowVisible(self.headword_furigana, self.profile() == "ja")
+        self.detail_form.setRowVisible(self.headword_furigana, self.profile() == "ja")
         self.definition_furigana.setChecked(self.settings.value("profiles/ja/definition_furigana", True, bool))
-        self.form.setRowVisible(self.definition_furigana, self.profile() == "ja")
-        self.form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
+        self.detail_form.setRowVisible(self.definition_furigana, self.profile() == "ja")
+        self.detail_form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
             value = (custom if name == "Custom" else THEMES[name]).get(key, value)
