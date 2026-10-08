@@ -72,7 +72,7 @@ def levels(pitch):
 
 def render_pitches(pitches):
     rows = []
-    for pitch in dict.fromkeys(pitches):
+    for pitch in pitches:
         pattern, parts = levels(pitch), []
         for index, mora in enumerate(morae(pitch.reading)):
             text = escape(mora)
@@ -87,5 +87,5 @@ def render_pitches(pitches):
                 annotations.append(f'{label}: {", ".join(map(str, indices))}')
         suffix = " · " + escape(" · ".join(annotations)) if annotations else ""
         rows.append(f'<p style="margin:0"><small>{"".join(parts)} [{escape(str(pitch.position))}]'
-                    f' · {escape(pitch.source)}{suffix}</small></p>')
-    return "".join(rows)
+                    f'{suffix}</small></p>')
+    return "".join(dict.fromkeys(rows))

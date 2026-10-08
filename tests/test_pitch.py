@@ -18,7 +18,19 @@ class PitchTests(unittest.TestCase):
             self.assertEqual(levels(Pitch("Pitch", "おとこ", position)), expected)
         self.assertNotIn("ꜜ", render_pitches([Pitch("Pitch", "おとこ", "LHH")]))
         self.assertIn("こ</span>ꜜ", render_pitches([Pitch("Pitch", "おとこ", 3)]))
-        self.assertIn("&lt;source&gt;", render_pitches([Pitch("<source>", "あ", 1)]))
+        self.assertNotIn("&lt;source&gt;", render_pitches([Pitch("<source>", "あ", 1)]))
+
+    def test_identical_accents_merge_across_sources_but_variants_remain(self):
+        html = render_pitches([
+            Pitch("First", "ねこ", 1), Pitch("Second", "ねこ", 1),
+            Pitch("Third", "ねこ", 0), Pitch("Fourth", "ねこ", 1, devoice=(1,)),
+            Pitch("Fifth", "ねこ", 1, tags=("<rare>",)),
+        ])
+        self.assertEqual(html.count("<p "), 4)
+        self.assertNotIn("First", html)
+        self.assertNotIn("Second", html)
+        self.assertIn("devoiced: 1", html)
+        self.assertIn("&lt;rare&gt;", html)
 
     def test_import_readings_sources_disable_and_upgrade_with_live_reader(self):
         with tempfile.TemporaryDirectory() as directory:
