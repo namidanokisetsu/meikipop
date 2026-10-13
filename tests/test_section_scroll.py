@@ -116,6 +116,29 @@ class SectionScrollTests(unittest.TestCase):
         self.app.processEvents()
         self.assertFalse(self.scroller.header.isVisible())
 
+    def test_first_sticky_baseline_matches_heading_at_viewport_top(self):
+        from PyQt6.QtGui import QTextCursor
+        for ruby in (False, True):
+            with self.subTest(ruby=ruby):
+                value = SearchResult("猫", "ja", "en", (
+                    Entry("cat", "猫", "ねこ", "Source", "ja", ("line\n" * 30,)),))
+                self.browser.setHtml(render_result(value, expanded=("Source",), headword_furigana=ruby))
+                self.app.processEvents()
+                self.scroller.set_enabled(True)
+                self.scroller._refresh_header()
+                source = self.browser.document().findBlock(self.scroller._headings[0])
+                self.bar.setValue(self.scroller._top(source.position()))
+                self.app.processEvents()
+                baseline = self.browser.cursorRect(QTextCursor(source)).top() + source.layout().lineAt(0).ascent()
+                self.bar.setValue(self.bar.value() + 1)
+                self.app.processEvents()
+                header = self.scroller.header
+                sticky = header.document().begin()
+                copied = header.cursorRect(QTextCursor(sticky)).top() + sticky.layout().lineAt(0).ascent()
+                self.assertTrue(header.isVisible())
+                self.assertAlmostEqual(copied, baseline, delta=1)
+                self.assertEqual(header.y(), 0)
+
     def test_sticky_heading_does_not_copy_preceding_rule_or_paragraph(self):
         from PyQt6.QtGui import QTextFormat
         self.browser.setHtml('<p>Sentence</p><hr><h2><a name="scroll-headword-0"></a>'

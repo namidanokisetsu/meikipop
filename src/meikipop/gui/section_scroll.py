@@ -11,6 +11,19 @@ from meikipop.gui.ruby import RubyBrowser
 SECTION_PREFIX = "scroll-section-"
 
 
+class StickyHeading(RubyBrowser):
+    def paintEvent(self, event):
+        from meikipop.config.config import config
+        color = QColor(config.color_background)
+        color.setAlpha(config.background_opacity)
+        # Replace the scrolled text without stacking another translucent surface.
+        painter = QPainter(self.viewport())
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(event.rect(), color)
+        painter.end()
+        super().paintEvent(event)
+
+
 class ReadingProgress(QProgressBar):
     def __init__(self, parent):
         super().__init__(parent)
@@ -57,7 +70,7 @@ class SectionScroller(QObject):
         self._refresh = QTimer(self)
         self._refresh.setSingleShot(True)
         self._refresh.timeout.connect(self._refresh_header)
-        self.header = RubyBrowser(browser.viewport(), selection_lookup=False)
+        self.header = StickyHeading(browser.viewport(), selection_lookup=False)
         self.header.setAccessibleName("Current headword")
         self.header.setFrameShape(self.header.Shape.NoFrame)
         self.header.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -209,7 +222,7 @@ class SectionScroller(QObject):
         # Keep the original heading's typography, including Japanese ruby.
         document = self.browser.document()
         from meikipop.config.config import config
-        self.header.setStyleSheet(f"QTextBrowser {{background:{config.color_background};border:0;}}")
+        self.header.setStyleSheet("QTextBrowser {background:transparent;border:0;}")
         height = min(100, max(32, max(round(document.documentLayout().blockBoundingRect(
             document.findBlock(position)).height()) for position in self._headings) + 8))
         self.header.setGeometry(0, 0, self.browser.viewport().width(), height)
@@ -265,6 +278,12 @@ class SectionScroller(QObject):
         cursor.setPosition(block.position() + block.length() - 1, QTextCursor.MoveMode.KeepAnchor)
         document = self.header.document()
         document.clear()
+        # The source reaches y=0 before becoming sticky. Retaining its document
+        # top margin would move the copied baseline down on the first scroll.
+        frame = document.rootFrame()
+        frame_format = frame.frameFormat()
+        frame_format.setTopMargin(0)
+        frame.setFrameFormat(frame_format)
         document.setDefaultFont(self.browser.document().defaultFont())
         document.setDefaultStyleSheet(self.browser.document().defaultStyleSheet())
         target = QTextCursor(document)
