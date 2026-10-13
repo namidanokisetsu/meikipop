@@ -43,8 +43,18 @@ class PixelFrame:
         sx, sy = self.size[0] / sw, self.size[1] / sh
         a, b = round((x - left) * sx), round((y - top) * sy)
         w, h = round(width * sx), round(height * sy)
-        image = self.image().crop((a, b, a + w, b + h))
         physical = (self.physical_crop[0] + a, self.physical_crop[1] + b, w, h) if self.physical_crop else ()
+        channels = {"RGB": 3, "BGR": 3, "RGBX": 4, "BGRX": 4}.get(self.mode)
+        stride = self.stride or self.size[0] * (channels or 0)
+        if (channels and stride >= self.size[0] * channels and len(self.pixels) >= stride * self.size[1]
+                and 0 <= a < a + w <= self.size[0] and 0 <= b < b + h <= self.size[1]):
+            # Retain the full frozen frame; decode only the selected rows downstream.
+            rows = memoryview(self.pixels)
+            pixels = b"".join(rows[offset:offset + w * channels]
+                              for offset in range(b * stride + a * channels,
+                                                  (b + h) * stride + a * channels, stride))
+            return PixelFrame(request, (w, h), pixels, self.captured_at, self.mode, physical_crop=physical)
+        image = self.image().crop((a, b, a + w, b + h))
         return PixelFrame(request, image.size, image.tobytes(), self.captured_at, physical_crop=physical)
 
 
