@@ -1,6 +1,6 @@
 """Shared popup pronunciation with online, local and system-voice sources."""
 from PyQt6.QtCore import QByteArray, QBuffer, QIODevice, QLocale, QObject, QTimer, QUrl, pyqtSignal
-from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PyQt6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 
 from meikipop.audio.worker import AudioRequest, AudioWorker
 from meikipop.audio.sources import database_path, source_order
@@ -14,7 +14,10 @@ class LookupAudio(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._media_devices = QMediaDevices(self)
         self.output = QAudioOutput(self)
+        self._media_devices.audioOutputsChanged.connect(self._follow_system_audio_output)
+        self._follow_system_audio_output()
         self.player = QMediaPlayer(self)
         self.player.setAudioOutput(self.output)
         self.buffer = None
@@ -29,8 +32,27 @@ class LookupAudio(QObject):
         self.worker = AudioWorker(self.clip_ready.emit, self._status, result_callback=self.result_ready.emit)
         self.worker.start()
         self.player.errorOccurred.connect(self._playback_failed)
+        self.player.mediaStatusChanged.connect(self._media_status)
+
+    def _follow_system_audio_output(self):
+        device = self._media_devices.defaultAudioOutput()
+        if self.output.device() != device:
+            self.output.setDevice(device)
+
+    def _release_buffer(self):
+        if self.buffer is not None:
+            self.buffer.close()
+            self.buffer.deleteLater()
+            self.buffer = None
+
+    def _media_status(self, status):
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self._pending = None
+            self._release_buffer()
 
     def _playback_failed(self, _, text):
+        self.current_clip = None
+        self._release_buffer()
         if self._pending is not None:
             self._next_source()
         else:
@@ -42,8 +64,12 @@ class LookupAudio(QObject):
 
     def _prepare(self, revision, key, settings, profile):
         self.worker.cancel()
+        self.latest = None
+        self._pending = None
         self.current_clip = None
         self.player.stop()
+        self.player.setSource(QUrl())
+        self._release_buffer()
         if self.speech:
             self.speech.stop()
         self._serial += 1
@@ -55,9 +81,10 @@ class LookupAudio(QObject):
         return volume
 
     def play(self, entry, revision, settings, profile=None, source=None):
-        volume = self._prepare(revision, (entry.term, entry.reading or ""), settings, profile or entry.language)
-        self._pending = (entry, database_path(settings, entry.language), volume,
-                         list([source] if source else source_order(settings, entry.language)))
+        profile = profile or entry.language
+        volume = self._prepare(revision, (entry.term, entry.reading or ""), settings, profile)
+        self._pending = (entry, database_path(settings, profile), volume,
+                         list([source] if source else source_order(settings, profile)))
         self._next_source()
 
     def _next_source(self):
@@ -134,9 +161,7 @@ class LookupAudio(QObject):
             return
         self.current_clip = clip
         self.player.stop()
-        if self.buffer:
-            self.buffer.close()
-            self.buffer.deleteLater()
+        self._release_buffer()
         self.buffer = QBuffer(self)
         self.buffer.setData(QByteArray(clip.data))
         self.buffer.open(QIODevice.OpenModeFlag.ReadOnly)
@@ -149,6 +174,8 @@ class LookupAudio(QObject):
         self.latest = None
         self._pending = None
         self.player.stop()
+        self.player.setSource(QUrl())
+        self._release_buffer()
         if self.speech:
             self.speech.stop()
 

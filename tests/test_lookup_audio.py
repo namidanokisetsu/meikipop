@@ -115,6 +115,62 @@ class SentenceAudioTests(unittest.TestCase):
                 audio.shutdown()
                 audio.deleteLater()
 
+    def test_cross_language_entry_uses_active_profile_source_preferences(self):
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/tr/audio_priority", ["db:english"])
+            settings.setValue("profiles/tr/audio_database", "turkish-library.db")
+            audio = LookupAudio()
+            try:
+                audio.play(Entry("house", "house", "", "EN-TR", "en", ("ev",)), 1, settings, profile="tr")
+                request = audio.worker.submit.call_args.args[0]
+                self.assertEqual(request.database_path, "turkish-library.db")
+                self.assertEqual(request.preferred_sources, ("english",))
+                settings.setValue("profiles/tr/audio_priority", [])
+                audio.worker.submit.reset_mock()
+                audio.play(Entry("house", "house", "", "EN-TR", "en", ("ev",)), 2, settings, profile="tr")
+                audio.worker.submit.assert_not_called()
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
+    def test_completed_clip_keeps_export_audio_and_releases_playback_buffer(self):
+        from meikipop.audio.repository import AudioClip
+        from PyQt6.QtMultimedia import QMediaPlayer
+        with patch("meikipop.gui.lookup_audio.AudioWorker"):
+            audio = LookupAudio()
+            audio.player = Mock()
+            audio.latest = (1, ("猫", "ねこ"))
+            clip = AudioClip(1, audio.latest[1], "cat.wav", "Fixture", b"RIFFfixture")
+            try:
+                audio._play_clip(clip)
+                self.assertIsNotNone(audio.buffer)
+                audio._media_status(QMediaPlayer.MediaStatus.EndOfMedia)
+                self.assertIsNone(audio.buffer)
+                self.assertIs(audio.current_clip, clip)
+                audio._play_clip(clip)
+                audio.cancel()
+                self.assertIsNone(audio.buffer)
+                self.assertIsNone(audio.current_clip)
+                audio.player.setSource.assert_called_once()
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
+    def test_shared_audio_follows_system_output(self):
+        with patch("meikipop.gui.lookup_audio.AudioWorker"):
+            audio = LookupAudio()
+            try:
+                output, device = Mock(), object()
+                audio.output = output
+                audio._media_devices = Mock()
+                audio._media_devices.defaultAudioOutput.return_value = device
+                audio._follow_system_audio_output()
+                output.setDevice.assert_called_once_with(device)
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
     def test_online_defaults_to_entry_language_and_falls_back_to_system_voice(self):
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
             settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
