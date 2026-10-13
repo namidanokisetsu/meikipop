@@ -9,12 +9,12 @@ THEMES = {
     "Monochrome Dark": {
         "color_background": "#000000", "color_foreground": "#FFFFFF",
         "color_highlight_word": "#FFFFFF", "color_highlight_reading": "#B8B8B8",
-        "background_opacity": 255,
+        "background_opacity": 242,
     },
     "Light": {
         "color_background": "#FFFFFF", "color_foreground": "#202020",
         "color_highlight_word": "#202020", "color_highlight_reading": "#606060",
-        "background_opacity": 255,
+        "background_opacity": 242,
     },
     "Custom": {}
 }
