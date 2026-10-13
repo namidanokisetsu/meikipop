@@ -109,14 +109,15 @@ OCR translations show the original sentence, a divider, then the translation. Ty
 show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
-Dictionary sections have independent previews and expansion controls. **Appearance → Snap scrolling**
+Dictionary labels collapse and reopen their sections; **More** opens a complete preview.
+**Appearance → Snap scrolling**
 keeps the current headword visible and scrolls continuously within long sections.
 The next section stays hidden until a new scroll gesture crosses its measured boundary.
 The sentence shares the first definition's page; headword sections have no divider line.
 Page Up/Down page through long sections; Home/End reach the ends.
 It defaults off for each language and respects reduced motion.
 In **Dictionaries**, select a definition dictionary and choose **Expanded**, **Preview**,
-or **Collapsed** for its initial display. Pinning preserves that choice; **+ / −** override
+or **Collapsed** for its initial display. Pinning preserves that choice; dictionary labels override
 it for the current result. Choices persist across reimports. Compact OCR previews use
 the first matching dictionary in priority order. **Appearance → Customize** controls
 preview frequency, pitch, and definition count (one by default); height follows content
@@ -182,6 +183,9 @@ Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
 **Settings → Appearance** defaults to Green: black at 95% opacity, soft green accents
 and pale text. Monochrome Dark, Light and Custom remain available.
+Japanese text defaults to Yu Gothic UI on Windows, Hiragino Sans on macOS, or an installed
+Noto Japanese family on Linux. Other text uses the system UI family; saved font choices remain.
+Short results fit their content until you resize the reading window.
 Background opacity uses 0-100% and is available for every theme. Changes apply immediately;
 Custom remembers its own colors when switching presets. Appearance remains independent per profile.
 Japanese definition readings appear above their text. Headwords keep the full word

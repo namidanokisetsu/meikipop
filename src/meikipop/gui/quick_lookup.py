@@ -10,7 +10,7 @@ import threading
 import unicodedata
 
 from PyQt6.QtCore import QObject, QEvent, QLocale, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QKeySequence, QShortcut, QTextCursor, QTextFormat, QTextLayout, QTextOption
+from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeySequence, QShortcut, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QToolButton, QToolTip, QVBoxLayout, QWidget,
@@ -388,17 +388,19 @@ class _GlossConverter(StructuredContentConverter):
         for definition in definitions:
             if isinstance(definition, str):
                 content = definition.strip()
+            elif isinstance(definition, dict) and definition.get("type") == "image":
+                content = definition
             elif isinstance(definition, dict) and definition.get("type") in ("text", "structured-content"):
                 content = definition.get("text" if definition["type"] == "text" else "content")
             else:
                 continue
             rendered = self._node_to_html(content)
-            if rendered and re.sub(r"<[^>]*>", "", rendered).strip():
+            if rendered and (re.sub(r"<[^>]*>", "", rendered).strip() or '<img ' in rendered):
                 parts.append(rendered)
         return parts
 
 
-def _metadata(entries, combine_frequencies=True, show_frequencies=True):
+def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""):
     frequencies, inflections = OrderedDict(), OrderedDict()
     raw_frequencies = []
     for entry in entries:
@@ -432,6 +434,8 @@ def _metadata(entries, combine_frequencies=True, show_frequencies=True):
                          for source, labels in by_source.items())
     if inflections:
         parts.append(escape(" · ".join(inflections)))
+    if pitch:
+        parts.append(pitch)
     return '<p class="metadata"><small>' + " · ".join(parts) + '</small></p>' if parts else ""
 
 
@@ -509,12 +513,13 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                          f'{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
         else:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{escape(display_term)}{reading_html}</h2>')
-        parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies,
-                               show_frequencies=not preview or preview_frequency))
+        pitch = ""
         if result.source == "ja" and (not preview or preview_pitch):
             from meikipop.dictionary.pitch import render_pitches
-            parts.append(render_pitches(pitch for entries in dictionaries.values() for entry in entries
-                                        for pitch in entry.pitches))
+            pitch = render_pitches((pitch for entries in dictionaries.values() for entry in entries
+                                    for pitch in entry.pitches), inline=True)
+        parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies,
+                               show_frequencies=not preview or preview_frequency, pitch=pitch))
         if preview and result.source == "tr":
             alternatives = tuple(dict.fromkeys(f"{other.term} · {' · '.join(other.inflection)}"
                                  for other in result.entries if other.term != term and other.inflection))[:3]
@@ -543,9 +548,6 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             if preview:
                 definitions = definitions[:preview_definitions]
             more = more or converter.clipped
-            toggle = (f'<a href="expand:{index}" title="{"Collapse" if full and not hidden else "Expand"}">'
-                      f'&nbsp;&nbsp;{"−" if full and not hidden else "+"}&nbsp;&nbsp;</a>'
-                      if hidden or more or full else "")
             if source not in anchored:
                 parts.append(f'<a name="dictionary-{index}"></a>')
                 anchored.add(source)
@@ -553,8 +555,9 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                 label = converter.first_source or _source_name(source)
                 section = (f'<a name="scroll-section-{group_index}-{index}"></a>'
                            if source != first_source else "")
-                parts.append(f'<p class="source">{section}<small><span title="{escape(source, quote=True)}">'
-                             f'{escape(label)}</span></small>{toggle}</p>')
+                parts.append(f'<p class="source">{section}<a href="collapse:{index}" '
+                             f'title="{"Expand" if hidden else "Collapse"}" style="color:{muted}">'
+                             f'<small>{escape(label)}</small></a></p>')
             if len(definitions) > 1:
                 opening = '<ol style="margin-left:20px">' if len(definitions) > 9 else "<ol>"
                 parts.append(opening + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
@@ -564,6 +567,8 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                 if label:
                     parts.append(f'<p class="source"><small>{label}</small></p>')
                 parts.append(supplement)
+            if more and not full and not hidden and not preview:
+                parts.append(f'<p class="metadata"><a href="expand:{index}"><small>More</small></a></p>')
     if result.suggestions:
         parts.append('<p>Did you mean: ' + " · ".join(
             f'<a href="suggest:{index}">{escape(str(word))}</a>'
@@ -651,7 +656,12 @@ class LocalDictionaryBrowser(RubyBrowser):
         self.scrolled.emit()
 
     def loadResource(self, resource_type, name):
-        # Dictionary content is text; embedded local/network resources are unnecessary.
+        if resource_type == QTextDocument.ResourceType.ImageResource.value and getattr(self, "library_root", None):
+            from meikipop.dictionary.media import resolve_image
+            path = resolve_image(self.library_root, name.toString())
+            if path:
+                image = QImage(str(path))
+                return image if not image.isNull() else None
         return None
 
 
@@ -731,6 +741,7 @@ class QuickLookupWindow(QDialog):
         self.setMinimumSize(340, 190)
         self.resize(480, 340)
         self._normal_size = QSize(480, 340)
+        self._reading_size_custom = False
         self._lookup_anchor = None
         self._result_screenshot = None
         outer = QVBoxLayout(self)
@@ -844,6 +855,8 @@ class QuickLookupWindow(QDialog):
         self.context_label.setParent(self)
         self.browser = LocalDictionaryBrowser(selection_lookup=self.settings.value(
             f"profiles/{initial_profile}/selection_lookup", False, bool))
+        from meikipop.dictionary.library import default_library_path
+        self.browser.library_root = directory or default_library_path()
         self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{initial_profile}/snap_scrolling", False, bool))
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)
@@ -962,8 +975,8 @@ class QuickLookupWindow(QDialog):
             QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal {{width:0;}}
             QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal {{background:transparent;}}
         ''')
-        font = QFont(config.font_family) if config.font_family else QFont()
-        font.setPixelSize(config.font_size_definitions)
+        from meikipop.gui.typography import document_font
+        font = document_font(config.font_family, config.font_size_definitions, self.preferred_foreign)
         self.browser.setFont(font)
         self.search.setFont(font)
         for button in self.findChildren(QToolButton):
@@ -1391,20 +1404,27 @@ class QuickLookupWindow(QDialog):
             self.fit_timer.start(0)
 
     def _fit_preview(self):
-        if self._shutting_down or not self._peek or self.is_pinned or not self.compact_preview():
+        preview = self._peek and not self.is_pinned and self.compact_preview()
+        reading = (not self._peek or self.is_pinned) and not self._reading_size_custom and self._normal_size == QSize(480, 340)
+        if self._shutting_down or not (preview or reading):
             return
         identity = (self._render_identity, self.browser.viewport().width())
         if identity == self._fit_identity and not self._needs_place:
             return
         self._fit_identity = identity
         mark("fit", self.revision)
-        self.setMinimumHeight(72)
+        self.setMinimumHeight(72 if preview else 190)
         self.layout().activate()
         document = self.browser.document()
         document.setTextWidth(self.browser.viewport().width())
         chrome = self.height() - self.browser.viewport().height()
-        desired = math.ceil(document.size().height()) + chrome + 2
-        maximum = max(190, self.settings.value("preview_max_height", 340, type=int))
+        natural_height = (document.size().height() - document.rootFrame().frameFormat().bottomMargin()
+                          + document.documentMargin())
+        scroller = self.browser.section_scroll
+        if reading and scroller.enabled and len(scroller.boundaries()) > 1:
+            natural_height = min(natural_height, scroller.boundaries()[1][0])
+        desired = math.ceil(natural_height) + chrome + 2
+        maximum = max(190, self.settings.value("preview_max_height", 340, type=int)) if preview else self._normal_size.height()
         if desired > maximum:
             limit = maximum - chrome - 2
             bottoms = []
@@ -1468,12 +1488,14 @@ class QuickLookupWindow(QDialog):
             index = int(url.path())
         except ValueError:
             return
-        if url.scheme() == "expand":
+        if url.scheme() in ("expand", "collapse"):
             sources = list(dict.fromkeys(entry.source for entry in self._result.entries))
             if not 0 <= index < len(sources):
                 return
             source = sources[index]
-            if source in self._collapsed:
+            if url.scheme() == "collapse":
+                self._collapsed.symmetric_difference_update((source,))
+            elif source in self._collapsed:
                 self._collapsed.remove(source)
                 self._expanded.add(source)
             elif source in self._expanded:
@@ -1588,6 +1610,9 @@ class QuickLookupWindow(QDialog):
             self._resize_expanded()
         self._peek = bool(peek)
         self.setSizeGripEnabled(self.is_pinned or not self._peek)
+        for grip in self.findChildren(QWidget):
+            if grip.inherits("QSizeGrip"):
+                grip.installEventFilter(self)
         self._place_actions()
         self.search.setVisible(not self._peek)
         self.actions_row.setVisible(self.is_pinned or not self._peek)
@@ -1885,6 +1910,9 @@ class QuickLookupWindow(QDialog):
             self.remember_foreground()
         self.pin.setToolTip("Unpin" if checked else "Pin")
         self.setSizeGripEnabled(checked or not self._peek)
+        for grip in self.findChildren(QWidget):
+            if grip.inherits("QSizeGrip"):
+                grip.installEventFilter(self)
         if self._peek:
             if checked:
                 self.setMinimumHeight(190)
@@ -1906,6 +1934,9 @@ class QuickLookupWindow(QDialog):
             self._autoplay()
 
     def eventFilter(self, watched, event):
+        if (event.type() == QEvent.Type.MouseButtonPress and isinstance(watched, QWidget)
+                and watched.inherits("QSizeGrip")):
+            self._reading_size_custom = True
         if (event.type() == QEvent.Type.KeyPress and watched is getattr(self, "search", None)
                 and self.browser.section_scroll.enabled
                 and event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown)
@@ -1995,6 +2026,7 @@ class QuickLookupWindow(QDialog):
                        Qt.CursorShape.SizeHorCursor if horizontal else Qt.CursorShape.SizeVerCursor if vertical else
                        Qt.CursorShape.ArrowCursor)
         if event.type() == QEvent.Type.MouseButtonPress and edges and event.button() == Qt.MouseButton.LeftButton:
+            self._reading_size_custom = True
             if not self.windowHandle() or not self.windowHandle().startSystemResize(edges):
                 self._resize_start = (point, self.geometry(), edges)
             return True

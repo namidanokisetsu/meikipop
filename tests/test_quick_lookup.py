@@ -185,7 +185,7 @@ class QuickLookupTests(unittest.TestCase):
         result = SearchResult("猫", "ja", "en", (entry(), mono))
         closed = render_result(result, expanded=("Dictionary", "Monolingual"), collapsed=("Monolingual",))
         self.assertIn("Monolingual", closed)
-        self.assertIn('href="expand:1" title="Expand"', closed)
+        self.assertIn('href="collapse:1" title="Expand"', closed)
         self.assertIn("cat", closed)
         self.assertNotIn("Meaning", closed)
         preview = render_result(SearchResult("猫", "ja", "en", (mono,)), preview=True, collapsed=("Monolingual",))
@@ -249,7 +249,7 @@ class QuickLookupTests(unittest.TestCase):
                 self.assertGreater(scroll, 0)
                 for expanded in (False, True, False):
                     before = browser.toHtml()
-                    self.assertIn('href="expand:1"', before)
+                    self.assertIn('href="collapse:1"', before)
                     self.assertEqual("Fourth sense" in browser.toPlainText(), not expanded)
                     self.window._link(QUrl("expand:1"))
                     self.app.processEvents()
@@ -257,8 +257,26 @@ class QuickLookupTests(unittest.TestCase):
                     self.assertEqual("Fourth sense" in browser.toPlainText(), expanded)
                     cursor = browser.document().find("Second")
                     cursor.movePosition(cursor.MoveOperation.EndOfBlock, cursor.MoveMode.KeepAnchor)
-                    self.assertIn("−" if expanded else "+", cursor.selectedText())
+                    self.assertEqual(cursor.selectedText(), "Second")
                     self.assertEqual(bar.value(), scroll)
+
+    def test_dictionary_labels_collapse_independently_and_restore_full_content(self):
+        self.settings.setValue("profiles/ja/expanded_dictionaries", ["First"])
+        first = entry(source="First", definitions=tuple(f"sense {i}" for i in range(6)))
+        second = entry(source="Second", definitions=("other meaning",))
+        self.window.show_entries((first, second), "猫")
+        self.assertIn("sense 5", self.window.browser.toPlainText())
+        self.window._link(QUrl("collapse:0"))
+        text = self.window.browser.toPlainText()
+        self.assertIn("First", text)
+        self.assertNotIn("sense 0", text)
+        self.assertIn("other meaning", text)
+        self.window._link(QUrl("collapse:1"))
+        self.assertNotIn("other meaning", self.window.browser.toPlainText())
+        self.window._link(QUrl("collapse:0"))
+        self.assertIn("sense 5", self.window.browser.toPlainText())
+        self.assertNotIn("other meaning", self.window.browser.toPlainText())
+        self.assertEqual(self.settings.value("profiles/ja/expanded_dictionaries"), ["First"])
 
     def test_back_restores_manual_dictionary_expansion_and_new_lookup_uses_defaults(self):
         self.settings.setValue("profiles/ja/collapsed_dictionaries", ["Dictionary"])
@@ -547,6 +565,17 @@ class QuickLookupTests(unittest.TestCase):
         self.window.pin.setChecked(False)
         self.app.processEvents()
         self.window.open_search()
+        self.assertEqual(self.window.height(), 420)
+
+    def test_default_reading_window_fits_short_content_and_keeps_manual_size(self):
+        self.window.show_entries((entry(definitions=("cat",)),), "猫")
+        self.app.processEvents()
+        self.assertLess(self.window.height(), 340)
+        self.assertEqual(self.window.browser.verticalScrollBar().maximum(), 0)
+        self.window._reading_size_custom = True
+        self.window.resize(480, 420)
+        self.window._display(SearchResult("dog", "ja", "en", (entry("犬", definitions=("dog",)),)))
+        self.app.processEvents()
         self.assertEqual(self.window.height(), 420)
 
     def test_bounded_preview_does_not_expose_a_partial_bottom_line(self):

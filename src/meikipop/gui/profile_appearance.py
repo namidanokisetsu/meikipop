@@ -7,11 +7,13 @@ from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFontComboBox, 
 from meikipop.config.config import config
 from meikipop.gui.themes import THEMES, theme_name
 from meikipop.gui.settings_section import SettingsSection
+from meikipop.gui.typography import default_family
 
 KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions",
         "color_background", "color_foreground", "color_highlight_word", "color_highlight_reading",
         "background_opacity")
 DEFAULTS = {key: getattr(config, key) for key in KEYS}
+_configured_font = DEFAULTS["font_family"]
 DEFAULTS["furigana_scale"] = 50
 DEFAULTS["font_family"] = DEFAULTS["font_family"] or ("Segoe UI" if sys.platform == "win32" else "Helvetica Neue" if sys.platform == "darwin" else "Noto Sans")
 
@@ -31,6 +33,8 @@ def load_appearance(settings, profile):
     name = theme_name(settings.value(f"profiles/{profile}/theme_name", DEFAULTS["theme_name"]))
     palette = custom if name == "Custom" else THEMES[name]
     for key, default in DEFAULTS.items():
+        if key == "font_family" and not _configured_font:
+            default = default_family(profile)
         if key in palette:
             value = palette[key]
         else:
@@ -136,7 +140,8 @@ class ProfileAppearance(QWidget):
         self.compact_preview.setChecked(self.settings.value(f"profiles/{self.profile()}/compact_preview", True, bool))
         self.pinned_sentence.setChecked(self.settings.value(f"profiles/{self.profile()}/pinned_sentence", True, bool))
         self.snap_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/snap_scrolling", False, bool))
-        self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family", DEFAULTS["font_family"])))
+        self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family",
+                                                         _configured_font or default_family(self.profile()))))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
         self.detail_form.setRowVisible(self.headword_furigana, self.profile() == "ja")
         self.definition_furigana.setChecked(self.settings.value("profiles/ja/definition_furigana", True, bool))

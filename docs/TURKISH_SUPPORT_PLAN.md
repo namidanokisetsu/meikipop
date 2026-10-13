@@ -17,7 +17,10 @@ clients remain explicit compatibility entrypoints.
    Explicit recommended downloads reuse this importer. Removal closes readers
    and deletes every stored revision of the selected pack.
    Structured Turkdict content and multiple Japanese dictionaries share the
-   existing HTML converter. The working local library includes full Turkdict,
+   existing HTML converter. Archive-owned illustrations are decoded at explicit import,
+   stored beside each immutable pack, and removed with it. Rendering accepts only this
+   library's image scheme. Plain definition tags retain their expanded dictionary labels.
+   The working local library includes full Turkdict,
    Jitendex, KANJIDIC and Jiten packs; data and models stay outside Git.
    Referenced archive illustrations are decoded into isolated pack assets, including
    AVIF conversion; cancellation and removal clean up those assets with the pack.
@@ -46,7 +49,9 @@ clients remain explicit compatibility entrypoints.
    handling uses isolated Bunpro and legacy Japanese grammar adapters for unmarked layouts.
    Dictionary-specific Start collapsed defaults retain only a source heading in expanded
    results, including pinned OCR; compact OCR previews keep their definitions. Manual
-   expansion is local to the result and Back restores it.
+   expansion is local to the result and Back restores it. Dictionary labels collapse and
+   reopen sections; More opens truncated previews. Short default windows fit visible
+   content while preserving deliberate resizing. Frequency and pitch share a metadata row.
    Show supplied frequency, inflection and kanji data without merging distinct source senses
    or inventing missing kanji components. Profile changes also reload cached
    settings controls. Ruby explicitly resolves the selected font for kana and

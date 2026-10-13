@@ -70,7 +70,7 @@ def levels(pitch):
         pitch.position == 0 or i < pitch.position) for i in range(count + 1))
 
 
-def render_pitches(pitches):
+def render_pitches(pitches, inline=False):
     rows = []
     for pitch in pitches:
         pattern, parts = levels(pitch), []
@@ -87,4 +87,5 @@ def render_pitches(pitches):
                 annotations.append(f'{label}: {", ".join(map(str, indices))}')
         suffix = " · " + escape(" · ".join(annotations)) if annotations else ""
         rows.append(f'{"".join(parts)} [{escape(str(pitch.position))}]{suffix}')
-    return '<p style="margin:0"><small>' + ' · '.join(dict.fromkeys(rows)) + '</small></p>' if rows else ""
+    text = ' · '.join(dict.fromkeys(rows))
+    return text if inline or not text else '<p style="margin:0"><small>' + text + '</small></p>'
