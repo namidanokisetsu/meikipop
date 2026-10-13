@@ -268,6 +268,8 @@ class TranslationSetupTests(unittest.TestCase):
         self.load = patch("meikipop.dictionary.translation.load_settings",
                           side_effect=lambda: load_settings(self.translation_directory))
         self.load.start()
+        self.ready = patch("meikipop.gui.resources.translation_ready", return_value=False)
+        self.ready.start()
         settings = QSettings(str(self.directory / "qt.ini"), QSettings.Format.IniFormat)
         settings.setValue("profile", "ja")
         settings.setValue("profiles/ja/target", "en")
@@ -281,6 +283,7 @@ class TranslationSetupTests(unittest.TestCase):
         self.dialog.deleteLater()
         self.app.processEvents()
         self.load.stop()
+        self.ready.stop()
         self.temp.cleanup()
 
     def test_selection_saves_explicit_model_and_refreshes_search(self):

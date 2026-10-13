@@ -41,7 +41,7 @@ class DictionaryCollapseTests(unittest.TestCase):
         self.model_status_patch.stop()
         self.temp.cleanup()
 
-    def test_pinned_middle_school_dictionary_minus_reduces_content(self):
+    def test_pinned_dictionary_label_collapses_and_restores_full_content(self):
         self.window.settings.setValue("profiles/ja/expanded_dictionaries", ["Middle-school monolingual"])
         definitions = tuple(f"Meaning {index}: " + "x" * 120 for index in range(4))
         result = SearchResult("fixture", "ja", "en", (_entry("Middle-school monolingual", definitions),))
@@ -53,14 +53,16 @@ class DictionaryCollapseTests(unittest.TestCase):
 
         expanded_text = self.window.browser.toPlainText()
         self.assertIn("Meaning 3", expanded_text)
-        self.assertIn("−", self.window.browser.toHtml())
+        self.assertIn('href="collapse:0"', self.window.browser.toHtml())
 
-        self.window._link(QUrl("expand:0"))
+        self.window._link(QUrl("collapse:0"))
         self.app.processEvents()
         collapsed_text = self.window.browser.toPlainText()
         self.assertNotIn("Meaning 3", collapsed_text)
         self.assertLess(len(collapsed_text), len(expanded_text))
-        self.assertIn("+", self.window.browser.toHtml())
+        self.assertIn('href="collapse:0"', self.window.browser.toHtml())
+        self.window._link(QUrl("collapse:0"))
+        self.assertIn("Meaning 3", self.window.browser.toPlainText())
 
 
 if __name__ == "__main__":

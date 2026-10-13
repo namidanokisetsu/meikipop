@@ -58,25 +58,24 @@ class DictionaryControlTests(unittest.TestCase):
     def test_expansion_and_collapse_keep_the_same_word_without_lookup(self):
         entry = Entry("fixture", "terakki", "", "Wiktionary", "tr", ("progress", "growth", "advance", "development"))
         result = SearchResult("terakki", "tr", "en", (entry,))
-        expanded = set()
+        expanded = {entry.source}
+        collapsed = set()
 
         def render():
-            self.browser.setHtml(render_result(result, expanded))
+            self.browser.setHtml(render_result(result, expanded, collapsed=collapsed))
 
         def toggle(_):
-            expanded.symmetric_difference_update((entry.source,))
+            collapsed.symmetric_difference_update((entry.source,))
             render()
 
         self.browser.anchorClicked.connect(toggle)
         render()
         self.app.processEvents()
-        self.assertNotIn("development", self.browser.toPlainText())
-        for symbol, expected in (("+", True), ("−", False)):
+        self.assertIn("development", self.browser.toPlainText())
+        for expected in (False, True):
             self.browser.verticalScrollBar().setValue(0)
-            cursor = self.browser.document().find(symbol)
-            cursor.setPosition(cursor.selectionStart())
-            point = self.browser.cursorRect(cursor).center()
-            self.assertEqual(self.browser.anchorAt(point), "expand:0")
+            point = self.point("Wiktionary")
+            self.assertEqual(self.browser.anchorAt(point), "collapse:0")
             QTest.mouseClick(self.browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
             self.assertEqual("development" in self.browser.toPlainText(), expected)
             self.assertIn("terakki", self.browser.toPlainText())
