@@ -124,7 +124,7 @@ def render_kanji(entries, expanded=False, *, compact_only=False, expanded_charac
             continue
         parts.append(f'<a name="kanji-detail-{quote(character, safe="")}"></a>'
                      f'<div style="margin:2px 0 6px"><p style="margin:2px 0 1px">'
-                     f'<b>{_character_link(character, accent, True)}</b></p>')
+                     f'<span style="font-size:96px">{_character_link(character, accent, True)}</span></p>')
         parts.append('<table width="100%" cellspacing="0" cellpadding="1">')
         for entry in group:
             parts.append(f'<tr><td valign="top">{_entry_html(entry, reading_color, full=True, show_source=True)}</td></tr>')
