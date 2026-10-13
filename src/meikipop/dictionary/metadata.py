@@ -61,7 +61,8 @@ def tagged_definitions(definitions, tags, labels):
             content = first.get("text" if first["type"] == "text" else "content")
         else:
             continue
-        return [*definitions[:index], {"type": "structured-content", "content": [*nodes, " ", content]},
+        content = content if isinstance(content, list) else [content]
+        return [*definitions[:index], {"type": "structured-content", "content": [*nodes, " ", *content]},
                 *definitions[index + 1:]]
     return definitions
 

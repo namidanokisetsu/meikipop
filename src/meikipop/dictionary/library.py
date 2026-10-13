@@ -105,8 +105,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             has_images = any(Path(name).suffix.lower() in IMAGE_SUFFIXES for name in zf.namelist())
             media_ready = (existing_metadata.get("media_version") == "1"
                            and (existing_metadata.get("images", "0") == "0" or assets.is_dir()))
-            has_tags = any(re.fullmatch(r"tag_bank_\d+\.json", name) for name in zf.namelist())
-            tags_ready = not has_tags or existing_metadata.get("tag_version") == "1"
+            tags_ready = existing_metadata.get("entries", "0") == "0" or existing_metadata.get("tag_version") == "1"
             if existing_metadata.get("schema_version") == "3" and (not has_images or media_ready) and tags_ready:
                 if progress:
                     progress(f"Importing {title} · 100%")
