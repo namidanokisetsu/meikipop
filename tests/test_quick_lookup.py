@@ -1109,11 +1109,11 @@ class QuickLookupTests(unittest.TestCase):
             point = browser.cursorRect(cursor).center() + QPoint(2, 0)
             return QHelpEvent(QEvent.Type.ToolTip, point, browser.viewport().mapToGlobal(point))
         with patch("meikipop.gui.quick_lookup.QToolTip.showText") as show:
-            browser.viewportEvent(event_for("summary"))
+            QApplication.sendEvent(browser.viewport(), event_for("summary"))
             self.assertEqual(show.call_args.args[1], "<p>Full &lt;description&gt;</p>")
             show.reset_mock()
             with patch("meikipop.gui.quick_lookup.QToolTip.hideText") as hide:
-                browser.viewportEvent(event_for("other"))
+                QApplication.sendEvent(browser.viewport(), event_for("other"))
                 show.assert_not_called()
                 hide.assert_called_once()
 

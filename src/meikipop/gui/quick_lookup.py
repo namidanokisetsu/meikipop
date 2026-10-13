@@ -2040,7 +2040,8 @@ class QuickLookupWindow(QDialog):
             self._place_actions()
             if self._peek and self.is_pinned and hasattr(self, "render_timer"):
                 self.render_timer.start(0)
-        if event.type() == QEvent.Type.ToolTip and not isinstance(watched, QToolButton):
+        if (event.type() == QEvent.Type.ToolTip and watched is not self.browser.viewport()
+                and not isinstance(watched, QToolButton)):
             QToolTip.hideText()
             return True
         if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
