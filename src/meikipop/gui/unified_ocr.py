@@ -78,9 +78,10 @@ class ScanWorker(threading.Thread):
                     if engine is None and self.frames is None:
                         engine = SearchEngine(self.directory)
                     selection = tuple(options[0]) if options else ()
-                    provider_key = (language, *selection)
                     from meikipop.language.support import default_ocr_provider
                     selected = (selection[0] if selection else None) or default_ocr_provider(language)
+                    component = selection[1] if selected == "screenai" and len(selection) > 1 else ""
+                    provider_key = (language, selected, component)
                     # Paddle's installed multilingual model is identical across profiles.
                     model_key = ("paddle",) if selected == "paddle" else provider_key
                     if pixels is not None:
