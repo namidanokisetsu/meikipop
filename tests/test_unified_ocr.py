@@ -77,19 +77,28 @@ class ScanWorkerTests(unittest.TestCase):
         self.assertEqual(sink.emit.call_count, 3)
 
     def test_unrelated_component_setting_does_not_duplicate_meiki_model(self):
-        image = image_bytes()
-        worker, sink = self.make_worker([
-            (1, image, (.2, .5), "ja", ("meikiocr", "")),
-            (2, image, (.2, .5), "ja", ("meikiocr", "screenai/component")),
-            (3, image, (.7, .5), "ja"), None])
-        provider, engine = Mock(return_value=recognized()), Mock()
-        engine.search.return_value = SimpleNamespace(entries=())
-        with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
-                patch.object(worker, "provider", return_value=provider) as factory:
-            worker.run()
-        factory.assert_called_once_with("ja", "meikiocr", "")
-        provider.assert_called_once()
-        self.assertEqual(sink.emit.call_count, 3)
+        for default in ("meikiocr", "vision"):
+            with self.subTest(default=default):
+                image = image_bytes()
+                worker, sink = self.make_worker([
+                    (1, image, (.2, .5), "ja", ("meikiocr", "")),
+                    (2, image, (.2, .5), "ja", ("meikiocr", "screenai/component")),
+                    (3, image, (.7, .5), "ja"), None])
+                provider, engine = Mock(return_value=recognized()), Mock()
+                engine.search.return_value = SimpleNamespace(entries=())
+                with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
+                        patch("meikipop.language.support.default_ocr_provider", return_value=default), \
+                        patch.object(worker, "provider", return_value=provider) as factory:
+                    worker.run()
+                self.assertEqual(factory.call_args_list[0].args, ("ja", "meikiocr", ""))
+                if default == "meikiocr":
+                    factory.assert_called_once()
+                    provider.assert_called_once()
+                else:
+                    self.assertEqual(factory.call_count, 2)
+                    self.assertEqual(factory.call_args_list[1].args, ("ja",))
+                    self.assertEqual(provider.call_count, 2)
+                self.assertEqual(sink.emit.call_count, 3)
 
     def test_capture_precedes_slow_model_loading(self):
         from meikipop.utils.capture import CaptureRequest, PixelFrame
