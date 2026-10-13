@@ -5,10 +5,6 @@ from typing import List, Optional
 import numpy as np
 from PIL import Image
 
-# Import the MeikiOCR library
-from meikiocr import MeikiOCR
-
-# Import the "contract" classes from your application's interface
 from meikipop.ocr.interface import BoundingBox, OcrProvider, Paragraph, Word
 from meikipop.ocr.providers.postprocessing import group_lines_into_paragraphs
 
@@ -22,6 +18,17 @@ REC_CONFIDENCE_THRESHOLD = 0.1
 JAPANESE_REGEX = re.compile(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]')
 
 
+def require_local_models():
+    from huggingface_hub import hf_hub_download
+    from meikiocr.ocr import DET_MODEL_REPO, DET_MODEL_NAME, REC_MODEL_REPO, REC_MODEL_NAME, VREC_MODEL_NAME
+    try:
+        for repository, filename in ((DET_MODEL_REPO, DET_MODEL_NAME), (REC_MODEL_REPO, REC_MODEL_NAME),
+                                     (REC_MODEL_REPO, VREC_MODEL_NAME)):
+            hf_hub_download(repo_id=repository, filename=filename, local_files_only=True)
+    except Exception as error:
+        raise RuntimeError("Install Japanese OCR models in Settings before scanning.") from error
+
+
 class MeikiOcrProvider(OcrProvider):
     """
     An OCR provider that uses the high-performance meikiocr library.
@@ -32,16 +39,18 @@ class MeikiOcrProvider(OcrProvider):
     def __init__(self, execution_provider=None):
         """
         Initializes the provider by creating an instance of the MeikiOCR client.
-        The library handles the model downloading and session management internally.
+        Model setup is explicit; runtime uses the installed cache only.
         """
         logger.info(f"initializing {self.NAME} provider...")
-        self.ocr_client = None
+        from meikiocr import MeikiOCR
+        require_local_models()
         try:
             self.ocr_client = MeikiOCR(provider=execution_provider)
             logger.info(f"{self.NAME} initialized successfully, running on: {self.ocr_client.active_provider}")
 
         except Exception as e:
             logger.error(f"failed to initialize {self.NAME}: {e}", exc_info=True)
+            raise RuntimeError(f"Japanese OCR could not start: {e}") from e
 
     def scan(self, image: Image.Image) -> Optional[List[Paragraph]]:
         """
