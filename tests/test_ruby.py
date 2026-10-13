@@ -137,3 +137,13 @@ class RubyTests(unittest.TestCase):
         self.assertEqual(sum(f.length() for f in self.objects()), 2)
         self.assertTrue(all(f.charFormat().property(BASE) == "日" for f in self.objects()))
         self.assertEqual(self.browser.toPlainText(), "日日")
+
+    def test_many_annotations_batch_document_changes_and_keep_copy_text(self):
+        changes = []
+        self.browser.document().contentsChanged.connect(lambda: changes.append(True))
+        self.browser.setHtml("".join(ruby_html("猫", "ねこ") for _ in range(100)))
+        self.assertLessEqual(len(changes), 3)
+        self.assertEqual(sum(fragment.length() for fragment in self.objects()), 100)
+        self.assertTrue(all(fragment.charFormat().property(READING) == "ねこ" for fragment in self.objects()))
+        self.browser.selectAll()
+        self.assertEqual(self.browser.createMimeDataFromSelection().text(), "猫" * 100)

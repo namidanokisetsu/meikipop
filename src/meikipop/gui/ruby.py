@@ -95,20 +95,24 @@ class RubyBrowser(DictionaryBrowser):
                         runs.append((start, end, href))
                 iterator += 1
             block = block.next()
-        for start, end, href in reversed(runs):
-            cursor = QTextCursor(document)
-            cursor.setPosition(start)
-            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-            reading = QTextDocument()
-            reading.setHtml(unquote(href[len(PREFIX):].partition("#")[0]))
-            fmt = QTextCharFormat(cursor.charFormat())
-            fmt.setAnchor(False)
-            fmt.setAnchorHref("")
-            fmt.setFontUnderline(False)
-            fmt.setObjectType(RUBY)
-            fmt.setProperty(BASE, cursor.selectedText())
-            fmt.setProperty(READING, reading.toPlainText())
-            cursor.insertText("\ufffc", fmt)
+        cursor = QTextCursor(document)
+        cursor.beginEditBlock()
+        try:
+            for start, end, href in reversed(runs):
+                cursor.setPosition(start)
+                cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                reading = QTextDocument()
+                reading.setHtml(unquote(href[len(PREFIX):].partition("#")[0]))
+                fmt = QTextCharFormat(cursor.charFormat())
+                fmt.setAnchor(False)
+                fmt.setAnchorHref("")
+                fmt.setFontUnderline(False)
+                fmt.setObjectType(RUBY)
+                fmt.setProperty(BASE, cursor.selectedText())
+                fmt.setProperty(READING, reading.toPlainText())
+                cursor.insertText("\ufffc", fmt)
+        finally:
+            cursor.endEditBlock()
 
     def _plain_selection(self, cursor):
         start, end = cursor.selectionStart(), cursor.selectionEnd()
