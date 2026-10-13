@@ -61,8 +61,7 @@ class GlossRenderingTests(unittest.TestCase):
                 {"tag": "span", "data": {"content": "tag", "category": "usage"}, "content": "rare"}]},
             "A definition.", {"tag": "span", "data": {"content": "bold-text"}, "content": "example"},
             {"tag": "i", "content": "italic"}, {"tag": "sup", "content": "2"}, "line one\nline two"])
-        self.assertIn("[sports]", html)
-        self.assertIn("[rare]", html)
+        self.assertIn("[sports · rare]", html)
         self.assertIn('font-weight:bold', html)
         self.assertIn("<i>italic</i>", html)
         self.assertIn("<sup>2</sup>", html)

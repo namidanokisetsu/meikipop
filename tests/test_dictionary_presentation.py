@@ -102,6 +102,19 @@ class DictionaryPresentationTests(unittest.TestCase):
         self.assertIn("東亰", text)
         self.assertEqual(definition["content"][0]["content"][1]["tag"], "div")
 
+    def test_compact_tags_keep_full_descriptions_on_hover(self):
+        descriptions = ("noun (common) (futsuumeishi)",
+                        "noun or participle which takes the aux. verb suru", "transitive verb")
+        nodes = [{"tag": "span", "data": {"content": "tag"}, "content": text}
+                 for text in descriptions]
+        definition = {"type": "structured-content", "content": [*nodes, "prayer"]}
+        text = self.render(result((definition,)))
+        self.assertIn("[noun · suru · transitive] prayer", text)
+        cursor = self.browser.document().find("noun · suru")
+        self.assertEqual(cursor.charFormat().toolTip(), " · ".join(descriptions))
+        self.assertFalse(cursor.charFormat().isAnchor())
+        self.assertEqual([node["content"] for node in nodes], list(descriptions))
+
     def test_semantic_meanings_collapse_without_discarding_full_content(self):
         value = result(({"type": "structured-content", "content": {"tag": "div", "content": [
             {"tag": "div", "data": {"meaning": ""}, "content": f"Sense {i}"}

@@ -15,6 +15,7 @@ RUBY = QTextFormat.ObjectTypes.UserObject.value + 1
 BASE = QTextFormat.Property.UserProperty.value + 1
 READING = BASE + 1
 PREFIX = "meikipop-ruby:"
+TAG_PREFIX = "meikipop-tag:"
 _ruby_ids = count()
 
 
@@ -80,13 +81,15 @@ class RubyBrowser(DictionaryBrowser):
     def setHtml(self, html):
         super().setHtml(html)
         document = self.document()
-        runs = []
+        runs, tags = [], []
         block = document.begin()
         while block.isValid():
             iterator = block.begin()
             while not iterator.atEnd():
                 fragment = iterator.fragment()
                 href = fragment.charFormat().anchorHref()
+                if href.startswith(TAG_PREFIX):
+                    tags.append((fragment.position(), fragment.length(), href))
                 if href.startswith(PREFIX):
                     start, end = fragment.position(), fragment.position() + fragment.length()
                     if runs and runs[-1][1] == start and runs[-1][2] == href:
@@ -98,6 +101,15 @@ class RubyBrowser(DictionaryBrowser):
         cursor = QTextCursor(document)
         cursor.beginEditBlock()
         try:
+            for start, length, href in tags:
+                cursor.setPosition(start)
+                cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+                fmt = QTextCharFormat(cursor.charFormat())
+                fmt.setAnchor(False)
+                fmt.setAnchorHref("")
+                fmt.setFontUnderline(False)
+                fmt.setToolTip(unquote(href[len(TAG_PREFIX):]))
+                cursor.setCharFormat(fmt)
             for start, end, href in reversed(runs):
                 cursor.setPosition(start)
                 cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)

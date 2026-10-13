@@ -20,7 +20,7 @@ from meikipop.config.config import config
 from meikipop.dictionary.search import SearchEngine, SearchResult
 from meikipop.gui.popup_style import expanded_geometry, frame_stylesheet, popup_position, surface_colors
 from meikipop.gui.action_icons import action_icon
-from meikipop.gui.ruby import RubyBrowser, ruby_html
+from meikipop.gui.ruby import RubyBrowser, TAG_PREFIX, ruby_html
 from meikipop.gui.gloss_content import normalize_definitions
 from meikipop.language.profiles import configured_profiles, default_partner
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
@@ -164,6 +164,44 @@ class LookupWorker(QObject):
 
 class _GlossConverter(StructuredContentConverter):
     """Prune structured previews before conversion, retaining lists and emphasis."""
+    _tag_labels = {
+        "noun (common) (futsuumeishi)": "noun",
+        "noun or participle which takes the aux. verb suru": "suru",
+        "transitive verb": "transitive", "intransitive verb": "intransitive",
+        "female given name or forename": "female name", "female given name": "female name",
+        "male given name or forename": "male name", "male given name": "male name",
+        "given name or forename, gender not specified": "given name",
+        "family or surname": "surname", "place name": "place",
+        "adjective (keiyoushi)": "i-adjective",
+        "adjectival nouns or quasi-adjectives (keiyodoshi)": "na-adjective",
+        "adverb (fukushi)": "adverb", "expressions (phrases, clauses, etc.)": "expression",
+        "other surface forms and readings": "forms", "unclassified": "unclassified",
+    }
+
+    @staticmethod
+    def _is_tag(node):
+        data = node.get("data") if isinstance(node, dict) else None
+        return (isinstance(data, dict) and data.get("content") != "forms-label"
+                and (data.get("class") == "tag" or data.get("content") == "tag"))
+
+    def _tags_to_html(self, nodes):
+        labels, descriptions = [], []
+        for node in nodes:
+            html = super()._node_to_html(node.get("content"))
+            document = QTextDocument()
+            document.setHtml(html)
+            description = document.toPlainText().strip()
+            if description:
+                labels.append(self._tag_labels.get(description, description))
+                descriptions.append(description)
+        if not labels:
+            return ""
+        description = " · ".join(dict.fromkeys(descriptions))
+        label = " · ".join(dict.fromkeys(labels))
+        return (f'<a href="{TAG_PREFIX}{quote(description, safe="")}" '
+                f'style="color:{self.colors["muted"]};text-decoration:none">'
+                f'<small>[{escape(label)}]</small></a> ')
+
     def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term="",
                  details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False, preview_definitions=3):
         super().__init__()
@@ -244,11 +282,21 @@ class _GlossConverter(StructuredContentConverter):
             return super()._node_to_html(node).replace('\n', '<br>') if node.strip() else node
         if isinstance(node, list):
             parts = []
-            for child in node:
+            index = 0
+            while index < len(node):
+                child = node[index]
                 if not self.expanded and self.remaining is not None and self.remaining <= 0:
                     self.clipped = True
                     break
-                parts.append(self._node_to_html(child))
+                tags = []
+                while index < len(node) and self._is_tag(node[index]):
+                    tags.append(node[index])
+                    index += 1
+                if tags:
+                    parts.append(self._tags_to_html(tags))
+                else:
+                    parts.append(self._node_to_html(child))
+                    index += 1
             return "".join(parts)
         if isinstance(node, dict):
             if node.get("tag") == "details":
@@ -329,8 +377,7 @@ class _GlossConverter(StructuredContentConverter):
                     for child in children)))
             source_class = data.get("class", "") if isinstance(data, dict) else ""
             if source_class == "tag" or kind == "tag":
-                label = self._node_to_html(content)
-                return f'<span style="color:{self.colors["muted"]}"><small>[{label}]</small></span> ' if label else ""
+                return self._tags_to_html((node,))
             if kind == "tags":
                 return self._node_to_html(content)
             if tag in ("td", "th"):
