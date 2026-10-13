@@ -185,7 +185,7 @@ When pinned keeps OCR hover previews silent and plays when expanded. Typed looku
 Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
 **Settings → Appearance** defaults to Dark: black at 95% opacity, white text
-and pale text. Monochrome Dark, Light and Custom remain available.
+and muted readings. Green, Light and Custom remain available.
 Japanese text defaults to Yu Gothic UI on Windows, Hiragino Sans on macOS, or an installed
 Noto Japanese family on Linux. Other text uses the system UI family; saved font choices remain.
 Short results fit their content until you resize the reading window.
@@ -196,6 +196,10 @@ and bracketed reading by default; **Appearance → Headword reading → Furigana
 switches the heading to an above-text reading too.
 Furigana uses the selected font, sits close to the text and defaults to muted gray
 at 50% size. **Appearance → Furigana size (%)** adjusts Japanese readings.
+Expanded kanji use a large glyph. **Appearance → Customize → Download stroke-order font**
+installs the [author's Kanji Stroke Order font](https://www.nihilist.org.uk/) privately,
+with its original license; unsupported characters keep the normal font.
+**Settings → Lookup → Start with Windows** enables per-user tray startup.
 
 **Settings → Translation** contains horizontal **From** and **To** language strips. Both default
 to **Automatic** within the profile's translation pair; manual selections override

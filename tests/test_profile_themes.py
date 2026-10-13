@@ -236,3 +236,28 @@ class ProfileThemeTests(unittest.TestCase):
             finally:
                 config.__dict__.update(previous)
                 widget.deleteLater()
+
+    def test_stroke_order_preference_is_optional_and_isolated_from_turkish(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            profile = ['ja']
+            previous = dict(config.__dict__)
+            widget = ProfileAppearance(settings, lambda: profile[0], lambda: load_appearance(settings, profile[0]))
+            try:
+                self.assertTrue(widget.kanji_stroke_order.isChecked())
+                widget.kanji_stroke_order.click()
+                self.assertFalse(config.kanji_stroke_order)
+                profile[0] = 'tr'
+                widget.reload(); widget.save()
+                self.assertFalse(widget.detail_form.isRowVisible(widget.kanji_stroke_order))
+                self.assertFalse(settings.contains('profiles/tr/kanji_stroke_order'))
+                profile[0] = 'ja'
+                widget.reload()
+                self.assertFalse(widget.kanji_stroke_order.isChecked())
+                widget.kanji_stroke_order.click()
+                self.assertTrue(config.kanji_stroke_order)
+                load_appearance(settings, 'tr')
+                self.assertFalse(config.kanji_stroke_order)
+            finally:
+                config.__dict__.update(previous)
+                widget.deleteLater()

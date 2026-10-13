@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QWidget
 from meikipop.dictionary.translation import TranslationSettings, load_profile_settings, save_profile_settings
 from meikipop.gui.dictionary_manager import SetupDialog
 from meikipop.gui.resources import translation_ready
@@ -155,3 +155,62 @@ class ResourceTests(unittest.TestCase):
             operation._run()
         self.assertEqual(download.call_count, 1)
         self.assertEqual(results, [("Download cancelled.", True)])
+
+    def test_stroke_order_font_action_is_japanese_only_and_uses_setup_operation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profile", "ja")
+            settings.setValue("profiles/ja/target", "en")
+            settings.setValue("profiles/tr/target", "en")
+            with patch("meikipop.utils.stroke_order_font.font_ready", return_value=False), \
+                    patch("meikipop.gui.resources.ocr_ready", return_value=True), \
+                    patch("meikipop.gui.resources.translation_ready", return_value=True):
+                dialog = SetupDialog(Path(directory) / "library", settings, Mock())
+                try:
+                    button = dialog.resources.font_install
+                    self.assertTrue(dialog.appearance.detail_form.isRowVisible(button))
+                    with patch.object(dialog, "begin_operation") as install:
+                        button.click()
+                        install.assert_called_once_with([], fonts=True)
+                    dialog.sync_profile("tr")
+                    self.assertFalse(dialog.appearance.detail_form.isRowVisible(button))
+                    dialog.sync_profile("ja")
+                    with patch("meikipop.utils.stroke_order_font.font_ready", return_value=True):
+                        dialog.resources.refresh()
+                        self.assertFalse(dialog.appearance.detail_form.isRowVisible(button))
+                finally:
+                    dialog.deleteLater()
+                    self.app.processEvents()
+        from meikipop.gui.dictionary_manager import SetupOperation
+        operation = SetupOperation([], "/unused", fonts=True)
+        results = []
+        operation.finished.connect(lambda status, changed: results.append((status, changed)))
+        with patch("meikipop.scripts.setup_stroke_order_font.install") as install:
+            operation._run()
+            self.assertIs(install.call_args.args[1], operation.cancelled)
+        self.assertEqual(results, [("Stroke-order font installed.", True)])
+
+    def test_font_install_completion_redraws_current_kanji_without_preference_change(self):
+        from meikipop.gui.dictionary_manager import SetupOperation
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
+            parent = QWidget()
+            parent.set_mode = Mock()
+            parent.reload_appearance = Mock()
+            parent.scan_settings_changed = Mock()
+            parent._render_identity = ("existing kanji",)
+            with patch("meikipop.utils.stroke_order_font.font_ready", return_value=True), \
+                    patch("meikipop.gui.resources.ocr_ready", return_value=True), \
+                    patch("meikipop.gui.resources.translation_ready", return_value=True):
+                dialog = SetupDialog(Path(directory) / "library", settings, Mock(), parent)
+                try:
+                    parent.reload_appearance.reset_mock()
+                    dialog.operation = SetupOperation([], directory, fonts=True)
+                    dialog._finished("Stroke-order font installed.", True)
+                    self.assertIsNone(parent._render_identity)
+                    parent.reload_appearance.assert_called_once_with()
+                    self.assertIsNone(dialog.operation)
+                finally:
+                    dialog.deleteLater(); parent.deleteLater()
+                    self.app.processEvents()

@@ -11,7 +11,7 @@ from meikipop.gui.typography import default_family
 
 KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions",
         "color_background", "color_foreground", "color_highlight_word", "color_highlight_reading",
-        "background_opacity", "pitch_colors")
+        "background_opacity", "pitch_colors", "kanji_stroke_order")
 DEFAULTS = {key: getattr(config, key) for key in KEYS}
 _configured_font = DEFAULTS["font_family"]
 DEFAULTS["furigana_scale"] = 50
@@ -43,7 +43,7 @@ def load_appearance(settings, profile):
             value = name
         if key == "background_opacity":
             value = settings.value(f"profiles/{profile}/{key}", value, type=int)
-        if key == "pitch_colors" and profile != "ja":
+        if key in ("pitch_colors", "kanji_stroke_order") and profile != "ja":
             value = False
         if key.startswith("font_size"):
             value = round(value * scale)
@@ -90,6 +90,11 @@ class ProfileAppearance(QWidget):
         detail_form.addRow(self.definition_furigana)
         self.pitch_colors = QCheckBox("Pitch colors")
         detail_form.addRow(self.pitch_colors)
+        self.kanji_stroke_order = QCheckBox("Stroke order in kanji")
+        detail_form.addRow(self.kanji_stroke_order)
+        self.font_install = QPushButton("Download stroke-order font")
+        self.font_install.setFlat(True)
+        detail_form.addRow(self.font_install)
         self.controls = {}
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
@@ -117,6 +122,7 @@ class ProfileAppearance(QWidget):
         self.headword_furigana.toggled.connect(self.save)
         self.definition_furigana.toggled.connect(self.save)
         self.pitch_colors.toggled.connect(self.save)
+        self.kanji_stroke_order.toggled.connect(self.save)
         self.preview_frequency.toggled.connect(self.save)
         self.preview_pitch.toggled.connect(self.save)
         self.preview_definitions.valueChanged.connect(self.save)
@@ -153,6 +159,10 @@ class ProfileAppearance(QWidget):
         self.detail_form.setRowVisible(self.definition_furigana, self.profile() == "ja")
         self.pitch_colors.setChecked(self.settings.value("profiles/ja/pitch_colors", DEFAULTS["pitch_colors"], bool))
         self.detail_form.setRowVisible(self.pitch_colors, self.profile() == "ja")
+        self.kanji_stroke_order.setChecked(self.settings.value("profiles/ja/kanji_stroke_order", DEFAULTS["kanji_stroke_order"], bool))
+        self.detail_form.setRowVisible(self.kanji_stroke_order, self.profile() == "ja")
+        from meikipop.utils.stroke_order_font import font_ready
+        self.detail_form.setRowVisible(self.font_install, self.profile() == "ja" and not font_ready())
         self.detail_form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
@@ -207,6 +217,7 @@ class ProfileAppearance(QWidget):
             self.settings.setValue(prefix + "headword_furigana", self.headword_furigana.isChecked())
             self.settings.setValue(prefix + "definition_furigana", self.definition_furigana.isChecked())
             self.settings.setValue(prefix + "pitch_colors", self.pitch_colors.isChecked())
+            self.settings.setValue(prefix + "kanji_stroke_order", self.kanji_stroke_order.isChecked())
         for key, widget in self.controls.items():
             if key == "furigana_scale" and self.profile() != "ja":
                 continue

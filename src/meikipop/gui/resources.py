@@ -54,6 +54,8 @@ class ResourcesPanel(QWidget):
         self.owner = owner
         self.hide()
         self.downloads, self.model_rows = {}, {}
+        self.font_install = owner.appearance.font_install
+        self.font_install.clicked.connect(lambda: owner.begin_operation([], fonts=True))
 
         self.dictionary_section = QWidget(self)
         layout = QVBoxLayout(self.dictionary_section)
@@ -103,6 +105,9 @@ class ResourcesPanel(QWidget):
         if not code:
             return
         busy = owner.operation is not None
+        from meikipop.utils.stroke_order_font import font_ready
+        owner.appearance.detail_form.setRowVisible(self.font_install, code == "ja" and not font_ready())
+        self.font_install.setEnabled(not busy)
         from meikipop.dictionary.library import Library
         library = Library(owner.directory)
         try:

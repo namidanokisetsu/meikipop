@@ -122,9 +122,12 @@ def render_kanji(entries, expanded=False, *, compact_only=False, expanded_charac
     for character, group in groups:
         if character not in detailed:
             continue
+        from meikipop.utils.stroke_order_font import stroke_order_family
+        family = stroke_order_family(character) if getattr(config, "kanji_stroke_order", True) else ""
+        glyph_style = f'font-size:128px;font-family:{_text(family)}' if family else 'font-size:96px'
         parts.append(f'<a name="kanji-detail-{quote(character, safe="")}"></a>'
                      f'<div style="margin:2px 0 6px"><p style="margin:2px 0 1px">'
-                     f'<span style="font-size:96px">{_character_link(character, accent, True)}</span></p>')
+                     f'<span style="{glyph_style}">{_character_link(character, accent, True)}</span></p>')
         parts.append('<table width="100%" cellspacing="0" cellpadding="1">')
         for entry in group:
             parts.append(f'<tr><td valign="top">{_entry_html(entry, reading_color, full=True, show_source=True)}</td></tr>')

@@ -22,7 +22,7 @@ class SetupOperation(QObject):
     finished = pyqtSignal(str, bool)
     refresh = pyqtSignal()
 
-    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None):
+    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None, fonts=False):
         super().__init__()
         self.paths = paths
         self.directory = directory
@@ -32,6 +32,7 @@ class SetupOperation(QObject):
         self.remove = remove
         self.morphology = morphology
         self.ocr = ocr
+        self.fonts = fonts
         self.installed_component = ""
         self.cancelled = threading.Event()
         self.thread = threading.Thread(target=self._run, name="dictionary-setup", daemon=True)
@@ -46,6 +47,14 @@ class SetupOperation(QObject):
             pass
 
     def _run(self):
+        if self.fonts:
+            try:
+                from meikipop.scripts.setup_stroke_order_font import install
+                install(lambda text: self._emit(self.progress, text), self.cancelled)
+                self._emit(self.finished, "Stroke-order font installed.", True)
+            except Exception as error:
+                self._emit(self.finished, str(error), False)
+            return
         if isinstance(self.recommended, tuple):
             from meikipop.dictionary.import_job import background_import
             changed, errors = False, []
@@ -855,10 +864,10 @@ class SetupDialog(QDialog):
             self.status.setText(str(error))
             return False
 
-    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None):
+    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None, fonts=False):
         if self.operation is not None:
             return
-        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology, ocr)
+        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology, ocr, fonts)
         self.operation.refresh.connect(self.dictionaries_changed)
         self.operation.progress.connect(self.status.setText)
         self.operation.finished.connect(self._finished)
@@ -880,6 +889,7 @@ class SetupDialog(QDialog):
             self.cancel_button.setEnabled(False)
 
     def _finished(self, status, changed):
+        font_installed = changed and self.operation is not None and self.operation.fonts
         component = self.operation.installed_component if self.operation is not None else ""
         if component:
             self.screenai_directory.setText(component)
@@ -899,6 +909,9 @@ class SetupDialog(QDialog):
             self.dictionaries_changed.emit()
             if self.parent() is not None:
                 self.parent().scan_settings_changed.emit()
+                if font_installed:
+                    self.parent()._render_identity = None
+                    self.parent().reload_appearance()
         if self._close_pending:
             self._close_pending = False
             super().reject()

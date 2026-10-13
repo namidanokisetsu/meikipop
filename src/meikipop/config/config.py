@@ -67,6 +67,7 @@ class Config:
             'show_examples': True,
             'show_components': True,
             'pitch_colors': True,
+            'kanji_stroke_order': True,
             'color_background': '#000000',
             'color_foreground': '#FFFFFF',
             'color_highlight_word': '#FFFFFF',
