@@ -677,6 +677,9 @@ class LocalDictionaryBrowser(RubyBrowser):
                     cursor.setCharFormat(heading_format(fmt))
             block = block.next()
 
+        # Qt can leave trailing blocks unlaid after inline replacements and heading edits.
+        self.document().markContentsDirty(0, self.document().characterCount())
+
     def viewportEvent(self, event):
         if event.type() == QEvent.Type.ToolTip:
             QToolTip.hideText()

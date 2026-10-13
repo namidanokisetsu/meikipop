@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+import tempfile
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
@@ -204,3 +206,33 @@ class RubyTests(unittest.TestCase):
         self.assertTrue(all(fragment.charFormat().property(READING) == "ねこ" for fragment in self.objects()))
         self.browser.selectAll()
         self.assertEqual(self.browser.createMimeDataFromSelection().text(), "猫" * 100)
+
+    def test_long_ruby_document_lays_out_the_last_paragraph(self):
+        self.browser.show()
+        self.app.processEvents()
+        self.browser.setHtml("Previous short definition")
+        self.app.processEvents()
+        image = QImage(200, 300, QImage.Format.Format_RGB32)
+        image.fill(Qt.GlobalColor.white)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.browser.library_root = Path(directory.name)
+        assets = self.browser.library_root / ("ja-" + "a" * 64 + ".assets")
+        assets.mkdir()
+        image.save(str(assets / ("b" * 64 + ".png")))
+        image_html = '<img src="meikipop-image:/ja-' + "a" * 64 + "/" + "b" * 64 + '.png" width="200" height="300">'
+        paragraph = "説明 " + ("これは " + ruby_html("食べ物", "たべもの") + " の読みです。") * 5
+        self.browser.setHtml('<style>h2 {font-size:18px}</style><h2>Headword</h2><div><div>'
+                             + paragraph + image_html + paragraph + '</div>'
+                             + "".join(f'<div style="margin-top:1px;margin-bottom:1px">{index} {paragraph}</div>'
+                                       for index in range(80)) + '<div>' + image_html + '</div></div>')
+        self.app.processEvents()
+        document = self.browser.document()
+        height = document.size().height()
+        last = document.lastBlock()
+        bounds = document.documentLayout().blockBoundingRect(last)
+        self.assertGreater(last.layout().lineCount(), 0)
+        self.assertGreater(bounds.height(), 0)
+        self.assertGreater(bounds.bottom(), height - 10)
+        self.assertEqual(sum(fragment.length() for fragment in self.objects()), 410)
+        self.assertIn("79 説明 " + ("これは 食べ物 の読みです。") * 5, self.browser.toPlainText())
