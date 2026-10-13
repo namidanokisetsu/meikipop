@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from meikipop.utils.windowed_processes import configure_windowed_helpers
+
 
 class HelperWindowTests(unittest.TestCase):
     def runtime(self, platform="win32", stdout=None):
@@ -67,3 +69,27 @@ class HelperWindowTests(unittest.TestCase):
             with self.subTest(platform=platform):
                 original, selected, _ = self.runtime(platform, stdout)
                 self.assertIs(selected, original)
+
+    @unittest.skipUnless(hasattr(subprocess, "CREATE_NO_WINDOW"), "Windows process flags")
+    def test_source_pythonw_policy_is_idempotent_and_python_cli_stays_original(self):
+        original = subprocess.Popen
+        with patch.object(subprocess, "Popen", original), patch("sys.platform", "win32"), patch("sys.stdout", io.StringIO()):
+            configure_windowed_helpers()
+            self.assertIs(subprocess.Popen, original)
+            with patch("sys.stdout", None):
+                configure_windowed_helpers()
+                configured = subprocess.Popen
+                self.assertTrue(issubclass(configured, original))
+                configure_windowed_helpers()
+                self.assertIs(subprocess.Popen, configured)
+
+    @unittest.skipUnless(hasattr(subprocess, "CREATE_NO_WINDOW"), "Windows process flags")
+    def test_source_entry_configures_helpers_before_model_or_gui_setup(self):
+        from meikipop.scripts.quick_lookup import main
+        class Configured(Exception):
+            pass
+        with patch("meikipop.utils.windowed_processes.configure_windowed_helpers", side_effect=Configured), \
+                patch("meikipop.utils.model_cache.configure_model_cache") as models:
+            with self.assertRaises(Configured):
+                main(["--background"])
+            models.assert_not_called()

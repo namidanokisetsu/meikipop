@@ -4,6 +4,8 @@ import sys
 
 
 def main(argv=None):
+    from meikipop.utils.windowed_processes import configure_windowed_helpers
+    configure_windowed_helpers()
     from meikipop.utils.model_cache import configure_model_cache
     configure_model_cache()
     from meikipop.utils.startup import hold_installer_mutex

@@ -4,29 +4,10 @@ import sys
 from pathlib import Path
 from platformdirs import user_cache_dir
 from meikipop.utils.model_cache import configure_model_cache
+from meikipop.utils.windowed_processes import configure_windowed_helpers
 
+configure_windowed_helpers()
 configure_model_cache()
-
-if sys.platform == "win32" and sys.stdout is None:
-    # Model libraries probe console tools; a windowed app must not open a terminal.
-    import inspect
-    import subprocess
-    _creationflags_index = list(inspect.signature(subprocess.Popen).parameters).index("creationflags")
-
-    class WindowlessPopen(subprocess.Popen):
-        def __init__(self, *args, **kwargs):
-            positional = len(args) > _creationflags_index
-            flags = args[_creationflags_index] if positional else kwargs.get("creationflags", 0)
-            if not flags & (subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS):
-                flags |= subprocess.CREATE_NO_WINDOW
-                if positional:
-                    args = list(args)
-                    args[_creationflags_index] = flags
-                else:
-                    kwargs["creationflags"] = flags
-            super().__init__(*args, **kwargs)
-
-    subprocess.Popen = WindowlessPopen
 
 if sys.platform == "darwin":
     import certifi
