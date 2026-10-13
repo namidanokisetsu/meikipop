@@ -36,7 +36,7 @@ class ProfileThemeTests(unittest.TestCase):
             settings.setValue('profiles/ja/theme_name', 'Green')
             widget = ProfileAppearance(settings, lambda: 'ja', lambda: load_appearance(settings, 'ja'))
             try:
-                self.assertEqual(widget.controls['background_opacity'].value(), 90)
+                self.assertEqual(widget.controls['background_opacity'].value(), 95)
                 self.assertEqual(widget.controls['background_opacity'].suffix(), '%')
                 self.assertFalse(widget.form.isRowVisible(widget.controls['color_background']))
                 self.assertTrue(widget.form.isRowVisible(widget.controls['background_opacity']))
@@ -56,7 +56,7 @@ class ProfileThemeTests(unittest.TestCase):
                 continue
             with self.subTest(theme=name):
                 bg = theme['color_background']
-                self.assertEqual(theme['background_opacity'], 230 if name == 'Green' else 255)
+                self.assertEqual(theme['background_opacity'], 242 if name == 'Green' else 255)
                 self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 7)
                 for key in ('color_highlight_word', 'color_highlight_reading'):
                     self.assertGreaterEqual(contrast(bg, theme[key]), 4.5)

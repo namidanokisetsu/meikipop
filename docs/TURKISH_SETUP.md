@@ -180,7 +180,7 @@ Sentence reading always uses an installed system voice.
 When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
 Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
-**Settings → Appearance** defaults to Green: black at 80% opacity, soft green accents
+**Settings → Appearance** defaults to Green: black at 95% opacity, soft green accents
 and pale text. Monochrome Dark, Light and Custom remain available.
 Background opacity uses 0-100% and is available for every theme. Changes apply immediately;
 Custom remembers its own colors when switching presets. Appearance remains independent per profile.
