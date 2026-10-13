@@ -11,7 +11,7 @@ from meikipop.gui.typography import default_family
 
 KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions",
         "color_background", "color_foreground", "color_highlight_word", "color_highlight_reading",
-        "background_opacity")
+        "background_opacity", "pitch_colors")
 DEFAULTS = {key: getattr(config, key) for key in KEYS}
 _configured_font = DEFAULTS["font_family"]
 DEFAULTS["furigana_scale"] = 50
@@ -21,7 +21,7 @@ DEFAULTS["font_family"] = DEFAULTS["font_family"] or ("Segoe UI" if sys.platform
 def custom_palette(settings, profile):
     prefix = f"profiles/{profile}/"
     palette = {}
-    for key in THEMES["Monochrome Dark"]:
+    for key in THEMES["Dark"]:
         custom = prefix + "custom/" + key
         palette[key] = settings.value(custom, DEFAULTS[key], type=type(DEFAULTS[key]))
     return palette
@@ -43,6 +43,8 @@ def load_appearance(settings, profile):
             value = name
         if key == "background_opacity":
             value = settings.value(f"profiles/{profile}/{key}", value, type=int)
+        if key == "pitch_colors" and profile != "ja":
+            value = False
         if key.startswith("font_size"):
             value = round(value * scale)
         setattr(config, key, value)
@@ -86,6 +88,8 @@ class ProfileAppearance(QWidget):
         detail_form.addRow(self.headword_furigana)
         self.definition_furigana = QCheckBox("Definition furigana")
         detail_form.addRow(self.definition_furigana)
+        self.pitch_colors = QCheckBox("Pitch colors")
+        detail_form.addRow(self.pitch_colors)
         self.controls = {}
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
@@ -112,6 +116,7 @@ class ProfileAppearance(QWidget):
         self.font.currentFontChanged.connect(self.save)
         self.headword_furigana.toggled.connect(self.save)
         self.definition_furigana.toggled.connect(self.save)
+        self.pitch_colors.toggled.connect(self.save)
         self.preview_frequency.toggled.connect(self.save)
         self.preview_pitch.toggled.connect(self.save)
         self.preview_definitions.valueChanged.connect(self.save)
@@ -146,6 +151,8 @@ class ProfileAppearance(QWidget):
         self.detail_form.setRowVisible(self.headword_furigana, self.profile() == "ja")
         self.definition_furigana.setChecked(self.settings.value("profiles/ja/definition_furigana", True, bool))
         self.detail_form.setRowVisible(self.definition_furigana, self.profile() == "ja")
+        self.pitch_colors.setChecked(self.settings.value("profiles/ja/pitch_colors", DEFAULTS["pitch_colors"], bool))
+        self.detail_form.setRowVisible(self.pitch_colors, self.profile() == "ja")
         self.detail_form.setRowVisible(self.controls["furigana_scale"], self.profile() == "ja")
         for key, widget in self.controls.items():
             value = self.settings.value(f"profiles/{self.profile()}/{key}", DEFAULTS.get(key, 100))
@@ -199,6 +206,7 @@ class ProfileAppearance(QWidget):
         if self.profile() == "ja":
             self.settings.setValue(prefix + "headword_furigana", self.headword_furigana.isChecked())
             self.settings.setValue(prefix + "definition_furigana", self.definition_furigana.isChecked())
+            self.settings.setValue(prefix + "pitch_colors", self.pitch_colors.isChecked())
         for key, widget in self.controls.items():
             if key == "furigana_scale" and self.profile() != "ja":
                 continue

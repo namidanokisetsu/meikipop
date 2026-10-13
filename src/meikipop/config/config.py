@@ -53,7 +53,7 @@ class Config:
             'audio_preferred_sources': 'jpod,shinmeikai8,daijisen,nhk16,forvo,taas,ozk5,forvo_ext,forvo_ext2',
         },
         'Theme': {
-            'theme_name': 'Green',
+            'theme_name': 'Dark',
             'font_family': '',
             'font_size_definitions': 14,
             'font_size_header': 18,
@@ -66,10 +66,11 @@ class Config:
             'show_kanji': True,
             'show_examples': True,
             'show_components': True,
+            'pitch_colors': True,
             'color_background': '#000000',
-            'color_foreground': '#E8E8E8',
-            'color_highlight_word': '#80D69B',
-            'color_highlight_reading': '#A8CFB5',
+            'color_foreground': '#FFFFFF',
+            'color_highlight_word': '#FFFFFF',
+            'color_highlight_reading': '#B8B8B8',
             'background_opacity': 242,
             'popup_position_mode': 'visual_novel_mode'
         }
@@ -99,6 +100,9 @@ class Config:
                 else:
                     val = default
                 setattr(self, key, val)
+
+        if self.theme_name == 'Monochrome Dark':
+            self.theme_name = 'Dark'
 
         activation_source = self.activation_bindings
         try:

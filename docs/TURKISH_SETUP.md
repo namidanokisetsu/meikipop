@@ -135,6 +135,7 @@ Click a headword kanji to open its details at the bottom, or a kanji in the comp
 Import and enable a Yomitan pitch dictionary with the Japanese profile selected.
 Accents use Yomitan notation: high-mora bars and drop legs, a small solid nasal ring,
 and a dotted devoicing circle. Heiban is blue, atamadaka red, nakadaka orange, and odaka green.
+**Appearance → Customize → Pitch colors** is on by default and can be disabled.
 Brackets retain the supplied accent number or H/L pattern; distinct accents remain separate.
 Reimport an older mixed pack to add previously skipped pitch data.
 The copy button previews its sentence on hover; action icons have short tooltips.
@@ -183,7 +184,7 @@ Sentence reading always uses an installed system voice.
 When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
 Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
-**Settings → Appearance** defaults to Green: black at 95% opacity, soft green accents
+**Settings → Appearance** defaults to Dark: black at 95% opacity, white text
 and pale text. Monochrome Dark, Light and Custom remain available.
 Japanese text defaults to Yu Gothic UI on Windows, Hiragino Sans on macOS, or an installed
 Noto Japanese family on Linux. Other text uses the system UI family; saved font choices remain.

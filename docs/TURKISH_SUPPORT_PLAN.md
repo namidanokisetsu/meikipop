@@ -64,8 +64,9 @@ clients remain explicit compatibility entrypoints.
    Frequency display defaults to the harmonic mean of positive ranks, with one
    best rank per dictionary; counts and nonnumeric labels are excluded. Optional per-source
    display labels each dictionary inline. Kanji summaries use up to three columns; clicking
-   a character reveals complete details from every enabled kanji pack. Themes are Green,
-   Monochrome Dark, Light and Custom; Custom retains its own palette.
+   a character reveals complete details from every enabled kanji pack. Themes are Dark,
+   Green, Light and Custom; Dark defaults to 95% opacity. Custom retains its own palette.
+   Japanese pitch colors default on and can be disabled in Appearance → Customize.
    Unchanged render identities preserve documents and selections; fitting is coalesced.
    Selection lookup inside results is independently opt-in for each profile.
    The Turkish compatibility
@@ -213,7 +214,7 @@ clients remain explicit compatibility entrypoints.
   batch, retaining completed imports on cancellation or failure. Japanese includes
   Jitendex, KANJIDIC, BCCWJ frequency, and Kanjium pitch; ZIP imports remain available.
   The tray has no setup menu.
-  Green is the new default appearance,
+  Dark is the default appearance,
   with percentage background opacity available for every theme. Popup expansion
   preserves an above-text preview's lower edge and fits within the display. ZIP imports run
   in a separate process and continue with Settings closed. CRC metadata is advisory;

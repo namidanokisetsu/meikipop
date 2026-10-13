@@ -135,8 +135,10 @@ class PitchPainterTests(unittest.TestCase):
         self.assertEqual(cells[0][5:], (False, True))
         self.assertEqual(cells[1][0], "か")
         self.assertEqual(cells[1][5:], (True, False))
-        for background in ("#ffffff", "#000000"):
-            with self.subTest(background=background), patch.object(config, "color_background", background):
+        for background, colored in (("#ffffff", True), ("#000000", True), ("#ffffff", False), ("#000000", False)):
+            with self.subTest(background=background, colored=colored), patch.object(config, "color_background", background), \
+                    patch.object(config, "pitch_colors", colored):
+                fmt.setForeground(QColor("#ffffff" if background == "#000000" else "#111111"))
                 size = renderer.intrinsicSize(document, 0, fmt)
                 image = QImage(160, 40, QImage.Format.Format_ARGB32)
                 image.fill(QColor(background))
@@ -144,9 +146,12 @@ class PitchPainterTests(unittest.TestCase):
                 renderer.drawObject(painter, QRectF(4, 4, size.width(), size.height()), document, 0, fmt)
                 painter.end()
                 colors = [image.pixelColor(x, y) for y in range(40) for x in range(160)]
-                self.assertTrue(any(color.blue() > color.red() * 1.25 for color in colors))
-                self.assertTrue(any(color.red() > color.green() * 1.25 and color.blue() < color.green()
-                                    for color in colors))
+                if colored:
+                    self.assertTrue(any(color.blue() > color.red() * 1.25 for color in colors))
+                    self.assertTrue(any(color.red() > color.green() * 1.25 and color.blue() < color.green()
+                                        for color in colors))
+                else:
+                    self.assertTrue(all(color.red() == color.green() == color.blue() for color in colors))
 
     def test_empty_term_rows_are_ignored_after_payload_validation(self):
         with tempfile.TemporaryDirectory() as directory:

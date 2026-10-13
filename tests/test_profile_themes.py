@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QApplication
 from meikipop.config.config import config
 from meikipop.gui.profile_appearance import DEFAULTS, ProfileAppearance, load_appearance
 from meikipop.gui.popup_style import surface_colors
-from meikipop.gui.themes import THEMES
+from meikipop.gui.themes import THEMES, theme_name
 
 
 def luminance(color):
@@ -50,7 +50,7 @@ class ProfileThemeTests(unittest.TestCase):
                 widget.deleteLater()
 
     def test_presets_keep_text_and_metadata_readable(self):
-        self.assertEqual(set(THEMES), {"Green", "Monochrome Dark", "Light", "Custom"})
+        self.assertEqual(set(THEMES), {"Green", "Dark", "Light", "Custom"})
         for name, theme in THEMES.items():
             if not theme:
                 continue
@@ -65,7 +65,7 @@ class ProfileThemeTests(unittest.TestCase):
                     if name != 'Green':
                         self.assertEqual(red, green)
                         self.assertEqual(green, blue)
-                if name == 'Monochrome Dark':
+                if name == 'Dark':
                     self.assertEqual(bg, '#000000')
                     self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 20)
                     self.assertGreaterEqual(contrast(bg, theme['color_highlight_word']), 12)
@@ -128,7 +128,7 @@ class ProfileThemeTests(unittest.TestCase):
                 widget.theme.setCurrentText('Custom')
                 widget.set_color('color_background', '#102030')
                 widget.save()
-                widget.theme.setCurrentText('Monochrome Dark')
+                widget.theme.setCurrentText('Dark')
                 widget.theme.setCurrentText('Custom')
                 self.assertEqual(widget.controls['color_background'].text(), '#102030')
                 self.assertEqual(settings.value('profiles/tr/theme_name'), 'Dusk')
@@ -148,7 +148,7 @@ class ProfileThemeTests(unittest.TestCase):
             previous = dict(config.__dict__)
             try:
                 load_appearance(settings, 'tr')
-                self.assertEqual(config.theme_name, 'Monochrome Dark')
+                self.assertEqual(config.theme_name, 'Dark')
                 self.assertEqual(config.color_highlight_word, '#FFFFFF')
                 self.assertEqual(settings.value('profiles/tr/theme_name'), 'Dusk')
                 widget = ProfileAppearance(settings, lambda: 'tr', Mock())
@@ -158,7 +158,7 @@ class ProfileThemeTests(unittest.TestCase):
                 self.assertEqual(config.color_background, DEFAULTS['color_background'])
                 self.assertEqual(config.color_highlight_word, DEFAULTS['color_highlight_word'])
                 self.assertEqual(config.color_foreground, '#eeeeee')
-                widget.theme.setCurrentText('Monochrome Dark')
+                widget.theme.setCurrentText('Dark')
                 widget.deleteLater()
                 widget = ProfileAppearance(settings, lambda: 'tr', Mock())
                 widget.theme.setCurrentText('Custom')
@@ -175,7 +175,64 @@ class ProfileThemeTests(unittest.TestCase):
             try:
                 widget.theme.setCurrentText('Light')
                 widget.theme.setCurrentText('Custom')
-                for key in THEMES['Monochrome Dark']:
+                for key in THEMES['Dark']:
                     self.assertEqual(settings.value('profiles/ja/custom/' + key), DEFAULTS[key])
             finally:
+                widget.deleteLater()
+
+    def test_default_dark_and_legacy_name_keep_saved_opacity(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            previous = dict(config.__dict__)
+            widget = ProfileAppearance(settings, lambda: 'ja', Mock())
+            try:
+                self.assertEqual(widget.theme.currentText(), 'Dark')
+                self.assertEqual(widget.controls['background_opacity'].value(), 95)
+                self.assertEqual(theme_name('Monochrome Dark'), 'Dark')
+                settings.setValue('profiles/ja/theme_name', 'Monochrome Dark')
+                settings.setValue('profiles/ja/background_opacity', 128)
+                widget.reload()
+                load_appearance(settings, 'ja')
+                self.assertEqual(widget.theme.currentText(), 'Dark')
+                self.assertEqual(config.theme_name, 'Dark')
+                self.assertEqual(config.background_opacity, 128)
+                self.assertEqual(settings.value('profiles/ja/theme_name'), 'Monochrome Dark')
+                self.assertNotIn('Monochrome Dark', [widget.theme.itemText(i) for i in range(widget.theme.count())])
+            finally:
+                config.__dict__.update(previous)
+                widget.deleteLater()
+
+    def test_pitch_colors_default_on_and_persist_only_for_japanese(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = str(Path(folder) / 'settings.ini')
+            settings = QSettings(path, QSettings.Format.IniFormat)
+            profile = ['ja']
+            previous = dict(config.__dict__)
+            widget = ProfileAppearance(settings, lambda: profile[0], lambda: load_appearance(settings, profile[0]))
+            try:
+                self.assertTrue(widget.pitch_colors.isChecked())
+                self.assertTrue(widget.detail_form.isRowVisible(widget.pitch_colors))
+                load_appearance(settings, 'ja')
+                self.assertTrue(config.pitch_colors)
+                widget.pitch_colors.click()
+                self.assertFalse(config.pitch_colors)
+                settings.sync()
+                self.assertFalse(QSettings(path, QSettings.Format.IniFormat).value('profiles/ja/pitch_colors', True, bool))
+                profile[0] = 'tr'
+                widget.reload()
+                self.assertFalse(widget.detail_form.isRowVisible(widget.pitch_colors))
+                widget.save()
+                self.assertFalse(config.pitch_colors)
+                self.assertFalse(settings.contains('profiles/tr/pitch_colors'))
+                profile[0] = 'ja'
+                widget.reload()
+                self.assertFalse(widget.pitch_colors.isChecked())
+                widget.pitch_colors.click()
+                self.assertTrue(config.pitch_colors)
+                load_appearance(settings, 'tr')
+                self.assertFalse(config.pitch_colors)
+                load_appearance(settings, 'ja')
+                self.assertTrue(config.pitch_colors)
+            finally:
+                config.__dict__.update(previous)
                 widget.deleteLater()

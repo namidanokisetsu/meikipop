@@ -382,7 +382,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_mode("tr")
         self.window.open_settings()
         self.assertEqual(dialog.profile.currentData(), "tr")
-        self.assertEqual(dialog.appearance.theme.currentText(), "Monochrome Dark")
+        self.assertEqual(dialog.appearance.theme.currentText(), "Dark")
         self.assertEqual(config.color_background, "#000000")
         self.assertEqual(config.color_highlight_word, "#FFFFFF")
         dialog.appearance.theme.setCurrentText("Custom")

@@ -1,14 +1,14 @@
 """Meikipop appearance presets shared by both desktop applications."""
 
 THEMES = {
+    "Dark": {
+        "color_background": "#000000", "color_foreground": "#FFFFFF",
+        "color_highlight_word": "#FFFFFF", "color_highlight_reading": "#B8B8B8",
+        "background_opacity": 242,
+    },
     "Green": {
         "color_background": "#000000", "color_foreground": "#E8E8E8",
         "color_highlight_word": "#80D69B", "color_highlight_reading": "#A8CFB5",
-        "background_opacity": 242,
-    },
-    "Monochrome Dark": {
-        "color_background": "#000000", "color_foreground": "#FFFFFF",
-        "color_highlight_word": "#FFFFFF", "color_highlight_reading": "#B8B8B8",
         "background_opacity": 242,
     },
     "Light": {
@@ -21,4 +21,6 @@ THEMES = {
 
 
 def theme_name(name):
-    return name if name in THEMES else "Monochrome Dark"
+    if name == "Monochrome Dark":
+        return "Dark"
+    return name if name in THEMES else "Dark"

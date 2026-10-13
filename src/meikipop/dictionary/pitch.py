@@ -180,9 +180,11 @@ def install_pitch_renderer(document, parent):
                 light = QColor(config.color_background).lightnessF() > .5
                 palettes = ({"heiban": "#2563b3", "atamadaka": "#c63a45", "nakadaka": "#a36018", "odaka": "#28784f"},
                             {"heiban": "#61aeee", "atamadaka": "#ef7c83", "nakadaka": "#edb56e", "odaka": "#7ecc9f"})
+                colors = getattr(config, "pitch_colors", True)
                 color = QColor(palettes[not light].get(pitch_category(pitch),
-                                                      fmt.toCharFormat().foreground().color().name()))
-                danger = QColor("#c83c28" if light else "#ef8170")
+                                                      fmt.toCharFormat().foreground().color().name())
+                               if colors else fmt.toCharFormat().foreground().color())
+                danger = QColor("#c83c28" if light else "#ef8170") if colors else color
                 painter.save()
                 painter.setRenderHint(painter.RenderHint.Antialiasing)
                 painter.setFont(font)

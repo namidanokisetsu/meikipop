@@ -38,11 +38,11 @@ class SettingsDialogTests(unittest.TestCase):
         self.assertEqual(config.__dict__, self.original)
 
     def test_save_applies_preset_without_marking_it_custom(self):
-        self.dialog.theme_combo.setCurrentText("Monochrome Dark")
-        self.assertEqual(self.dialog.theme_combo.currentText(), "Monochrome Dark")
+        self.dialog.theme_combo.setCurrentText("Dark")
+        self.assertEqual(self.dialog.theme_combo.currentText(), "Dark")
         with patch.object(config, "save"), patch("meikipop.gui.settings_dialog.IS_WINDOWS", False):
             self.dialog.save_and_accept()
-        for key, value in THEMES["Monochrome Dark"].items():
+        for key, value in THEMES["Dark"].items():
             self.assertEqual(getattr(config, key), value)
 
     def test_missing_activation_does_not_silently_restore_shift(self):
