@@ -1739,13 +1739,13 @@ class QuickLookupWindow(QDialog):
         if self._result is None or not self._result.entries:
             return
         from meikipop.audio.sources import database_path, source_label, source_order
-        language = self._result.entries[0].language
+        profile = self.preferred_foreign
         menu = QMenu(self.audio_button)
         menu.addAction("Use source priority", self.play_audio)
         menu.addSeparator()
-        for source in source_order(self.settings, language):
+        for source in source_order(self.settings, profile):
             action = menu.addAction(source_label(source), lambda checked=False, source=source: self.play_audio(source=source))
-            action.setEnabled(source in ("tts", "online") or bool(database_path(self.settings, language)))
+            action.setEnabled(source in ("tts", "online") or bool(database_path(self.settings, profile)))
         clip = getattr(self.audio, "current_clip", None)
         if clip and clip.page_url.startswith("https://commons.wikimedia.org/"):
             from PyQt6.QtCore import QUrl
