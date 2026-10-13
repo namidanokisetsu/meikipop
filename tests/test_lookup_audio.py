@@ -171,6 +171,22 @@ class SentenceAudioTests(unittest.TestCase):
                 audio.shutdown()
                 audio.deleteLater()
 
+    def test_source_menu_uses_active_profile_for_cross_language_entries(self):
+        from types import SimpleNamespace
+        from meikipop.gui.quick_lookup import QuickLookupWindow
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.quick_lookup.QMenu") as menu_type:
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/tr/audio_priority", ["db:Turkish recordings", "online"])
+            settings.setValue("profiles/tr/audio_database", "turkish.db")
+            window = SimpleNamespace(_result=SimpleNamespace(entries=[SimpleNamespace(language="en")]),
+                                     preferred_foreign="tr", settings=settings, audio_button=Mock(),
+                                     audio=None, play_audio=Mock(), open_audio_settings=Mock())
+            QuickLookupWindow.audio_source_menu(window, None)
+            labels = [call.args[0] for call in menu_type.return_value.addAction.call_args_list]
+            self.assertIn("Turkish recordings", labels)
+            self.assertIn("Online pronunciations", labels)
+            self.assertNotIn("System voice", labels)
+
     def test_online_defaults_to_entry_language_and_falls_back_to_system_voice(self):
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
             settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
