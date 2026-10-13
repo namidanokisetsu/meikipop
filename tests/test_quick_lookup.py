@@ -278,6 +278,13 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("other meaning", self.window.browser.toPlainText())
         self.assertEqual(self.settings.value("profiles/ja/expanded_dictionaries"), ["First"])
 
+    def test_archive_owned_image_only_definition_is_retained(self):
+        path = "meikipop-image:/ja-" + "a" * 64 + "/" + "b" * 64 + ".png"
+        value = SearchResult("diagram", "ja", "en", (
+            entry(definitions=({"type": "image", "path": path, "width": 600, "height": 300},)),))
+        html = render_result(value, expanded=("Dictionary",))
+        self.assertIn('<img src="' + path + '" width="320" height="160">', html)
+
     def test_back_restores_manual_dictionary_expansion_and_new_lookup_uses_defaults(self):
         self.settings.setValue("profiles/ja/collapsed_dictionaries", ["Dictionary"])
         self.window._display(SearchResult("猫", "ja", "en", (entry(),)))

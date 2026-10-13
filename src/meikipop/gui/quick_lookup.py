@@ -389,7 +389,7 @@ class _GlossConverter(StructuredContentConverter):
             if isinstance(definition, str):
                 content = definition.strip()
             elif isinstance(definition, dict) and definition.get("type") == "image":
-                content = definition
+                content = dict(definition, tag="img")
             elif isinstance(definition, dict) and definition.get("type") in ("text", "structured-content"):
                 content = definition.get("text" if definition["type"] == "text" else "content")
             else:
