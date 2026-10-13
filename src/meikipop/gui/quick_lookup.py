@@ -557,7 +557,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                            if source != first_source else "")
                 parts.append(f'<p class="source">{section}<a href="collapse:{index}" '
                              f'title="{"Expand" if hidden else "Collapse"}" style="color:{muted}">'
-                             f'<small>{escape(label)}</small></a></p>')
+                             f'<small>{"▸" if hidden else "▾"}  {escape(label)}</small></a></p>')
             if len(definitions) > 1:
                 opening = '<ol style="margin-left:20px">' if len(definitions) > 9 else "<ol>"
                 parts.append(opening + "".join(f"<li>{gloss}</li>" for gloss in definitions) + "</ol>")
