@@ -93,7 +93,7 @@ class RubyBrowser(DictionaryBrowser):
             while not iterator.atEnd():
                 fragment = iterator.fragment()
                 href = fragment.charFormat().anchorHref()
-                if href.startswith(TAG_PREFIX):
+                if href.startswith((TAG_PREFIX, "frequency:")):
                     tags.append((fragment.position(), fragment.length(), href))
                 if href.startswith((PREFIX, PITCH_PREFIX)):
                     start, end = fragment.position(), fragment.position() + fragment.length()
@@ -113,7 +113,7 @@ class RubyBrowser(DictionaryBrowser):
                 fmt.setAnchor(False)
                 fmt.setAnchorHref("")
                 fmt.setFontUnderline(False)
-                fmt.setToolTip(unquote(href[len(TAG_PREFIX):]))
+                fmt.setToolTip(unquote(href.partition(":")[2]))
                 cursor.setCharFormat(fmt)
             for start, end, href in reversed(runs):
                 cursor.setPosition(start)

@@ -85,6 +85,40 @@ class RubyTests(unittest.TestCase):
         hits = {self.browser.text_at(QPoint(x, y)) for x in range(0, 150, 3) for y in range(0, 40, 3)}
         self.assertIn("食べ物", hits)
 
+    def test_frequency_provenance_tooltips_preserve_visible_rank_and_copy(self):
+        from meikipop.dictionary.metadata import Frequency
+        from PyQt6.QtGui import QTextDocument
+        word = Entry("1", "猫", "ねこ", "Words", "ja", ("cat",),
+                     frequencies=(Frequency("Corpus <one>", 100, "100"),
+                                  Frequency("Corpus <one>", 900, "900㋕"),
+                                  Frequency("Corpus two", 400, "400")))
+        result = SearchResult("猫", "ja", "en", (word,))
+        details = ("Corpus <one>: #100, 900㋕", "Corpus two: #400")
+        combined_detail = "Corpus <one>: #100; Corpus <one>: 900㋕; Corpus two: #400"
+        for combined in (True, False):
+            with self.subTest(combined=combined):
+                html = render_result(result, combine_frequencies=combined)
+                original = QTextDocument()
+                original.setHtml(html)
+                self.browser.setHtml(html)
+                self.assertEqual(self.browser.toPlainText(), original.toPlainText())
+                self.browser.selectAll()
+                self.assertEqual(self.browser.createMimeDataFromSelection().text(), original.toPlainText())
+                tooltips = []
+                block = self.browser.document().begin()
+                while block.isValid():
+                    iterator = block.begin()
+                    while not iterator.atEnd():
+                        fmt = iterator.fragment().charFormat()
+                        if fmt.toolTip() in (*details, combined_detail):
+                            tooltips.append(fmt.toolTip())
+                            self.assertFalse(fmt.isAnchor())
+                            self.assertEqual(fmt.anchorHref(), "")
+                        iterator += 1
+                    block = block.next()
+                self.assertEqual(tooltips, [combined_detail] if combined else list(details))
+                self.assertIn("#160" if combined else "#100/900㋕", self.browser.toPlainText())
+
     def test_headword_ruby_links_each_kanji_and_preserves_reading_and_copy(self):
         self.browser.setHtml('<h2>' + ruby_html("祈願", "きがん", kanji="祈願") + '</h2>')
         self.browser.show()
