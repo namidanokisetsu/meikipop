@@ -42,10 +42,11 @@ class LibraryTests(unittest.TestCase):
             self.library.close()
         self.temp.cleanup()
 
-    def pack(self, name, rows, language="tr", revision="1"):
+    def pack(self, name, rows, language="tr", revision="1", target_language=""):
         archive = self.root / (name + revision + ".zip")
         with zipfile.ZipFile(archive, "w") as zf:
-            zf.writestr("index.json", json.dumps(dict(title=name, format=3, sourceLanguage=language, revision=revision)))
+            zf.writestr("index.json", json.dumps(dict(title=name, format=3, sourceLanguage=language,
+                                                       targetLanguage=target_language, revision=revision)))
             zf.writestr("term_bank_1.json", json.dumps(rows))
         return import_yomitan(archive, self.directory)
 
@@ -64,6 +65,22 @@ class LibraryTests(unittest.TestCase):
                 self.assertEqual(entries[0].term, expected)
         self.assertEqual(self.library.lookup("araç", "tr")[0].route, "exact")
         self.assertEqual(folded("I\u0307ŞIĞI"), "isigi")
+
+    def test_bilingual_headword_lookup_precedes_reverse_gloss_search(self):
+        self.pack("EN-TR", [self.row("dip", ["batırmak; daldırmak"])], "en", target_language="tr")
+        self.pack("English", [self.row("dip", ["a brief descent"])], "en")
+        self.pack("EN-JA", [self.row("dip", ["浸す"])], "en", target_language="ja")
+        self.pack("TR-EN", [self.row("dalım", ["dip"]), self.row("ev", ["house"])])
+        engine = SearchEngine(self.directory)
+        try:
+            for source in ("auto", "en"):
+                result = engine.search("dip", source=source, foreign="tr", pair=("tr", "en"))
+                self.assertEqual([(entry.term, entry.source) for entry in result.entries], [("dip", "EN-TR")])
+                self.assertEqual(result.matched_length, 3)
+            self.assertEqual(engine.search("house", foreign="tr").entries[0].term, "ev")
+            self.assertEqual(engine.search("dip", source="en", foreign="ja").entries[0].source, "EN-JA")
+        finally:
+            engine.close()
 
     def test_form_cycles_are_bounded_and_exact_precedes_lemma(self):
         self.pack("Words", [self.row("yaz", ["summer"]), self.row("yazmak", ["write"])])

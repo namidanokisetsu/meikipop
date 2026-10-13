@@ -126,8 +126,12 @@ class SearchEngine:
         if text and not translate:
             if (source == "en" and foreign != "en") or pair and source == pair[1]:
                 dictionary_language = foreign if pair else target
-                entries = self.library.reverse(text, dictionary_language,
-                                               exact_gloss=dictionary_language == "tr")
+                entries = self.library.lookup(text, source, target_language=dictionary_language)
+                if not entries:
+                    entries = self.library.reverse(text, dictionary_language,
+                                                   exact_gloss=dictionary_language == "tr")
+                if entries:
+                    matched_length = len(text)
                 if not entries and morphology and foreign != "ja":
                     entries = self._lemma_lookup(text, foreign, context)
                     if entries:

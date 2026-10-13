@@ -364,9 +364,10 @@ class Library:
             return True
         return False
 
-    def _active(self, language):
+    def _active(self, language, target_language=None):
         return [(path, meta, db) for path, meta, db in self.packs
-                if meta["enabled"] and meta["language"] == language]
+                if meta["enabled"] and meta["language"] == language
+                and (target_language is None or meta.get("target_language") == target_language)]
 
     @staticmethod
     def _entry(path, meta, row, route):
@@ -374,11 +375,11 @@ class Library:
                      meta["title"], meta["language"], tuple(json.loads(row["definitions"])),
                      tuple(row["rules"].split()), route)
 
-    def lookup(self, text, language="ja", limit=60, *, tolerant=True):
+    def lookup(self, text, language="ja", limit=60, *, tolerant=True, target_language=None):
         term = key(text, language)
         if not term or len(term) > 2000:
             return ()
-        packs = self._active(language)
+        packs = self._active(language, target_language)
         keys = {term: "exact"}
         if language == "ja":
             hiragana = "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in term)
@@ -448,7 +449,8 @@ class Library:
                     for bit, position in enumerate(positions):
                         if mask & (1 << bit):
                             variant[position] = "ё" if term[position] == "е" else "е"
-                    for entry in self.lookup("".join(variant), language, limit, tolerant=False):
+                    for entry in self.lookup("".join(variant), language, limit, tolerant=False,
+                                             target_language=target_language):
                         route = "form spelling" if entry.route == "form" else "spelling"
                         unique.setdefault(entry.id, replace(entry, route=route))
                     if len(unique) >= limit:
