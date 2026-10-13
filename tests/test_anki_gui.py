@@ -184,6 +184,38 @@ class AnkiGuiTests(unittest.TestCase):
         media = values["_media"]["picture"]
         self.assertEqual(Image.open(BytesIO(media["data"])).getpixel((0, 0)), (255, 0, 0))
 
+    def test_export_glossary_compacts_semantic_tags_without_losing_card_content(self):
+        def tag(text):
+            return {"tag": "span", "data": {"class": "tag"}, "content": text}
+        definition = {"type": "structured-content", "content": [
+            tag("JMdict Sense #1"), tag("noun (common) (futsuumeishi)"), tag("adverb (fukushi)"),
+            {"tag": "ol", "content": [{"tag": "li", "content": "cat <animal>"},
+                                       {"tag": "li", "content": "shamisen"}]},
+            {"tag": "div", "data": {"content": "extra-info"}, "content": "Usage explanation"},
+            {"tag": "div", "data": {"content": "forms"}, "content": "Alternate form"},
+            {"tag": "div", "data": {"content": "attribution"}, "content": "Dictionary credit"}]}
+        entry = Entry("1", "猫", "ねこ", "JMdict", "ja", (definition,))
+        options = AnkiSettings(True, fields={"Front": "expression", "Back": "glossary"})
+        dialog = AnkiExportDialog([entry], "", "", options)
+        self.widgets.append(dialog)
+        text = dialog.definition.toPlainText()
+        self.assertIn("[noun · adverb]", text)
+        self.assertNotIn("JMdict Sense", text)
+        self.assertNotIn("futsuumeishi", text)
+        for content in ("cat <animal>", "shamisen", "Usage explanation", "Alternate form", "Dictionary credit"):
+            self.assertIn(content, text)
+        self.assertNotIn("meikipop-tag:", dialog.definition.toHtml())
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.return_value = 123
+            dialog.submit()
+            self.wait_until(lambda: dialog._saved)
+        glossary = client.return_value.add.call_args.args[0]["glossary"]
+        self.assertIn("cat &lt;animal&gt;", glossary)
+        self.assertIn("shamisen", glossary)
+        self.assertIn('title="noun (common) (futsuumeishi) · adverb (fukushi)"', glossary)
+        self.assertNotIn("JMdict Sense", glossary)
+        self.assertNotIn("meikipop-tag:", glossary)
+
     def test_field_suggestions_preserve_manual_skips_until_match_is_requested(self):
         panel = AnkiSettingsPanel(self.settings)
         self.widgets.append(panel)

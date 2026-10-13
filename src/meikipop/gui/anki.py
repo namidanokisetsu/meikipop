@@ -1,8 +1,12 @@
 """Opt-in Anki settings and export using snapshots of the selected result."""
 import json
+import re
 import threading
+from html import escape
+from urllib.parse import unquote
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtGui import QTextDocument
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
@@ -11,6 +15,39 @@ from PyQt6.QtWidgets import (
 from meikipop.anki import (AnkiClient, FIELD_SOURCES, load_settings, media_value, note_values,
                            sentence_readings, suggest_fields)
 from meikipop.gui.shortcut_edit import ShortcutEdit
+from meikipop.gui.quick_lookup import _GlossConverter
+from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
+
+
+class _AnkiGlossConverter(_GlossConverter):
+    _ruby_to_html = StructuredContentConverter._ruby_to_html
+
+    def __init__(self):
+        super().__init__(expanded=True)
+        self.tag_descriptions = {}
+
+    def _node_to_html(self, node):
+        if isinstance(node, list):
+            return super()._node_to_html(node)
+        if self._is_tag(node):
+            return self._tags_to_html((node,))
+        # Cards retain full definitions; only the popup's semantic tags are shared.
+        return StructuredContentConverter._node_to_html(self, node)
+
+    def _tags_to_html(self, nodes):
+        html = super()._tags_to_html(nodes)
+        if not html:
+            return ""
+        document = QTextDocument()
+        document.setHtml(html)
+        label = document.toPlainText().strip()
+        href = document.begin().begin().fragment().charFormat().anchorHref()
+        descriptions = self.tag_descriptions.setdefault(label, [])
+        for description in unquote(href.partition(":")[2]).split(" · "):
+            if not re.fullmatch(r"JMdict Sense #\d+", description, re.IGNORECASE) and description not in descriptions:
+                descriptions.append(description)
+        title = escape(" · ".join(descriptions), quote=True)
+        return f'<span title="{title}">{escape(label)}</span> '
 
 
 class AnkiTask(QObject):
@@ -320,16 +357,25 @@ class AnkiExportDialog(QDialog):
         self._entry_changed()
         if selection:
             self.definition.setPlainText(selection)
+            self._definition_tags = {}
 
     def _entry_changed(self):
-        values = note_values(self.groups[self.entry.currentIndex()])
-        self.definition.setHtml(values["glossary"])
+        converter = _AnkiGlossConverter()
+        glosses = (gloss for entry in self.groups[self.entry.currentIndex()]
+                   for gloss in converter.extract_glosses(list(entry.definitions)))
+        self.definition.setHtml("".join(f"<div>{gloss}</div>" for gloss in glosses))
+        self._definition_tags = converter.tag_descriptions
 
     def submit(self):
         if self._task is not None or self._saved:
             return
         entries = tuple(self.groups[self.entry.currentIndex()])
         sentence, translation, definition = self.sentence.toPlainText(), self.translation.toPlainText(), self.definition.toHtml()
+        # QTextEdit's HTML export drops tooltips; retain the original POS descriptions.
+        for label, descriptions in self._definition_tags.items():
+            text = escape(label)
+            title = escape(" · ".join(descriptions), quote=True)
+            definition = definition.replace(text, f'<span title="{title}">{text}</span>')
         screenshot = self.screenshot if self.include_picture.isChecked() else None
         def export():
             furigana = None
