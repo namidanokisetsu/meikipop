@@ -635,7 +635,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         from meikipop.gui.kanji_panel import render_kanji
         parts.append('<a name="kanji"></a><a name="scroll-section-kanji"></a>'
                      + render_kanji(result.kanji, compact_only=True, expanded_characters=kanji_details))
-    if not result.entries and not result.translation and not result.message and result.text:
+    if not result.entries and not result.translation and not result.kanji and not result.message and result.text:
         if not unmatched_text:
             parts.append("<p>No entry found.</p>")
     return "".join(parts)
