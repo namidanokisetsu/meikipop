@@ -4,7 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import unittest
 
 from PyQt6.QtCore import QPoint, QRectF, Qt
-from PyQt6.QtGui import QFont, QImage, QPainter, QTextCursor
+from PyQt6.QtGui import QFont, QImage, QPainter, QTextCursor, QTextDocumentFragment
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtTest import QTest
 
@@ -125,6 +125,19 @@ class RubyTests(unittest.TestCase):
         self.browser.lookup_selection()
         self.assertEqual(selected,["きがん"])
         self.assertFalse(self.browser.grab().isNull())
+
+    def test_table_breaks_and_spaces_copy_like_qt_with_inline_annotations(self):
+        from meikipop.dictionary.pitch import Pitch, render_pitches
+        self.browser.setHtml('<table><tr><td>𠮷 ' + ruby_html("食べ物", "たべもの")
+                             + '<br>first&nbsp;sense</td><td>second sense</td></tr></table>'
+                             + render_pitches((Pitch("NHK", "きがん", 1, nasal=(2,)),)))
+        self.browser.selectAll()
+        expected = (QTextDocumentFragment(self.browser.textCursor()).toPlainText()
+                    .replace("\ufffc", "食べ物", 1).replace("\ufffc", "きがん [1]", 1))
+        self.assertEqual(self.browser.toPlainText(), expected)
+        self.assertEqual(self.browser.createMimeDataFromSelection().text(), expected)
+        self.assertNotIn("\ufdd0", expected)
+        self.assertIn("first sense", expected)
 
     def test_reading_is_centered_above_base_and_reserves_line_height(self):
         self.browser.setHtml('<span style="font-size:24px">' + ruby_html("生", "せい") + '</span>')

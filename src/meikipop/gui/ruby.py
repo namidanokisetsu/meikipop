@@ -159,7 +159,7 @@ class RubyBrowser(DictionaryBrowser):
         encoded = text.encode("utf-16-le")
         for offset, base in reversed(replacements):
             encoded = encoded[:offset * 2] + base.encode("utf-16-le") + encoded[(offset + 1) * 2:]
-        return encoded.decode("utf-16-le").replace("\u2029", "\n")
+        return encoded.decode("utf-16-le").translate({ord(char): "\n" for char in "\u2028\u2029\ufdd0\ufdd1"} | {0xa0: " "})
 
     def selected_text(self):
         return self._plain_selection(self.textCursor()).strip()
