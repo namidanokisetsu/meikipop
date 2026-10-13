@@ -192,8 +192,9 @@ class _GlossConverter(StructuredContentConverter):
             document.setHtml(html)
             description = document.toPlainText().strip()
             if description:
-                labels.append(self._tag_labels.get(description, description))
                 descriptions.append(description)
+                if not re.fullmatch(r"JMdict Sense #\d+", description, re.IGNORECASE):
+                    labels.append(self._tag_labels.get(description, description))
         if not labels:
             return ""
         description = " · ".join(dict.fromkeys(descriptions))

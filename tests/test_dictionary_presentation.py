@@ -115,6 +115,15 @@ class DictionaryPresentationTests(unittest.TestCase):
         self.assertFalse(cursor.charFormat().isAnchor())
         self.assertEqual([node["content"] for node in nodes], list(descriptions))
 
+    def test_jmdict_sense_numbers_do_not_become_definition_labels(self):
+        descriptions = ("JMdict Sense #1", "noun")
+        nodes = [{"tag": "span", "data": {"class": "tag"}, "content": text}
+                 for text in descriptions]
+        text = self.render(result(({"type": "structured-content", "content": [*nodes, "meaning"]},)))
+        self.assertIn("[noun] meaning", text)
+        self.assertNotIn("JMdict Sense", text)
+        self.assertIn("JMdict Sense #1", self.browser.document().find("noun").charFormat().toolTip())
+
     def test_semantic_meanings_collapse_without_discarding_full_content(self):
         value = result(({"type": "structured-content", "content": {"tag": "div", "content": [
             {"tag": "div", "data": {"meaning": ""}, "content": f"Sense {i}"}
