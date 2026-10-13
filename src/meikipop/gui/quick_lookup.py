@@ -9,7 +9,7 @@ import sys
 import threading
 import unicodedata
 
-from PyQt6.QtCore import QObject, QEvent, QLocale, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QEvent, QLocale, QPointF, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeySequence, QShortcut, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
@@ -462,7 +462,7 @@ def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""
         for step in entry.inflection:
             label = (re.sub(r"\([^)]*\)", "", str(step)) if entry.language == "ja" else str(step)).strip()
             if label and not label.startswith("stem-"):
-                inflections.setdefault(label, None)
+                inflections.setdefault(label, entry.language)
     parts = []
     if frequencies:
         muted = surface_colors(config.color_background, config.color_foreground)["muted"]
@@ -481,7 +481,21 @@ def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""
                          f'{escape(_source_name(source))} {escape("/".join(labels))}</a>'
                          for source, labels in by_source.items())
     if inflections:
-        parts.append(escape(" · ".join(inflections)))
+        description = " · ".join(inflections)
+        label = description
+        if len(description) > 120 and set(inflections.values()) == {"tr"}:
+            compact = []
+            for step in inflections:
+                variants = (step[1:-1] if step.startswith("(") and step.endswith(")") else step).split(" OR ")
+                compact.append(variants[0] + (f" (+{len(variants) - 1})" if len(variants) > 1 else ""))
+            label = " · ".join(compact)
+            if len(label) > 120:
+                label = label[:117].rsplit(" ", 1)[0].rstrip(" ·") + "…"
+            muted = surface_colors(config.color_background, config.color_foreground)["muted"]
+            parts.append(f'<a href="{TAG_PREFIX}{quote(description, safe="")}" '
+                         f'style="color:{muted};text-decoration:none">{escape(label)}</a>')
+        else:
+            parts.append(escape(label))
     if pitch:
         parts.append(pitch)
     return '<p class="metadata"><small>' + " · ".join(parts) + '</small></p>' if parts else ""
@@ -683,7 +697,21 @@ class LocalDictionaryBrowser(RubyBrowser):
 
     def viewportEvent(self, event):
         if event.type() == QEvent.Type.ToolTip:
-            QToolTip.hideText()
+            point = QPointF(event.pos().x() + self.horizontalScrollBar().value(),
+                            event.pos().y() + self.verticalScrollBar().value())
+            position = self.document().documentLayout().hitTest(point, Qt.HitTestAccuracy.ExactHit)
+            tooltip = ""
+            if position >= 0:
+                cursor = QTextCursor(self.document())
+                cursor.setPosition(position)
+                cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+                fmt = cursor.charFormat()
+                if not fmt.isAnchor():
+                    tooltip = fmt.toolTip()
+            if tooltip:
+                QToolTip.showText(event.globalPos(), "<p>" + escape(tooltip).replace("\n", "<br>") + "</p>", self.viewport())
+            else:
+                QToolTip.hideText()
             return True
         return super().viewportEvent(event)
 

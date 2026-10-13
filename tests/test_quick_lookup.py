@@ -1071,6 +1071,52 @@ class QuickLookupTests(unittest.TestCase):
                                  "geldim", "tr", peek=True)
         self.assertIn("gelmek · past · I", self.window.browser.toPlainText())
 
+    def test_long_turkish_form_variants_keep_gloss_visible_and_full_tooltip(self):
+        variants = [f"their (poss.) · locative · relative form · adj. · variant {index}" for index in range(32)]
+        full = "(" + " OR ".join(variants) + ")"
+        word = replace(entry("avcı", definitions=("hunter",), language="tr"), inflection=(full,))
+        self.window.show_entries((word,), "avcılarındakileri", "tr")
+        browser = self.window.browser
+        text = browser.toPlainText()
+        self.assertIn(variants[0] + " (+31)", text)
+        self.assertIn("hunter", text)
+        self.assertLess(len(text), 200)
+        tooltips = []
+        block = browser.document().begin()
+        while block.isValid():
+            iterator = block.begin()
+            while not iterator.atEnd():
+                tooltips.append(iterator.fragment().charFormat().toolTip())
+                iterator += 1
+            block = block.next()
+        self.assertIn(full, tooltips)
+        browser.selectAll()
+        self.assertEqual(browser.createMimeDataFromSelection().text(), text)
+        japanese = replace(entry(), inflection=tuple(f"negative past variant {index}" for index in range(12)))
+        self.window.show_entries((japanese,), "猫")
+        self.assertIn(" · ".join(japanese.inflection), browser.toPlainText())
+
+    def test_semantic_tooltips_show_escaped_descriptions_without_link_paths(self):
+        from PyQt6.QtGui import QHelpEvent
+        browser = self.window.browser
+        browser.setHtml('<a href="meikipop-tag:Full%20%3Cdescription%3E">summary</a> '
+                        '<a href="file:///private/path" title="private/path">other</a>')
+        self.window.show()
+        self.app.processEvents()
+        def event_for(text):
+            cursor = browser.document().find(text)
+            cursor.setPosition(cursor.selectionStart())
+            point = browser.cursorRect(cursor).center() + QPoint(2, 0)
+            return QHelpEvent(QEvent.Type.ToolTip, point, browser.viewport().mapToGlobal(point))
+        with patch("meikipop.gui.quick_lookup.QToolTip.showText") as show:
+            browser.viewportEvent(event_for("summary"))
+            self.assertEqual(show.call_args.args[1], "<p>Full &lt;description&gt;</p>")
+            show.reset_mock()
+            with patch("meikipop.gui.quick_lookup.QToolTip.hideText") as hide:
+                browser.viewportEvent(event_for("other"))
+                show.assert_not_called()
+                hide.assert_called_once()
+
     def test_nested_history_trail_restores_context_expansion_and_profile(self):
         self.window.set_mode("tr")
         self.window.show_entries((entry("ev", language="tr"),), "ev", "tr", peek=True)
