@@ -225,13 +225,29 @@ def install_pitch_renderer(document, parent):
     return renderer
 
 
-def render_pitches(pitches, inline=False):
+def render_pitches(pitches, inline=False, *, native=True):
     rows = []
     for pitch in pitches:
         data = dict(reading=pitch.reading, position=pitch.position, nasal=pitch.nasal, devoice=pitch.devoice)
         href = PITCH_PREFIX + quote(json.dumps(data, ensure_ascii=False, separators=(",", ":")), safe="")
         tags = " · " + escape(" · ".join(pitch.tags)) if pitch.tags else ""
-        rows.append(f'<a href="{href}" style="text-decoration:none">'
-                    f'{escape(pitch.reading)} [{escape(str(pitch.position))}]</a>{tags}')
+        if native:
+            reading = f'<a href="{href}" style="text-decoration:none">{escape(pitch.reading)} [{escape(str(pitch.position))}]</a>'
+        else:
+            # Cards render in a browser, which cannot resolve the Qt object link.
+            pattern, parts = levels(pitch), []
+            for index, mora in enumerate(morae(pitch.reading)):
+                text = escape(nasal_mora(mora) if index + 1 in pitch.nasal else mora)
+                if index + 1 in pitch.nasal:
+                    text += '<sup style="color:#c83c28">○</sup>'
+                if index + 1 in pitch.devoice:
+                    text = f'<span style="border:1px dotted #c83c28;border-radius:50%">{text}</span>'
+                if index < len(pattern) and pattern[index]:
+                    text = f'<span style="text-decoration:overline">{text}</span>'
+                parts.append(text)
+                if index + 1 < len(pattern) and pattern[index] and not pattern[index + 1]:
+                    parts.append("ꜜ")
+            reading = f'{"".join(parts)} [{escape(str(pitch.position))}]'
+        rows.append(reading + tags)
     text = ' · '.join(dict.fromkeys(rows))
     return text if inline or not text else '<p style="margin:0"><small>' + text + '</small></p>'

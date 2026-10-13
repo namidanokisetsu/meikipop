@@ -194,7 +194,7 @@ def note_values(entries, sentence="", selection="", translation="", furigana=Non
                 sentence_translation=escape(translation).replace("\n", "<br>"),
                 pitch_positions=", ".join(map(str, positions)), pitch_categories=", ".join(categories),
                 language=escape(entry.language), frequency=str(max(1, round(rank))) if rank is not None else "",
-                pitch=render_pitches(p for item in entries for p in item.pitches))
+                pitch=render_pitches((p for item in entries for p in item.pitches), native=False))
 
 
 def sentence_readings(sentence, entries=(), engine=None):

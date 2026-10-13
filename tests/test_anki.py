@@ -55,6 +55,7 @@ class AnkiTests(unittest.TestCase):
         self.assertEqual(note["fields"]["Sentence"], "猫を見た。")
         self.assertIn("&lt;animal&gt;", note["fields"]["Back"])
         self.assertIn("ꜜ", note["fields"]["Pitch"])
+        self.assertNotIn("meikipop-pitch:", note["fields"]["Pitch"])
         self.assertFalse(note["options"]["allowDuplicate"])
         self.assertEqual(note["options"]["duplicateScope"], "deck")
 
