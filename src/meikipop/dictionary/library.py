@@ -85,6 +85,10 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
     # Language belongs to the pack identity when a legacy archive omits it.
     from .archive import DictionaryArchive
     with DictionaryArchive(archive) as zf:
+        if "index.json" not in zf.namelist():
+            if any(name.lower().endswith(".zip") for name in zf.namelist()):
+                raise ValueError("Extract this bundle and import its dictionary ZIPs.")
+            raise ValueError("Dictionary ZIP has no index.json.")
         index = json.loads(zf.read("index.json"))
         source_language = language_code(language or index.get("sourceLanguage") or "ja")
         title = index.get("title")
@@ -101,7 +105,9 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             has_images = any(Path(name).suffix.lower() in IMAGE_SUFFIXES for name in zf.namelist())
             media_ready = (existing_metadata.get("media_version") == "1"
                            and (existing_metadata.get("images", "0") == "0" or assets.is_dir()))
-            if existing_metadata.get("schema_version") == "3" and (not has_images or media_ready):
+            has_tags = any(re.fullmatch(r"tag_bank_\d+\.json", name) for name in zf.namelist())
+            tags_ready = not has_tags or existing_metadata.get("tag_version") == "1"
+            if existing_metadata.get("schema_version") == "3" and (not has_images or media_ready) and tags_ready:
                 if progress:
                     progress(f"Importing {title} · 100%")
                 return destination
@@ -132,9 +138,11 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
         from .media import ArchiveImages
         asset_staging = Path(tempfile.mkdtemp(prefix=".import-assets-", dir=directory))
         images = ArchiveImages(zf, asset_staging, destination.stem, cancelled)
+        from .metadata import definition_tags, tagged_definitions
         published_assets = published_pack = False
         count = redirects = 0
         try:
+            tag_labels = definition_tags(zf)
             db.executescript("""
                 PRAGMA journal_mode=OFF;
                 PRAGMA synchronous=OFF;
@@ -182,11 +190,13 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                             regular.append(definition)
                     if not regular:
                         continue
+                    plain_gloss = " ".join(extract_glosses(regular))
+                    regular = tagged_definitions(regular, row[2], tag_labels)
                     count += 1
                     terms.append((count, term, reading, canonical, key(reading, source_language),
                                   folded(term), float(row[4] or 0), str(row[3] or ""),
                                   json.dumps(regular, ensure_ascii=False, separators=(",", ":"))))
-                    glosses.append((count, " ".join(extract_glosses(regular))))
+                    glosses.append((count, plain_gloss))
                 db.executemany("INSERT INTO terms VALUES(?,?,?,?,?,?,?,?,?)", terms)
                 db.executemany("INSERT INTO forms VALUES(?,?,?,?)", forms)
                 db.executemany("INSERT INTO gloss_search(rowid,gloss) VALUES(?,?)", glosses)
@@ -240,7 +250,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                             entries=str(count), forms=str(redirects),
                             frequencies=str(frequency_count), kanji=str(kanji_count), pitches=str(pitch_count))
             metadata["checksum_warnings"] = json.dumps(sorted(zf.checksum_warnings))
-            metadata.update(media_version="1", images=str(len(images.imported)))
+            metadata.update(media_version="1", images=str(len(images.imported)), tag_version="1")
             db.executemany("INSERT INTO metadata VALUES(?,?)", metadata.items())
             db.commit()
             if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":

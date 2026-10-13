@@ -30,6 +30,42 @@ def harmonic_rank(frequencies):
     return smallest * (len(ranks) / math.fsum(smallest / rank for rank in ranks.values()))
 
 
+def definition_tags(archive):
+    labels = {}
+    for row in _bank_rows(archive, "tag_bank"):
+        if len(row) >= 4 and isinstance(row[0], str) and isinstance(row[3], str):
+            labels[row[0]] = row[3] or row[0]
+    return labels
+
+
+def tagged_definitions(definitions, tags, labels):
+    if not isinstance(tags, str) or not tags.strip() or not definitions:
+        return definitions
+    def supplied(node):
+        if isinstance(node, list):
+            return any(supplied(child) for child in node)
+        if isinstance(node, dict):
+            data = node.get("data", {})
+            if isinstance(data, dict) and (data.get("class") == "tag" or data.get("content") == "tag"):
+                return True
+            return supplied(node.get("content"))
+        return False
+    if supplied(definitions):
+        return definitions
+    nodes = [{"tag": "span", "data": {"content": "tag"}, "content": labels.get(tag, tag)}
+             for tag in dict.fromkeys(tags.split())]
+    for index, first in enumerate(definitions):
+        if isinstance(first, str):
+            content = first
+        elif isinstance(first, dict) and first.get("type") in ("text", "structured-content"):
+            content = first.get("text" if first["type"] == "text" else "content")
+        else:
+            continue
+        return [*definitions[:index], {"type": "structured-content", "content": [*nodes, " ", content]},
+                *definitions[index + 1:]]
+    return definitions
+
+
 def _bank_rows(archive, prefix, cancelled=None, progress=None):
     pattern = re.compile(re.escape(prefix) + r"_(\d+)\.json")
     names = sorted((name for name in archive.namelist() if pattern.fullmatch(name)),
