@@ -60,14 +60,14 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((first, entry(source="Other", definitions=("other meaning",))), "猫", peek=True)
         text = self.window.browser.toPlainText()
         self.assertIn("first meaning", text)
-        for hidden in ("second meaning", "other meaning", "#123", "ꜜ"):
+        for hidden in ("second meaning", "other meaning", "#123", "ねこ [1]"):
             self.assertNotIn(hidden, text)
         self.settings.setValue("profiles/ja/preview_definitions", 2)
         self.settings.setValue("profiles/ja/preview_pitch", True)
         self.window._render()
         text = self.window.browser.toPlainText()
         self.assertIn("second meaning", text)
-        self.assertIn("ꜜ", text)
+        self.assertIn("ねこ [1]", text)
         self.assertNotIn("third meaning", text)
         self.window.pin.setChecked(True)
         text = self.window.browser.toPlainText()
@@ -1649,9 +1649,9 @@ class QuickLookupTests(unittest.TestCase):
         self.settings.setValue("profiles/ja/show_pitch", False)
         pitched = replace(entry(), pitches=(Pitch("Accent dictionary", "ねこ", 1),))
         self.window._display(SearchResult("猫", "ja", "en", (pitched,)))
-        self.assertIn("ꜜ", self.window.browser.toPlainText())
+        self.assertIn("ねこ [1]", self.window.browser.toPlainText())
         self.window._display(SearchResult("猫", "ja", "en", (entry(),)))
-        self.assertNotIn("ꜜ", self.window.browser.toPlainText())
+        self.assertNotIn("ねこ [1]", self.window.browser.toPlainText())
 
     def test_recording_active_shortcut_does_not_open_search(self):
         import sys

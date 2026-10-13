@@ -7,6 +7,7 @@ from PyQt6.QtGui import (QColor, QFont, QFontMetricsF, QTextCharFormat, QTextCur
                          QTextDocument, QTextFormat, QTextObjectInterface)
 
 from meikipop.config.config import config
+from meikipop.dictionary.pitch import PITCH_DATA, PITCH_OBJECT, PITCH_PREFIX
 from meikipop.gui.popup_style import surface_colors
 from meikipop.gui.turkish.browser import DictionaryBrowser
 
@@ -78,6 +79,7 @@ class RubyBrowser(DictionaryBrowser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ruby_object = RubyObject(self)
+        self._pitch_object = None
         self._pressed_kanji = ""
         self.document().documentLayout().registerHandler(RUBY, self._ruby_object)
 
@@ -93,7 +95,7 @@ class RubyBrowser(DictionaryBrowser):
                 href = fragment.charFormat().anchorHref()
                 if href.startswith(TAG_PREFIX):
                     tags.append((fragment.position(), fragment.length(), href))
-                if href.startswith(PREFIX):
+                if href.startswith((PREFIX, PITCH_PREFIX)):
                     start, end = fragment.position(), fragment.position() + fragment.length()
                     if runs and runs[-1][1] == start and runs[-1][2] == href:
                         runs[-1] = (runs[-1][0], end, href)
@@ -116,6 +118,14 @@ class RubyBrowser(DictionaryBrowser):
             for start, end, href in reversed(runs):
                 cursor.setPosition(start)
                 cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+                if href.startswith(PITCH_PREFIX):
+                    from meikipop.dictionary.pitch import install_pitch_renderer, pitch_format, pitch_payload
+                    payload = pitch_payload(href)
+                    if payload is not None:
+                        if self._pitch_object is None:
+                            self._pitch_object = install_pitch_renderer(document, self)
+                        cursor.insertText("\ufffc", pitch_format(cursor.charFormat(), payload))
+                    continue
                 reading = QTextDocument()
                 reading.setHtml(unquote(href[len(PREFIX):].partition("#")[0]))
                 fmt = QTextCharFormat(cursor.charFormat())
@@ -140,7 +150,7 @@ class RubyBrowser(DictionaryBrowser):
             while not iterator.atEnd():
                 fragment = iterator.fragment()
                 fmt = fragment.charFormat()
-                if fmt.objectType() == RUBY:
+                if fmt.objectType() in (RUBY, PITCH_OBJECT):
                     for position in range(max(start, fragment.position()), min(end, fragment.position() + fragment.length())):
                         replacements.append((position - start, fmt.property(BASE)))
                 iterator += 1
@@ -178,9 +188,24 @@ class RubyBrowser(DictionaryBrowser):
         if position >= 0:
             cursor.setPosition(position)
             cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+            if cursor.charFormat().objectType() == PITCH_OBJECT:
+                from meikipop.dictionary.pitch import pitch_payload
+                payload = pitch_payload(PITCH_PREFIX + quote(cursor.charFormat().property(PITCH_DATA), safe=""))
+                return payload["reading"] if payload else ""
             if cursor.charFormat().objectType() == RUBY:
                 return cursor.charFormat().property(BASE)
         return super().text_at(point)
+
+    def lookup_selection(self):
+        cursor = self.textCursor()
+        if (self.selection_lookup and cursor.selectionEnd() - cursor.selectionStart() == 1
+                and cursor.charFormat().objectType() == PITCH_OBJECT):
+            from meikipop.dictionary.pitch import pitch_payload
+            payload = pitch_payload(PITCH_PREFIX + quote(cursor.charFormat().property(PITCH_DATA), safe=""))
+            if payload:
+                self.word_selected.emit(payload["reading"])
+                return
+        super().lookup_selection()
 
     def _ruby_kanji_at(self, point):
         offset = QPointF(point.x() + self.horizontalScrollBar().value(),

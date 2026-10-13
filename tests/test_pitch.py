@@ -6,7 +6,9 @@ import unittest
 import zipfile
 
 from meikipop.dictionary.library import Library, import_yomitan, save_preferences
-from meikipop.dictionary.pitch import Pitch, levels, morae, render_pitches
+from meikipop.dictionary.pitch import (PITCH_DATA, PITCH_OBJECT, PITCH_PREFIX, Pitch, install_pitch_renderer,
+                                      levels, morae, nasal_mora, pitch_category, pitch_format, pitch_payload,
+                                      render_pitches)
 
 
 class PitchTests(unittest.TestCase):
@@ -16,9 +18,14 @@ class PitchTests(unittest.TestCase):
                                    (2, (False, True, False, False)), (3, (False, True, True, False)),
                                    ("LHHH", (False, True, True, True))):
             self.assertEqual(levels(Pitch("Pitch", "おとこ", position)), expected)
-        self.assertNotIn("ꜜ", render_pitches([Pitch("Pitch", "おとこ", "LHH")]))
-        self.assertIn("こ</span>ꜜ", render_pitches([Pitch("Pitch", "おとこ", 3)]))
+        self.assertEqual(pitch_payload(self.href(Pitch("Pitch", "おとこ", "LHH")))["position"], "LHH")
+        self.assertEqual(pitch_payload(self.href(Pitch("Pitch", "おとこ", 3)))["position"], 3)
         self.assertNotIn("&lt;source&gt;", render_pitches([Pitch("<source>", "あ", 1)]))
+
+    @staticmethod
+    def href(pitch):
+        import re
+        return re.search(r'href="([^"]+)"', render_pitches([pitch]))[1]
 
     def test_identical_accents_merge_across_sources_but_variants_remain(self):
         html = render_pitches([
@@ -30,8 +37,23 @@ class PitchTests(unittest.TestCase):
         self.assertEqual(html.count("[1]"), 3)
         self.assertNotIn("First", html)
         self.assertNotIn("Second", html)
-        self.assertIn("devoiced: 1", html)
+        self.assertNotIn("devoiced:", html)
+        self.assertNotIn("nasal:", html)
+        self.assertIn('devoice%22%3A%5B1%5D', html)
         self.assertIn("&lt;rare&gt;", html)
+
+    def test_category_and_phonetic_markers_keep_original_reading(self):
+        for position, category in ((0, "heiban"), (1, "atamadaka"), (2, "nakadaka"),
+                                   (3, "odaka"), ("LHHH", "heiban"), ("LHLL", "nakadaka"),
+                                   ("LHL", None), ("HHH", None), (4, None)):
+            self.assertEqual(pitch_category(Pitch("NHK", "おとこ", position)), category)
+        self.assertEqual(nasal_mora("ぎゃ"), "きゃ")
+        self.assertEqual(nasal_mora("ガ"), "カ")
+        payload = pitch_payload(self.href(Pitch("NHK", "きがん", 1, nasal=(2,), devoice=(1,))))
+        self.assertEqual(payload, dict(reading="きがん", position=1, nasal=[2], devoice=[1]))
+        for href in ("https://example.test", PITCH_PREFIX + "%7Bbroken",
+                     PITCH_PREFIX + '%7B%22reading%22%3A%22x%22%2C%22position%22%3Atrue%7D'):
+            self.assertIsNone(pitch_payload(href))
 
     def test_import_readings_sources_disable_and_upgrade_with_live_reader(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -81,6 +103,50 @@ class PitchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 import_yomitan(archive, root / "packs")
             self.assertEqual(list((root / "packs").iterdir()), [])
+
+
+class PitchPainterTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PyQt6.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_small_native_annotations_draw_marks_and_preserve_copy_base(self):
+        from unittest.mock import patch
+        from PyQt6.QtCore import QRectF
+        from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QTextCharFormat, QTextDocument, QTextFormat
+        from meikipop.config.config import config
+        document = QTextDocument()
+        document.setDefaultFont(QFont("Yu Gothic UI"))
+        font = QFont(document.defaultFont())
+        font.setPixelSize(12)
+        char_format = QTextCharFormat()
+        char_format.setFont(font)
+        renderer = install_pitch_renderer(document, document)
+        payload = dict(reading="きがん", position=0, nasal=[2], devoice=[1])
+        fmt = pitch_format(char_format, payload)
+        self.assertEqual(fmt.objectType(), QTextFormat.ObjectTypes.UserObject.value + 2)
+        self.assertEqual(PITCH_DATA, QTextFormat.Property.UserProperty.value + 4)
+        self.assertEqual(fmt.property(QTextFormat.Property.UserProperty.value + 1), "きがん [0]")
+        self.assertEqual(json.loads(fmt.property(PITCH_DATA)), payload)
+        cells = renderer.layout(document, fmt)[4]
+        self.assertEqual(cells[0][5:], (False, True))
+        self.assertEqual(cells[1][0], "か")
+        self.assertEqual(cells[1][5:], (True, False))
+        for background in ("#ffffff", "#000000"):
+            with self.subTest(background=background), patch.object(config, "color_background", background):
+                size = renderer.intrinsicSize(document, 0, fmt)
+                image = QImage(160, 40, QImage.Format.Format_ARGB32)
+                image.fill(QColor(background))
+                painter = QPainter(image)
+                renderer.drawObject(painter, QRectF(4, 4, size.width(), size.height()), document, 0, fmt)
+                painter.end()
+                colors = [image.pixelColor(x, y) for y in range(40) for x in range(160)]
+                self.assertTrue(any(color.blue() > color.red() * 1.25 for color in colors))
+                self.assertTrue(any(color.red() > color.green() * 1.25 and color.blue() < color.green()
+                                    for color in colors))
 
     def test_empty_term_rows_are_ignored_after_payload_validation(self):
         with tempfile.TemporaryDirectory() as directory:

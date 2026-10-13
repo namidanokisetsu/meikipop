@@ -105,6 +105,27 @@ class RubyTests(unittest.TestCase):
         self.browser.selectAll()
         self.assertEqual(self.browser.createMimeDataFromSelection().text(), "祈願")
 
+    def test_pitch_objects_preserve_original_reading_for_copy_and_lookup(self):
+        from meikipop.dictionary.pitch import Pitch, PITCH_OBJECT, render_pitches
+        html = render_pitches((Pitch("NHK", "きがん", 1, nasal=(2,)),))
+        self.browser.setHtml(html)
+        self.browser.show()
+        self.app.processEvents()
+        cursor = QTextCursor(self.browser.document())
+        cursor.select(QTextCursor.SelectionType.Document)
+        self.browser.setTextCursor(cursor)
+        self.assertEqual(self.browser.createMimeDataFromSelection().text(), "きがん [1]")
+        fragment = self.browser.document().begin().begin().fragment()
+        self.assertEqual(fragment.charFormat().objectType(), PITCH_OBJECT)
+        cursor.setPosition(fragment.position())
+        cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+        self.browser.setTextCursor(cursor)
+        selected=[]
+        self.browser.word_selected.connect(selected.append)
+        self.browser.lookup_selection()
+        self.assertEqual(selected,["きがん"])
+        self.assertFalse(self.browser.grab().isNull())
+
     def test_reading_is_centered_above_base_and_reserves_line_height(self):
         self.browser.setHtml('<span style="font-size:24px">' + ruby_html("生", "せい") + '</span>')
         fmt = self.objects()[0].charFormat()

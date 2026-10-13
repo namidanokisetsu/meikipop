@@ -109,7 +109,8 @@ OCR translations show the original sentence, a divider, then the translation. Ty
 show only the translation below the input. Translate and audio
 sit at the top right; Back and a compact nested-lookup trail sit at the bottom left,
 with Copy and Close at the right. Back restores the previous result and sentence context.
-Dictionary labels collapse and reopen their sections; **More** opens a complete preview.
+Dictionary labels and their small triangles collapse and reopen sections; **More** opens full definitions.
+Compact tags retain their full descriptions on hover.
 **Appearance → Snap scrolling**
 keeps the current headword visible and scrolls continuously within long sections.
 The next section stays hidden until a new scroll gesture crosses its measured boundary.
@@ -130,11 +131,12 @@ Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, t
 the best matching rank per dictionary. **Dictionaries → Combine frequency rankings**
 switches between the combined number and compact dictionary-labelled values. Counts and nonnumeric
 bands are excluded from the mean.
-Click a kanji in the compact row to show its complete details from all enabled kanji packs.
+Click a headword kanji to open its details at the bottom, or a kanji in the compact row to toggle them.
 Import and enable a Yomitan pitch dictionary with the Japanese profile selected.
-Accents appear automatically: overlines mark high morae, ꜜ marks a drop,
-and brackets show the supplied accent number or H/L pattern. Sources and alternative
-accents remain separate. Reimport an older mixed pack to add previously skipped pitch data.
+Accents use Yomitan notation: high-mora bars and drop legs, a small solid nasal ring,
+and a dotted devoicing circle. Heiban is blue, atamadaka red, nakadaka orange, and odaka green.
+Brackets retain the supplied accent number or H/L pattern; distinct accents remain separate.
+Reimport an older mixed pack to add previously skipped pitch data.
 The copy button previews its sentence on hover; action icons have short tooltips.
 Dictionary-internal tooltips remain hidden.
 Kanji always use compact cards with meanings and readings, without a separate label or details toggle.
