@@ -273,6 +273,12 @@ class SetupDialog(QDialog):
         self.selection_lookup = QCheckBox("Look up selection inside results")
         shortcut_layout.addRow(self.selection_lookup)
         self.selection_lookup.toggled.connect(lambda _: self.autosave(self.save_selection_policy))
+        if sys.platform == "win32":
+            from meikipop.utils.startup import is_startup_enabled
+            self.start_with_windows = QCheckBox("Start with Windows")
+            self.start_with_windows.setChecked(is_startup_enabled())
+            self.start_with_windows.toggled.connect(self.save_startup)
+            shortcut_layout.addRow(self.start_with_windows)
 
         scanning = QWidget()
         scan_layout = QFormLayout(scanning)
@@ -457,6 +463,15 @@ class SetupDialog(QDialog):
     def autosave(self, callback):
         if not self._loading and self.profile.currentData():
             callback()
+
+    def save_startup(self, enabled):
+        from meikipop.utils.startup import set_startup_enabled
+        try:
+            set_startup_enabled(enabled)
+        except OSError:
+            with QSignalBlocker(self.start_with_windows):
+                self.start_with_windows.setChecked(not enabled)
+            self.status.setText("Could not change Windows startup.")
 
     def show_audio(self):
         self.tabs.setCurrentWidget(self.audio_tab)
