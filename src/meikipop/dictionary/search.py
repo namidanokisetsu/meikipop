@@ -192,13 +192,22 @@ class SearchEngine:
         if not tokens or tokens[0].start != start or tokens[-1].end != end:
             return ()
         candidate = original[start:end]
+        original_lemma = candidate
         for token in reversed(tokens):
             if token.lemma and token.lemma != "_":
-                candidate = candidate[:token.start-start] + token.lemma + candidate[token.end-start:]
+                lemma = token.lemma
+                original_lemma = original_lemma[:token.start-start] + lemma + original_lemma[token.end-start:]
+                if language == "tr" and token.pos in ("VERB", "AUX"):
+                    from meikipop.language.turkish_recovery import verb_infinitive
+                    lemma = verb_infinitive(lemma)
+                candidate = candidate[:token.start-start] + lemma + candidate[token.end-start:]
         if candidate == text:
             return ()
+        entries = self.library.lookup(candidate, language, tolerant=False)
+        if not entries and original_lemma != candidate:
+            entries = self.library.lookup(original_lemma, language, tolerant=False)
         return tuple(replace(entry, route="lemma", inflection=("lemma",))
-                     for entry in self.library.lookup(candidate, language, tolerant=False))
+                     for entry in entries)
 
     def _japanese(self, text):
         self._matched_length = 0

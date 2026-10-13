@@ -68,6 +68,21 @@ class MorphologyTests(unittest.TestCase):
             self.assertEqual(self.engine.search("食べました", source="ja", morphology=True).entries[0].term, "食べる")
             factory.assert_not_called()
 
+    def test_turkish_verb_stems_find_infinitives_without_forms_or_nominal_homographs(self):
+        self.pack("tr", [("okumak", ["read"], ""), ("ok", ["arrow"], ""),
+                         ("oku", ["imperative: read"], ""), ("gelmek", ["come"], ""),
+                         ("dinlemek", ["listen"], ""), ("kitap", ["book"], "")])
+        analyzer = Mock()
+        self.engine._analyzer = ("tr", analyzer)
+        for text, lemma, expected in (("okuyorlar", "oku", "okumak"), ("geldik", "gel", "gelmek"),
+                                     ("dinliyor", "dinle", "dinlemek")):
+            with self.subTest(text=text):
+                analyzer.analyze.return_value = (Token(0, len(text), lemma, "VERB"),)
+                result = self.engine.search(text, source="tr", morphology=True)
+                self.assertEqual([entry.term for entry in result.entries], [expected])
+        analyzer.analyze.return_value = (Token(0, 8, "kitap", "NOUN"),)
+        self.assertEqual(self.engine.search("kitaplar", source="tr", morphology=True).entries[0].term, "kitap")
+
     def test_missing_models_are_retryable_after_refresh_without_download(self):
         self.pack("tr", [("kitap", ["book"], "")])
         with patch("meikipop.language.stanza_analyzer.default_model_dir", return_value=self.root), \

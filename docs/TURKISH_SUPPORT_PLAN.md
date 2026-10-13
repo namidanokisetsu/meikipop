@@ -107,6 +107,8 @@ clients remain explicit compatibility entrypoints.
    are used automatically.
    Setup installs only the required processors and dependencies. Imports remain lazy,
    runtime offline and worker-bound; Japanese never invokes neural analysis.
+   Turkish verb lemmas from IMST prefer vowel-harmonized dictionary infinitives;
+   imported forms still run before model analysis.
 
 4. **Local OCR and context.** Windows defaults to MeikiOCR for Japanese and
    Paddle for Turkish and Indonesian. Languages outside Paddle's coverage,

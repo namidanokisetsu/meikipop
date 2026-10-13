@@ -12,6 +12,14 @@ PAIRS = dict(zip("cçgğoösşuüiı", "çcğgöoşsüuıi"))
 ALPHABET = "abcçdefgğhıijklmnoöprsştuüvyz"
 
 
+def verb_infinitive(lemma):
+    """Turkish IMST emits verb stems; Yomitan usually indexes infinitives."""
+    if lemma.endswith(("mak", "mek")):
+        return lemma
+    vowel = next((char for char in reversed(lemma) if char in "aeıioöuü"), None)
+    return lemma + ("mak" if vowel in "aıou" else "mek") if vowel else lemma
+
+
 def diacritic_candidates(text):
     text = normalize(text)
     if not 2 <= len(text) <= MAX_LENGTH or not text.isalpha():
