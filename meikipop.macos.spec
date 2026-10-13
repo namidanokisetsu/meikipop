@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-import re
+import tomllib
 from pathlib import Path
 
 from PyInstaller.config import CONF
@@ -8,22 +8,14 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 
 def _get_build_version() -> str:
-    config_path = Path(CONF['specpath']) / 'src' / 'meikipop' / 'config' / 'config.py'
-    match = re.search(r'^APP_VERSION\s*=\s*["\']([^"\']+)["\']', config_path.read_text(encoding='utf-8'), re.M)
-    if not match:
-        return '0.0.0'
-
-    version = match.group(1)
-    if version.startswith('v.'):
-        return version[2:]
-    if version.startswith('v'):
-        return version[1:]
-    return version
+    with (Path(CONF['specpath']) / 'pyproject.toml').open('rb') as manifest:
+        return tomllib.load(manifest)['project']['version']
 
 
 BUILD_VERSION = _get_build_version()
 model_data, model_binaries, model_imports = collect_all('stanza')
 model_data += copy_metadata('stanza', recursive=True)
+model_data += copy_metadata('meikipop')
 
 a = Analysis(
     ['src/meikipop/scripts/quick_lookup.py'],

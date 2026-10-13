@@ -94,6 +94,7 @@ jobs:
       - name: verify app resources and signature
         run: |
           test -f dist/meikipop.app/Contents/Resources/meikipop/scripts/deconjugator.json
+          python -c "import plistlib,tomllib; expected=tomllib.load(open('pyproject.toml','rb'))['project']['version']; info=plistlib.load(open('dist/meikipop.app/Contents/Info.plist','rb')); assert info['CFBundleVersion']==expected and info['CFBundleShortVersionString']==expected,info"
           codesign --verify --deep --strict dist/meikipop.app
           # Native imports only: this exits before Qt, capture or accessibility.
           dist/meikipop.app/Contents/MacOS/meikipop --check-runtime
