@@ -94,6 +94,26 @@ class SentenceAudioTests(unittest.TestCase):
                 audio.shutdown()
                 audio.deleteLater()
 
+    def test_database_failure_does_not_report_error_before_next_source_succeeds(self):
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker") as worker:
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/audio_database", "missing.db")
+            settings.setValue("profiles/ja/audio_priority", ["db:first", "tts"])
+            audio = LookupAudio()
+            failed = Mock()
+            audio.failed.connect(failed)
+            try:
+                with patch.object(audio, "_speak", return_value=True) as speak:
+                    audio.play(Entry("cat", "猫", "ねこ", "Words", "ja", ("cat",)), 1, settings)
+                    request = audio.worker.submit.call_args.args[0]
+                    worker.call_args.args[1]("Audio database unavailable")
+                    audio._audio_result(request, None)
+                    speak.assert_called_once()
+                    failed.assert_not_called()
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
     def test_source_override_ignores_late_results_even_for_same_revision(self):
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
             settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)

@@ -29,7 +29,8 @@ class LookupAudio(QObject):
         self._speech_error = ""
         self.clip_ready.connect(self._play_clip)
         self.result_ready.connect(self._audio_result)
-        self.worker = AudioWorker(self.clip_ready.emit, self._status, result_callback=self.result_ready.emit)
+        # Only exhausted source choices should replace useful lookup content.
+        self.worker = AudioWorker(self.clip_ready.emit, lambda _: None, result_callback=self.result_ready.emit)
         self.worker.start()
         self.player.errorOccurred.connect(self._playback_failed)
         self.player.mediaStatusChanged.connect(self._media_status)
@@ -56,10 +57,6 @@ class LookupAudio(QObject):
         if self._pending is not None:
             self._next_source()
         else:
-            self.failed.emit(text)
-
-    def _status(self, text):
-        if not text.startswith("Audio database ready"):
             self.failed.emit(text)
 
     def _prepare(self, revision, key, settings, profile):
