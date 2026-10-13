@@ -248,6 +248,16 @@ class StructuredContentConverter:
         # ── Special tags handled before style resolution ─────────────────
 
         if tag == 'img':
+            from meikipop.dictionary.media import IMAGE_URI
+            path = node.get('path', '')
+            if isinstance(path, str) and IMAGE_URI.fullmatch(path):
+                width, height = node.get('width'), node.get('height')
+                dimensions = ''
+                if (isinstance(width, int) and isinstance(height, int)
+                        and width > 0 and height > 0):
+                    scale = min(1, 320 / width)
+                    dimensions = f' width="{round(width * scale)}" height="{round(height * scale)}"'
+                return f'<img src="{path}"{dimensions}>'
             alt = node.get('alt') or node.get('title') or ''
             return f'<i>{_esc(alt)}</i>' if alt else ''
 
@@ -354,6 +364,10 @@ class StructuredContentConverter:
                         glosses.append(_esc(text))
                 elif t == 'structured-content':
                     html = self.to_html(defn)
+                    if html:
+                        glosses.append(html)
+                elif t == 'image':
+                    html = self._node_to_html(dict(defn, tag='img'))
                     if html:
                         glosses.append(html)
             # deinflection arrays and image-only entries: skip

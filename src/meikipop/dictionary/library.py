@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import tempfile
 import threading
@@ -92,10 +93,15 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
         if index.get("format", index.get("version")) not in (1, 2, 3):
             raise ValueError("Unsupported Yomitan dictionary version.")
         destination = directory / f"{source_language}-{sha}.sqlite3"
+        assets = destination.with_suffix(".assets")
         if destination.exists():
             with closing(sqlite3.connect(destination)) as existing:
-                version = existing.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
-            if version and version[0] == "3":
+                existing_metadata = dict(existing.execute("SELECT key,value FROM metadata"))
+            from .media import IMAGE_SUFFIXES
+            has_images = any(Path(name).suffix.lower() in IMAGE_SUFFIXES for name in zf.namelist())
+            media_ready = (existing_metadata.get("media_version") == "1"
+                           and (existing_metadata.get("images", "0") == "0" or assets.is_dir()))
+            if existing_metadata.get("schema_version") == "3" and (not has_images or media_ready):
                 if progress:
                     progress(f"Importing {title} · 100%")
                 return destination
@@ -123,6 +129,10 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
         fd, temporary = tempfile.mkstemp(prefix=".import-", suffix=".sqlite3.tmp", dir=directory)
         os.close(fd)
         db = sqlite3.connect(temporary)
+        from .media import ArchiveImages
+        asset_staging = Path(tempfile.mkdtemp(prefix=".import-assets-", dir=directory))
+        images = ArchiveImages(zf, asset_staging, destination.stem, cancelled)
+        published_assets = published_pack = False
         count = redirects = 0
         try:
             db.executescript("""
@@ -156,6 +166,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                             not isinstance(row[5], list)):
                         raise ValueError(f"Invalid dictionary entry in {name}")
                     term, reading, definitions = row[0], row[1], row[5]
+                    images.prepare(definitions)
                     canonical = key(term, source_language)
                     if not canonical:
                         continue
@@ -229,6 +240,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                             entries=str(count), forms=str(redirects),
                             frequencies=str(frequency_count), kanji=str(kanji_count), pitches=str(pitch_count))
             metadata["checksum_warnings"] = json.dumps(sorted(zf.checksum_warnings))
+            metadata.update(media_version="1", images=str(len(images.imported)))
             db.executemany("INSERT INTO metadata VALUES(?,?)", metadata.items())
             db.commit()
             if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -236,6 +248,9 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             if cancelled and cancelled():
                 raise InterruptedError("Dictionary import cancelled.")
             db.close()
+            if images.imported and not assets.exists():
+                os.replace(asset_staging, assets)
+                published_assets = True
             if destination.exists():
                 # Explicit reimport rebuilds from the ZIP; no old-schema migration.
                 # SQLite's backup keeps the file usable by existing Windows readers.
@@ -243,6 +258,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                     rebuilt.backup(existing)
             else:
                 os.replace(temporary, destination)
+            published_pack = True
             library_changed(directory)
             if warnings is not None:
                 warnings.extend(sorted(zf.checksum_warnings))
@@ -252,6 +268,10 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             db.close()
             if os.path.exists(temporary):
                 os.unlink(temporary)
+            if asset_staging.exists():
+                shutil.rmtree(asset_staging)
+            if published_assets and not published_pack:
+                shutil.rmtree(assets)
     return destination
 
 
@@ -589,6 +609,9 @@ def remove_dictionary(directory, filename, refresh, cancelled):
             for path in remaining[:]:
                 try:
                     path.unlink(missing_ok=True)
+                    assets = path.with_suffix(".assets")
+                    if assets.resolve().is_relative_to(root) and assets.is_dir():
+                        shutil.rmtree(assets)
                     remaining.remove(path)
                 except PermissionError:
                     if monotonic() >= deadline:

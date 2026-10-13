@@ -19,6 +19,8 @@ clients remain explicit compatibility entrypoints.
    Structured Turkdict content and multiple Japanese dictionaries share the
    existing HTML converter. The working local library includes full Turkdict,
    Jitendex, KANJIDIC and Jiten packs; data and models stay outside Git.
+   Referenced archive illustrations are decoded into isolated pack assets, including
+   AVIF conversion; cancellation and removal clean up those assets with the pack.
    In-process changes refresh readers immediately; external inventory changes have
    a two-second fallback check. Search caches include each reader's library revision.
    Japanese pitch packs retain reading-specific alternatives, source labels, tags,

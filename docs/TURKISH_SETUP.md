@@ -78,6 +78,8 @@ separate Turkish client and its existing settings.
 Open **Settings → Dictionaries → Import ZIPs** and select local Yomitan archives.
 Definition, forms, frequency, Japanese pitch and kanji packs are indexed on disk without
 replacing `dictionary.pkl`. Enable packs and move them up or down; changes save immediately.
+For bundles such as `turkdict-yomitan.zip`, extract the outer ZIP and import its dictionary ZIPs.
+Archive illustrations are stored locally; reimport older packs to restore them.
 Download recommended packs in **Dictionaries**, or select an installed pack in Dictionaries
 and press **Remove**. Removal deletes all revisions of that dictionary so an older copy cannot reappear.
 Cancellation keeps completed imports and discards the unfinished pack.
