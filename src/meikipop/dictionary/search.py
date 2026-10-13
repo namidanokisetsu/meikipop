@@ -59,7 +59,7 @@ class SearchEngine:
                                (r"[\u0400-\u04ff]", ("ru", "uk", "bg")),
                                (r"[\u0600-\u06ff]", ("ar", "fa", "ur")),
                                (r"[\u0370-\u03ff]", ("el",)),
-                               (r"[\u0590-\u05ff]", ("he",))):
+                               (r"[\u0590-\u05ff]", ("he", "yi"))):
             if re.search(pattern, text):
                 return foreign if foreign in codes else next((c for c in codes if c in languages), codes[0])
         words = re.findall(r"[^\W\d_]+", text, re.UNICODE)[:12]

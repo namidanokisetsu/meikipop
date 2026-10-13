@@ -299,6 +299,28 @@ class LibraryTests(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_hebrew_script_respects_yiddish_profile_and_explicit_translation_target(self):
+        self.pack("Yiddish", [self.row("הויז", ["house"])], "yi")
+        self.pack("Hebrew", [self.row("בית", ["house"])], "he")
+        from unittest.mock import Mock
+        translator = Mock(last_model="fixture")
+        translator.translate.return_value = "house"
+        engine = SearchEngine(self.directory, translator)
+        try:
+            self.assertEqual(engine.detect("הויז", foreign="yi"), "yi")
+            self.assertEqual(engine.detect("בית", foreign="he"), "he")
+            self.assertEqual(engine.detect("בית"), "he")
+            self.assertEqual(engine.detect("הויז", languages=("yi", "en")), "yi")
+            self.assertEqual(engine.detect("בית", languages=()), "he")
+            result = engine.search("הויז", foreign="yi")
+            self.assertEqual((result.source, result.entries[0].term), ("yi", "הויז"))
+            translated = engine.search("הויז", foreign="yi", pair=("yi", "en"),
+                                       translate=True, target="en")
+            self.assertEqual((translated.source, translated.target), ("yi", "en"))
+            translator.translate.assert_called_once_with("הויז", "yi", "en")
+        finally:
+            engine.close()
+
     def test_translation_retry_and_model_change_do_not_reuse_stale_output(self):
         from unittest.mock import Mock
         translator = Mock(last_model="Hy-MT2-7B")
