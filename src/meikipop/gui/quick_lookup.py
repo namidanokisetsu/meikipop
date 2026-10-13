@@ -552,14 +552,19 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                 == unicodedata.normalize("NFC", term)):
             display_term, reading = reading, ""
         display_reading = f"[{reading}]" if result.source == "ja" else reading
+        kanji = {entry.character for entry in result.kanji}
+        display_term_html = "".join(
+            f'<a href="headkanji:{quote(character, safe="")}" title="Kanji" '
+            f'style="color:{config.color_highlight_word}">{escape(character)}</a>'
+            if character in kanji and not preview else escape(character) for character in display_term)
         reading_html = (f' <span style="color:{config.color_highlight_reading};font-size:'
                         f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
                         if reading and reading != term else "")
         if result.source == "ja" and headword_furigana and reading and reading != term:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>'
-                         f'{ruby_html(escape(term), escape(reading), config.color_highlight_word)}</h2>')
+                         f'{ruby_html(escape(term), escape(reading), config.color_highlight_word, kanji=kanji if not preview else ())}</h2>')
         else:
-            parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{escape(display_term)}{reading_html}</h2>')
+            parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{display_term_html}{reading_html}</h2>')
         pitch = ""
         if result.source == "ja" and (not preview or preview_pitch):
             from meikipop.dictionary.pitch import render_pitches
@@ -1522,6 +1527,11 @@ class QuickLookupWindow(QDialog):
         if self._pin_anchor_click:
             self._pin_anchor_click = False
             return  # The first click already expanded the complete peek.
+        if url.scheme() == "headkanji" and url.path() in {entry.character for entry in self._result.kanji}:
+            self._kanji_details.add(url.path())
+            self._render()
+            self.browser.scrollToAnchor("kanji-detail-" + quote(url.path(), safe=""))
+            return
         if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
             self._kanji_details.symmetric_difference_update((url.path(),))
             self._render()

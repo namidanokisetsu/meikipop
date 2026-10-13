@@ -2,7 +2,7 @@
 from urllib.parse import quote, unquote
 from itertools import count
 
-from PyQt6.QtCore import QMimeData, QObject, QPointF, QSizeF, Qt
+from PyQt6.QtCore import QMimeData, QObject, QPointF, QSizeF, Qt, QUrl
 from PyQt6.QtGui import (QColor, QFont, QFontMetricsF, QTextCharFormat, QTextCursor,
                          QTextDocument, QTextFormat, QTextObjectInterface)
 
@@ -14,14 +14,16 @@ from meikipop.gui.turkish.browser import DictionaryBrowser
 RUBY = QTextFormat.ObjectTypes.UserObject.value + 1
 BASE = QTextFormat.Property.UserProperty.value + 1
 READING = BASE + 1
+KANJI = READING + 1
 PREFIX = "meikipop-ruby:"
 TAG_PREFIX = "meikipop-tag:"
 _ruby_ids = count()
 
 
-def ruby_html(base, reading, color=None):
+def ruby_html(base, reading, color=None, *, kanji=()):
     # Distinct anchors prevent Qt from merging adjacent identical readings.
-    return (f'<a href="{PREFIX}{quote(reading, safe="")}#{next(_ruby_ids)}" '
+    suffix = f'/{quote("".join(kanji), safe="")}' if kanji else ""
+    return (f'<a href="{PREFIX}{quote(reading, safe="")}#{next(_ruby_ids)}{suffix}" '
             f'style="color:{color or config.color_foreground};text-decoration:none">{base}</a>')
 
 
@@ -76,6 +78,7 @@ class RubyBrowser(DictionaryBrowser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ruby_object = RubyObject(self)
+        self._pressed_kanji = ""
         self.document().documentLayout().registerHandler(RUBY, self._ruby_object)
 
     def setHtml(self, html):
@@ -122,6 +125,7 @@ class RubyBrowser(DictionaryBrowser):
                 fmt.setObjectType(RUBY)
                 fmt.setProperty(BASE, cursor.selectedText())
                 fmt.setProperty(READING, reading.toPlainText())
+                fmt.setProperty(KANJI, unquote(href.partition("#")[2].partition("/")[2]))
                 cursor.insertText("\ufffc", fmt)
         finally:
             cursor.endEditBlock()
@@ -177,3 +181,57 @@ class RubyBrowser(DictionaryBrowser):
             if cursor.charFormat().objectType() == RUBY:
                 return cursor.charFormat().property(BASE)
         return super().text_at(point)
+
+    def _ruby_kanji_at(self, point):
+        offset = QPointF(point.x() + self.horizontalScrollBar().value(),
+                         point.y() + self.verticalScrollBar().value())
+        position = self.document().documentLayout().hitTest(offset, Qt.HitTestAccuracy.ExactHit)
+        if position < 0:
+            return ""
+        cursor = QTextCursor(self.document())
+        for start in (position, position - 1):
+            if start < 0:
+                continue
+            cursor.setPosition(start)
+            cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+            fmt = cursor.charFormat()
+            if fmt.objectType() != RUBY or not fmt.property(KANJI):
+                continue
+            text = fmt.property(BASE)
+            _, _, base, _ = self._ruby_object.metrics(self.document(), fmt)
+            cursor.setPosition(start)
+            block = cursor.block()
+            line = block.layout().lineForTextPosition(start - block.position())
+            baseline = (self.document().documentLayout().blockBoundingRect(block).top()
+                        + line.y() + line.ascent() - self.verticalScrollBar().value())
+            if not baseline + base.tightBoundingRect(text).top() <= point.y() <= baseline:
+                continue
+            width = self._ruby_object.intrinsicSize(self.document(), start, fmt).width()
+            left = self.cursorRect(cursor).left() + (width - base.horizontalAdvance(text)) / 2
+            for index, character in enumerate(text):
+                right = left + base.horizontalAdvance(text[:index + 1])
+                if left + base.horizontalAdvance(text[:index]) <= point.x() < right:
+                    return character if character in fmt.property(KANJI) else ""
+        return ""
+
+    def anchorAt(self, point):
+        character = self._ruby_kanji_at(point)
+        return f'headkanji:{quote(character, safe="")}' if character else super().anchorAt(point)
+
+    def mousePressEvent(self, event):
+        self._pressed_kanji = self._ruby_kanji_at(event.position().toPoint())
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
+        if self._ruby_kanji_at(event.position().toPoint()):
+            self.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mouseReleaseEvent(self, event):
+        character = self._ruby_kanji_at(event.position().toPoint())
+        clicked = (event.button() == Qt.MouseButton.LeftButton and character
+                   and character == self._pressed_kanji and not self.textCursor().hasSelection())
+        self._pressed_kanji = ""
+        super().mouseReleaseEvent(event)
+        if clicked:
+            self.anchorClicked.emit(QUrl(f'headkanji:{quote(character, safe="")}'))

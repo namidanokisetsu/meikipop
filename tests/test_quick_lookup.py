@@ -1578,6 +1578,19 @@ class QuickLookupTests(unittest.TestCase):
         self.window._link(QUrl("kanji:%E7%8C%AB"))
         self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
 
+    def test_headword_kanji_opens_its_details_at_the_bottom_without_new_lookup(self):
+        kanji = (KanjiEntry("猫", source="Kanji A", meanings=("cat",), stats=(("strokes", 11),)),)
+        self.window.show_entries((entry("猫", definitions=("Meaning " * 200,)),), "猫", kanji=kanji)
+        self.window._expanded.add("Dictionary")
+        self.window._render()
+        result, revision = self.window._result, self.window.revision
+        self.assertIn('href="headkanji:%E7%8C%AB"', self.window.browser.toHtml())
+        self.window._link(QUrl("headkanji:%E7%8C%AB"))
+        self.assertIn("Strokes 11", self.window.browser.toPlainText())
+        self.assertGreater(self.window.browser.verticalScrollBar().value(), 0)
+        self.assertIs(self.window._result, result)
+        self.assertEqual(self.window.revision, revision)
+
     def test_default_search_shortcut_can_be_disabled(self):
         self.assertIsNone(self.window._keys)
         with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:

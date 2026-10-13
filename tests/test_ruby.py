@@ -3,9 +3,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
 
-from PyQt6.QtCore import QPoint, QRectF
+from PyQt6.QtCore import QPoint, QRectF, Qt
 from PyQt6.QtGui import QFont, QImage, QPainter, QTextCursor
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtTest import QTest
 
 from meikipop.dictionary.library import Entry
 from meikipop.dictionary.search import SearchResult
@@ -81,6 +82,28 @@ class RubyTests(unittest.TestCase):
         self.assertFalse(self.browser.grab().isNull())
         hits = {self.browser.text_at(QPoint(x, y)) for x in range(0, 150, 3) for y in range(0, 40, 3)}
         self.assertIn("食べ物", hits)
+
+    def test_headword_ruby_links_each_kanji_and_preserves_reading_and_copy(self):
+        self.browser.setHtml('<h2>' + ruby_html("祈願", "きがん", kanji="祈願") + '</h2>')
+        self.browser.show()
+        self.app.processEvents()
+        points = {}
+        for y in range(65):
+            for x in range(100):
+                character = self.browser._ruby_kanji_at(QPoint(x, y))
+                if character:
+                    points.setdefault(character, QPoint(x, y))
+        self.assertEqual(set(points), set("祈願"))
+        clicks, lookups = [], []
+        self.browser.anchorClicked.connect(lambda url: clicks.append(url.path()))
+        self.browser.word_selected.connect(lookups.append)
+        for character, point in points.items():
+            QTest.mouseClick(self.browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+        self.assertEqual(clicks, list(points))
+        self.assertEqual(lookups, [])
+        self.assertEqual(self.objects()[0].charFormat().property(READING), "きがん")
+        self.browser.selectAll()
+        self.assertEqual(self.browser.createMimeDataFromSelection().text(), "祈願")
 
     def test_reading_is_centered_above_base_and_reserves_line_height(self):
         self.browser.setHtml('<span style="font-size:24px">' + ruby_html("生", "せい") + '</span>')

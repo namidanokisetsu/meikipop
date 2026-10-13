@@ -122,7 +122,8 @@ def render_kanji(entries, expanded=False, *, compact_only=False, expanded_charac
     for character, group in groups:
         if character not in detailed:
             continue
-        parts.append(f'<div style="margin:2px 0 6px"><p style="margin:2px 0 1px">'
+        parts.append(f'<a name="kanji-detail-{quote(character, safe="")}"></a>'
+                     f'<div style="margin:2px 0 6px"><p style="margin:2px 0 1px">'
                      f'<b>{_character_link(character, accent, True)}</b></p>')
         parts.append('<table width="100%" cellspacing="0" cellpadding="1">')
         for entry in group:
