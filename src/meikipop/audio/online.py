@@ -4,6 +4,7 @@ from html import unescape
 import json
 import re
 from time import monotonic
+from unicodedata import normalize
 from urllib.parse import urlsplit
 
 import requests
@@ -48,22 +49,27 @@ class OnlineAudio:
     def lookup(self, term, language, iso3, cancelled=lambda: False, reading=""):
         language = {"cmn": "zh", "fil": "tl", "nb": "no", "nn": "no"}.get(language, language).split("-", 1)[0]
         # Russian stress belongs in display/TTS, not in Commons file names.
-        term = term.replace("\u0301", "") if language in ("ru", "uk", "be") else term
+        term = normalize("NFC", term.replace("\u0301", "") if language in ("ru", "uk", "be") else term)
+        reading = normalize("NFC", reading)
+        if cancelled():
+            return None
         key = (term, language, iso3, reading)
         cached = self.cache.get(key)
-        if cached and monotonic() - cached[0] < (3600 if cached[1] else 180):
+        if cached and monotonic() - cached[0] < cached[2]:
             self.cache.move_to_end(key)
             return cached[1]
-        if not term or len(term) > 200 or not re.fullmatch(r"[a-z]{2,3}", language):
+        if not term or max(len(term), len(reading)) > 200 or not re.fullmatch(r"[a-z]{2,3}", language):
             return None
         deadline = monotonic() + 12
         candidates = list(dict.fromkeys([term, *([reading] if reading and language == "ja" else [])]))
-        escaped = "(?:" + "|".join(re.escape(text).replace(" ", "[ _]") for text in candidates) + ")"
+        escaped = "(?:" + "|".join(re.escape(text).replace(r"\ ", "[ _]") for text in candidates) + ")"
         extension = r"\.(?:ogg|oga|wav|mp3|flac)"
-        patterns = [(f"(?:L[0-9]+-)?{language}(?:-[a-zA-Z]{{2}})?-{escaped}[0-9]*{extension}", "Wiktionary")]
+        qualifier = rf"(?:[ _]*[（(]{re.escape(reading)}[）)])?" if reading and language == "ja" else ""
+        patterns = [(f"(?:L[0-9]+-)?{language}(?:-[a-zA-Z]{{2}})?-{escaped}{qualifier}[0-9]*{extension}", "Wiktionary")]
         if re.fullmatch(r"[a-z]{3}", iso3):
-            patterns.append((f"LL-Q[0-9]+ \\({iso3}\\)-.+-{escaped}{extension}", "Lingua Libre"))
+            patterns.append((f"LL-Q[0-9]+ \\({iso3}\\)-.+-{escaped}{qualifier}{extension}", "Lingua Libre"))
         result = None
+        failed = False
         try:
             # An indexed term narrows the regex scan. CirrusSearch uses Lucene
             # regex syntax, which has ordinary groups, not Python's (?:groups).
@@ -75,37 +81,44 @@ class OnlineAudio:
                     "gsrnamespace": 6, "gsrlimit": 25, "gsrsearch": f'intitle:"{title}" intitle:/{pattern}/i',
                     "prop": "imageinfo", "iiprop": "url|user|extmetadata"},
                     cancelled=cancelled, deadline=deadline)
+                if "error" in response:
+                    raise ValueError("Recording search failed")
                 pages.update(response.get("query", {}).get("pages", {}))
                 if pages:
                     break
-            if "error" in response:
-                raise ValueError("Recording search failed")
+            matches = []
             for pattern, source in patterns:
                 for page in pages.values():
                     if not re.fullmatch("File:" + pattern, page.get("title", ""), re.IGNORECASE):
                         continue
-                    for info in page.get("imageinfo", []):
-                        url = info.get("url", "")
-                        metadata = info.get("extmetadata", {})
-                        artist = metadata.get("Artist", {}).get("value") or info.get("user", "")
-                        credit = " · ".join(filter(None, (unescape(re.sub(r"<[^>]+>", "", str(value)))
-                            for value in (artist, metadata.get("LicenseShortName", {}).get("value", "")))))
-                        try:
-                            data = self._fetch(url, cancelled=cancelled, deadline=deadline, audio=True)
-                        except (requests.RequestException, ValueError):
-                            continue
-                        result = (urlsplit(url).path.rsplit("/", 1)[-1], source, data, credit,
-                                  info.get("descriptionurl", ""))
-                        break
-                    if result:
-                        break
+                    title = page["title"]
+                    # A reading-qualified filename resolves homographs before a
+                    # generic written-form recording, regardless of its source.
+                    score = 0 if qualifier and re.search(rf"[（(]{re.escape(reading)}[）)][0-9]*{extension}$", title) else 1
+                    matches.append((score, source, page))
+            for _, source, page in sorted(matches, key=lambda match: match[0]):
+                for info in page.get("imageinfo", []):
+                    url = info.get("url", "")
+                    metadata = info.get("extmetadata", {})
+                    artist = metadata.get("Artist", {}).get("value") or info.get("user", "")
+                    credit = " · ".join(filter(None, (unescape(re.sub(r"<[^>]+>", "", str(value)))
+                        for value in (artist, metadata.get("LicenseShortName", {}).get("value", "")))))
+                    try:
+                        data = self._fetch(url, cancelled=cancelled, deadline=deadline, audio=True)
+                    except (requests.RequestException, ValueError):
+                        failed = True
+                        continue
+                    result = (urlsplit(url).path.rsplit("/", 1)[-1], source, data, credit,
+                              info.get("descriptionurl", ""))
+                    break
                 if result:
                     break
         except (requests.RequestException, ValueError, InterruptedError):
             if cancelled():
                 return None
-            # Cache failed lookups too, so repeated playback doesn't repeat the wait.
-        self.cache[key] = (monotonic(), result)
+            failed = True
+        # Briefly cache failures without blocking recovery after reconnection.
+        self.cache[key] = (monotonic(), result, 3600 if result else 10 if failed else 180)
         self.cache.move_to_end(key)
         while len(self.cache) > 128 or sum(len(item[1][2]) for item in self.cache.values() if item[1]) > 24 * 1024 * 1024:
             self.cache.popitem(last=False)
