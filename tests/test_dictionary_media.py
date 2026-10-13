@@ -79,3 +79,15 @@ class DictionaryMediaTests(unittest.TestCase):
         with self.assertRaises(InterruptedError):
             import_yomitan(archive, self.library, cancelled=cancel_after_image)
         self.assertEqual(list(self.library.iterdir()), [])
+
+    def test_explicit_reimport_repairs_a_missing_image_in_an_existing_asset_directory(self):
+        archive = self.archive()
+        pack = import_yomitan(archive, self.library)
+        with closing(Library(self.library)) as reader:
+            uri = reader.lookup("絵")[0].definitions[0]["content"][1]["path"]
+        image = resolve_image(self.library, uri)
+        image.unlink()
+        self.assertTrue(pack.with_suffix(".assets").is_dir())
+        self.assertIsNone(resolve_image(self.library, uri))
+        import_yomitan(archive, self.library)
+        self.assertEqual(resolve_image(self.library, uri), image)

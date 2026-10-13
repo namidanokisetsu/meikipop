@@ -1,11 +1,24 @@
 """Archive-owned dictionary images, isolated from file and network resources."""
 import hashlib
 import io
+import json
 from pathlib import Path, PurePosixPath
 import re
 
 IMAGE_URI = re.compile(r"meikipop-image:/([a-z]{2,3}(?:-[a-z0-9]{2,8})*-[0-9a-f]{64})/([0-9a-f]{64}\.png)")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp"}
+
+
+def assets_ready(metadata, directory, pack):
+    if metadata.get("media_version") != "1" or metadata.get("image_failures", "0") != "0":
+        return False
+    try:
+        filenames = json.loads(metadata["image_files"])
+    except (KeyError, ValueError, TypeError):
+        return False
+    return (isinstance(filenames, list) and len(filenames) == int(metadata.get("images", 0))
+            and all(isinstance(name, str) and re.fullmatch(r"[0-9a-f]{64}\.png", name)
+                    and resolve_image(directory, f"meikipop-image:/{pack}/{name}") for name in filenames))
 
 
 def resolve_image(directory, uri):
@@ -21,6 +34,7 @@ class ArchiveImages:
     def __init__(self, archive, staging, pack, cancelled=None):
         self.archive, self.staging, self.pack = archive, Path(staging), pack
         self.imported = {}
+        self.requested = set()
         self.cancelled = cancelled
 
     def prepare(self, node):
@@ -42,6 +56,7 @@ class ArchiveImages:
         if (path.is_absolute() or ".." in path.parts or "\\" in source or ":" in source
                 or path.suffix.lower() not in IMAGE_SUFFIXES):
             return
+        self.requested.add(source)
         if source not in self.imported:
             from PIL import Image
             try:

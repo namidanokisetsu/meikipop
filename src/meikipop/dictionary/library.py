@@ -98,13 +98,14 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             raise ValueError("Unsupported Yomitan dictionary version.")
         destination = directory / f"{source_language}-{sha}.sqlite3"
         assets = destination.with_suffix(".assets")
+        if destination.resolve().parent != directory.resolve() or not assets.resolve().is_relative_to(directory.resolve()):
+            raise ValueError("Dictionary pack paths must stay inside its library.")
         if destination.exists():
             with closing(sqlite3.connect(destination)) as existing:
                 existing_metadata = dict(existing.execute("SELECT key,value FROM metadata"))
-            from .media import IMAGE_SUFFIXES
+            from .media import IMAGE_SUFFIXES, assets_ready
             has_images = any(Path(name).suffix.lower() in IMAGE_SUFFIXES for name in zf.namelist())
-            media_ready = (existing_metadata.get("media_version") == "1"
-                           and (existing_metadata.get("images", "0") == "0" or assets.is_dir()))
+            media_ready = assets_ready(existing_metadata, directory, destination.stem)
             tags_ready = existing_metadata.get("entries", "0") == "0" or existing_metadata.get("tag_version") == "1"
             if existing_metadata.get("schema_version") == "3" and (not has_images or media_ready) and tags_ready:
                 if progress:
@@ -139,6 +140,7 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
         images = ArchiveImages(zf, asset_staging, destination.stem, cancelled)
         from .metadata import definition_tags, tagged_definitions
         published_assets = published_pack = False
+        repaired_images = []
         count = redirects = 0
         try:
             tag_labels = definition_tags(zf)
@@ -249,7 +251,9 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                             entries=str(count), forms=str(redirects),
                             frequencies=str(frequency_count), kanji=str(kanji_count), pitches=str(pitch_count))
             metadata["checksum_warnings"] = json.dumps(sorted(zf.checksum_warnings))
-            metadata.update(media_version="1", images=str(len(images.imported)), tag_version="1")
+            metadata.update(media_version="1", images=str(len(images.imported)), tag_version="1",
+                            image_files=json.dumps(sorted(image[0] for image in images.imported.values())),
+                            image_failures=str(len(images.requested) - len(images.imported)))
             db.executemany("INSERT INTO metadata VALUES(?,?)", metadata.items())
             db.commit()
             if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -260,6 +264,12 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
             if images.imported and not assets.exists():
                 os.replace(asset_staging, assets)
                 published_assets = True
+            elif images.imported:
+                for image in asset_staging.iterdir():
+                    target = assets / image.name
+                    if not target.exists():
+                        os.replace(image, target)
+                        repaired_images.append(target)
             if destination.exists():
                 # Explicit reimport rebuilds from the ZIP; no old-schema migration.
                 # SQLite's backup keeps the file usable by existing Windows readers.
@@ -281,6 +291,9 @@ def import_yomitan(archive, directory=None, language=None, progress=None, cancel
                 shutil.rmtree(asset_staging)
             if published_assets and not published_pack:
                 shutil.rmtree(assets)
+            if not published_pack:
+                for image in repaired_images:
+                    image.unlink(missing_ok=True)
     return destination
 
 
