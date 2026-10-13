@@ -48,7 +48,23 @@ class PixelFrame:
         return PixelFrame(request, image.size, image.tobytes(), self.captured_at, physical_crop=physical)
 
 
-def windows_screen_geometry(name):
+def _screen_geometry(name, rectangles, geometry=None, scale=1):
+    if name in rectangles:
+        return rectangles[name]
+    if geometry is not None:
+        x, y, width, height = geometry
+        # Qt can expose the monitor's friendly name instead of its GDI ID.
+        # Windows screen origins stay native; Qt scales only their size.
+        expected = (x, y, round(width * scale), round(height * scale))
+        matches = [rect for rect in rectangles.values()
+                   if rect[:2] == expected[:2] and
+                   all(abs(value - target) <= 1 for value, target in zip(rect[2:], expected[2:]))]
+        if len(matches) == 1:
+            return matches[0]
+    raise RuntimeError("Display changed. Try scanning again.")
+
+
+def windows_screen_geometry(name, geometry=None, scale=1):
     import ctypes
     from ctypes import wintypes
 
@@ -72,9 +88,7 @@ def windows_screen_geometry(name):
         return True
 
     user32.EnumDisplayMonitors(None, None, found, 0)
-    if name not in rectangles:
-        raise RuntimeError("Display changed. Try scanning again.")
-    return rectangles[name]
+    return _screen_geometry(name, rectangles, geometry, scale)
 
 
 class RegionCapture:
@@ -84,7 +98,7 @@ class RegionCapture:
         self.backend = mss.mss()
 
     def capture(self, request):
-        crop = request.physical_crop(windows_screen_geometry(request.screen))
+        crop = request.physical_crop(windows_screen_geometry(request.screen, request.geometry, request.scale))
         left, top, width, height = crop
         screenshot = self.backend.grab(dict(left=left, top=top, width=width, height=height))
         return PixelFrame(request, (width, height), bytes(screenshot.bgra), monotonic(), "BGRX", 0, crop)
