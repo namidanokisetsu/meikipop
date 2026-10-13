@@ -78,14 +78,17 @@ def main(argv=None):
                                                      lambda text: None, threading.Event())
                 if not imported:
                     raise RuntimeError(message)
-            import stanza
-            import torch
             if sys.platform == "win32":
+                # Exercise the scan-before-morphology order that exposed DLL conflicts.
+                from meikipop.ocr.turkish_paddle import prepare_environment
+                prepare_environment()
                 import paddle
                 import paddleocr
                 import meikiocr
                 from paddlex.utils.deps import require_extra
                 require_extra("ocr-core")
+            import stanza
+            import torch
         if sys.platform == "darwin":
             import ssl
             import Vision
