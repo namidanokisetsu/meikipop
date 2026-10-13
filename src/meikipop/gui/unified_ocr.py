@@ -79,15 +79,11 @@ class ScanWorker(threading.Thread):
                         engine = SearchEngine(self.directory)
                     selection = tuple(options[0]) if options else ()
                     provider_key = (language, *selection)
-                    if provider_key not in providers:
-                        providers[provider_key] = self.provider(language, *selection)
-                        caches[provider_key] = ScanCache()
-                    if self._obsolete(generation):
-                        self.frames.emit(generation, None, "")
-                        continue
-                    if pixels is None:
-                        paragraphs = caches[provider_key].result
-                    else:
+                    from meikipop.language.support import default_ocr_provider
+                    selected = (selection[0] if selection else None) or default_ocr_provider(language)
+                    # Paddle's installed multilingual model is identical across profiles.
+                    model_key = ("paddle",) if selected == "paddle" else provider_key
+                    if pixels is not None:
                         if isinstance(pixels, CaptureRequest):
                             capture_phase = True
                             mark("capture_begin", pixels.revision)
@@ -115,7 +111,25 @@ class ScanWorker(threading.Thread):
                                                     pixels.constBits().asstring(pixels.sizeInBytes()),
                                                     "raw", "RGB", pixels.bytesPerLine())
                         mark("pixels_ready", generation)
-                        paragraphs = caches[provider_key].scan(image, providers[provider_key])
+                    if self._stopped.is_set():
+                        return
+                    if self._obsolete(generation):
+                        self.frames.emit(generation, None, "")
+                        continue
+                    if model_key not in providers:
+                        mark("provider_load_begin", generation, provider=selected)
+                        providers[model_key] = self.provider(language, *selection)
+                        mark("provider_load_done", generation, provider=selected)
+                    if self._stopped.is_set():
+                        return
+                    if self._obsolete(generation):
+                        self.frames.emit(generation, None, "")
+                        continue
+                    cache = caches.setdefault(provider_key, ScanCache())
+                    if pixels is None:
+                        paragraphs = cache.result
+                    else:
+                        paragraphs = cache.scan(image, providers[model_key])
                         mark("ocr_done", generation)
                     if self._stopped.is_set():
                         return

@@ -62,6 +62,47 @@ class ScanWorkerTests(unittest.TestCase):
         self.assertEqual([call.args[2].text for call in sink.emit.call_args_list], ["kitap ev", "kitap ev"])
         engine.refresh.assert_not_called()
 
+    def test_paddle_profiles_share_model_but_keep_language_frame_caches(self):
+        image = image_bytes()
+        worker, sink = self.make_worker([
+            (1, image, (.2, .5), "tr", ("paddle", "")),
+            (2, image, (.2, .5), "en", ("paddle", "")),
+            (3, image, (.7, .5), "tr", ("paddle", "")), None])
+        provider, engine = Mock(return_value=recognized()), Mock()
+        with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
+                patch.object(worker, "provider", return_value=provider) as factory:
+            worker.run()
+        factory.assert_called_once_with("tr", "paddle", "")
+        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(sink.emit.call_count, 3)
+
+    def test_capture_precedes_slow_model_loading(self):
+        from meikipop.utils.capture import CaptureRequest, PixelFrame
+        request = CaptureRequest(1, "fixture", (0, 0, 100, 50), (0, 0, 100, 50), 1, 1, True)
+        worker, _ = self.make_worker([(1, request, (.2, .5), "tr", ("paddle", "")), None])
+        worker.frames = SimpleNamespace(emit=Mock())
+        order = []
+        capture = Mock()
+        capture.capture.side_effect = lambda request: (order.append("capture") or PixelFrame(request, (100, 50), bytes(15000), 1))
+        provider = Mock(return_value=recognized())
+        with patch("meikipop.gui.unified_ocr.RegionCapture", return_value=capture), \
+                patch.object(worker, "provider", side_effect=lambda *args: (order.append("model") or provider)):
+            worker.run()
+        self.assertEqual(order, ["capture", "model"])
+        capture.close.assert_called_once()
+
+    def test_stop_during_model_loading_skips_inference(self):
+        worker, sink = self.make_worker([(1, image_bytes(), (.2, .5), "tr"), None])
+        provider = Mock(return_value=recognized())
+        def load(*args):
+            worker.stop()
+            return provider
+        with patch("meikipop.dictionary.search.SearchEngine", return_value=Mock()), \
+                patch.object(worker, "provider", side_effect=load):
+            worker.run()
+        provider.assert_not_called()
+        sink.emit.assert_not_called()
+
     def test_optional_morphology_receives_original_ocr_context(self):
         worker, _ = self.make_worker([(1, image_bytes(), (.2, .5), "tr", ("paddle", ""), True), None])
         engine = Mock()
