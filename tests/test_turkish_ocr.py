@@ -7,6 +7,32 @@ from meikipop.ocr.turkish_paddle import LocalOCR, hit_word
 
 
 class OCRTests(unittest.TestCase):
+    def test_windows_uses_compatible_openmp_without_importing_torch(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from meikipop.ocr import turkish_paddle
+        loader = Mock()
+        with patch.object(turkish_paddle, "_openmp", None), \
+                patch.object(turkish_paddle.sys, "platform", "win32"), \
+                patch.object(turkish_paddle, "find_spec", return_value=SimpleNamespace(origin="runtime/torch/__init__.py")) as spec, \
+                patch.object(Path, "is_file", return_value=True), \
+                patch("ctypes.WinDLL", loader, create=True):
+            turkish_paddle.prepare_environment()
+            turkish_paddle.prepare_environment()
+        spec.assert_called_once_with("torch")
+        loader.assert_called_once_with(str(Path("runtime/torch/lib/libiomp5md.dll")))
+
+    def test_optional_torch_absence_and_other_platforms_keep_paddle_available(self):
+        from meikipop.ocr import turkish_paddle
+        with patch.object(turkish_paddle, "_openmp", None), \
+                patch.object(turkish_paddle.sys, "platform", "win32"), \
+                patch.object(turkish_paddle, "find_spec", return_value=None):
+            turkish_paddle.prepare_environment()
+        with patch.object(turkish_paddle.sys, "platform", "darwin"), \
+                patch.object(turkish_paddle, "find_spec") as spec:
+            turkish_paddle.prepare_environment()
+        spec.assert_not_called()
+
     def test_pointer_moves_reuse_recognition_but_changed_pixels_invalidate(self):
         import numpy as np
         from unittest.mock import Mock

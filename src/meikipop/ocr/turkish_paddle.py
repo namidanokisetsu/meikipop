@@ -1,9 +1,11 @@
 """Local PaddleOCR 3.7: explicit setup, offline inference, real word boxes."""
 import hashlib
+from importlib.util import find_spec
 import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 
 from meikipop.ocr.scan_cache import ScanCache
@@ -11,6 +13,7 @@ from meikipop.pipeline import REUSE_LAST_VALUE
 
 MODELS = {"det": "PP-OCRv6_small_det", "rec": "PP-OCRv6_small_rec"}
 PADDLE_FILES = ("inference.json", "inference.pdiparams", "inference.yml")
+_openmp = None
 
 
 def file_hash(path):
@@ -42,6 +45,18 @@ def model_root():
 
 def prepare_environment():
     os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+    global _openmp
+    if sys.platform != "win32" or _openmp is not None:
+        return
+    spec = find_spec("torch")
+    if spec is None or spec.origin is None:
+        return
+    library = Path(spec.origin).parent / "lib" / "libiomp5md.dll"
+    if library.is_file():
+        # Paddle's OpenMP lacks symbols Torch needs when morphology starts later.
+        # Load only the compatible runtime, leaving Torch and its models lazy.
+        import ctypes
+        _openmp = ctypes.WinDLL(str(library))
 
 
 def setup_ocr(root=None, onnx_dir=None):
