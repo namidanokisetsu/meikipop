@@ -45,6 +45,9 @@ Settings shows the available choices for your language.
 
 **Appearance** controls fonts, themes and readings, with separate options for
 preview and pinned results. Turn off **Snap scrolling** for ordinary scrolling.
+Set **Definitions** in Preview or Pinned to choose the meaning cutoff; **All**
+shows the full content. Turkish misses can still show the analyzed root and
+grammar, and screen lookup keeps available spelling suggestions.
 Settings save immediately and most preferences are separate for each language.
 
 ## Audio and translation

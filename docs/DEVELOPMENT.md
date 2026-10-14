@@ -40,6 +40,10 @@ retain precedence. Full morpheme paths remain attached to their analyses.
 Turkish lookup never starts Stanza. Other supported languages can install an
 optional Stanza fallback; Russian and Persian also have bounded spelling
 recovery. Imports stay lazy and runtime analysis stays offline.
+Activating Turkish prepares a shared analyzer in the background; parsing is
+serialized on lookup workers. Missing definitions retain analyses separately
+from dictionary entries. Disclosure edits batch layout updates, and Paddle
+keeps stable per-language scan callbacks so unchanged pixels reuse OCR.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;
