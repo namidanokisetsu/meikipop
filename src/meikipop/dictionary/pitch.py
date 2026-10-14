@@ -225,14 +225,15 @@ def install_pitch_renderer(document, parent):
     return renderer
 
 
-def render_pitches(pitches, inline=False, *, native=True):
+def render_pitches(pitches, inline=False, *, native=True, font_size=None, separator=" · "):
     rows = []
     for pitch in pitches:
         data = dict(reading=pitch.reading, position=pitch.position, nasal=pitch.nasal, devoice=pitch.devoice)
         href = PITCH_PREFIX + quote(json.dumps(data, ensure_ascii=False, separators=(",", ":")), safe="")
-        tags = " · " + escape(" · ".join(pitch.tags)) if pitch.tags else ""
+        tags = separator + escape(separator.join(pitch.tags)) if pitch.tags else ""
         if native:
-            reading = f'<a href="{href}" style="text-decoration:none">{escape(pitch.reading)} [{escape(str(pitch.position))}]</a>'
+            size = f"font-size:{int(font_size)}px;" if font_size is not None else ""
+            reading = f'<a href="{href}" style="{size}text-decoration:none">{escape(pitch.reading)} [{escape(str(pitch.position))}]</a>'
         else:
             # Cards render in a browser, which cannot resolve the Qt object link.
             pattern, parts = levels(pitch), []
@@ -249,5 +250,5 @@ def render_pitches(pitches, inline=False, *, native=True):
                     parts.append("ꜜ")
             reading = f'{"".join(parts)} [{escape(str(pitch.position))}]'
         rows.append(reading + tags)
-    text = ' · '.join(dict.fromkeys(rows))
+    text = separator.join(dict.fromkeys(rows))
     return text if inline or not text else '<p style="margin:0"><small>' + text + '</small></p>'

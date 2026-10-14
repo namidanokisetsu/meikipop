@@ -114,6 +114,20 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("other meaning", text)
         self.assertIn("#123", text)
 
+    def test_plain_kana_fallback_when_matching_pitch_is_missing_or_hidden(self):
+        from meikipop.dictionary.pitch import Pitch
+        word = entry()
+        for pitches, preview_pitch in (((), True), ((Pitch("Pitch", "びょう", 1),), True),
+                                        ((Pitch("Pitch", "ねこ", 1),), False)):
+            with self.subTest(pitches=pitches, preview_pitch=preview_pitch):
+                result = SearchResult("猫", "ja", "en", (replace(word, pitches=pitches),))
+                self.window.browser.setHtml(render_result(result, preview=True, preview_pitch=preview_pitch))
+                self.assertIn("猫 [ねこ]", self.window.browser.toPlainText())
+        result = SearchResult("猫", "ja", "en", (replace(word, pitches=(Pitch("Pitch", "ねこ", 1),)),))
+        self.window.browser.setHtml(render_result(result, preview=True))
+        self.assertIn("ねこ [1]", self.window.browser.toPlainText())
+        self.assertNotIn("[ねこ]", self.window.browser.toPlainText())
+
     def test_search_arrows_navigate_sticky_sections_without_editing_query(self):
         browser = self.window.browser
         browser.setHtml(render_result(SearchResult("猫", "ja", "en", tuple(
@@ -738,13 +752,14 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry(definitions=definitions),), "猫", peek=True)
         self.app.processEvents()
         text = self.window.browser.toPlainText()
-        self.assertIn("[noun · archaic]", text)
+        self.assertNotIn("[noun · archaic]", text)
         self.assertIn("first gloss; second gloss", text)
         self.assertNotIn("alternate form", text)
         cursor = self.window.browser.document().find("first gloss")
         cursor.setPosition(cursor.selectionStart())
         self.assertLess(self.window.browser.cursorRect(cursor).x(), 80)
         self.window.pin.setChecked(True)
+        self.assertIn("[noun · archaic]", self.window.browser.toPlainText())
         self.assertIn("alternate form", self.window.browser.toPlainText())
         self.assertNotIn("JMdict footer", self.window.browser.toPlainText())
 
@@ -1351,6 +1366,23 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("negative · past", html)
         self.assertNotIn("unstressed infinitive", html)
 
+    def test_compact_preview_omits_semantic_tags_and_retains_lookup_metadata(self):
+        from meikipop.dictionary.pitch import Pitch
+        definition = {"type": "structured-content", "content": [
+            {"tag": "span", "data": {"class": "tag"}, "content": "interjection"},
+            {"tag": "span", "data": {"content": "tag"}, "content": "kana"},
+            "interjection meaning written in kana"]}
+        word = replace(entry(definitions=(definition,)), inflection=("past",),
+                       frequencies=(Frequency("Corpus", 123, "123"),), pitches=(Pitch("Pitch", "ねこ", 1),))
+        result = SearchResult("猫", "ja", "en", (word,))
+        self.window.browser.setHtml(render_result(result, preview=True))
+        preview = self.window.browser.toPlainText()
+        self.assertNotIn("[interjection · kana]", preview)
+        for retained in ("interjection meaning written in kana", "past", "#123", "ねこ [1]"):
+            self.assertIn(retained, preview)
+        self.window.browser.setHtml(render_result(result))
+        self.assertIn("[interjection · kana]", self.window.browser.toPlainText())
+
     def test_frequency_defaults_to_one_harmonic_rank_with_optional_details(self):
         word = replace(entry(), frequencies=(Frequency("A", 100, "100"), Frequency("A", 900, "900㋕"),
                                             Frequency("B", 400, "400")))
@@ -1363,7 +1395,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window._render()
         self.assertIn("#100", self.window.browser.toPlainText())
         self.assertIn("#400", self.window.browser.toPlainText())
-        self.assertIn("A #100/900㋕ · B #400", self.window.browser.toPlainText().replace("\xa0", " "))
+        self.assertIn("A #100/900㋕ B #400", self.window.browser.toPlainText().replace("\xa0", " "))
 
     def test_structured_preview_keeps_lists_and_hides_examples_and_extra_senses(self):
         # Mirrors Turkdict's export_prototype.Structured output (classes become styles).

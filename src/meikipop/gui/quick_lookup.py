@@ -185,6 +185,8 @@ class _GlossConverter(StructuredContentConverter):
                 and (data.get("class") == "tag" or data.get("content") == "tag"))
 
     def _tags_to_html(self, nodes):
+        if self.preview:
+            return ""
         labels, descriptions = [], []
         for node in nodes:
             html = super()._node_to_html(node.get("content"))
@@ -454,7 +456,9 @@ class _GlossConverter(StructuredContentConverter):
         return parts
 
 
-def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""):
+def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch="", inline=False):
+    size = max(10, min(config.font_size_definitions - 1, config.font_size_header - 4))
+    font_style = f"font-size:{size}px;" if inline else ""
     frequencies, inflections = OrderedDict(), OrderedDict()
     raw_frequencies = []
     for entry in entries:
@@ -469,7 +473,7 @@ def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""
             label = (re.sub(r"\([^)]*\)", "", str(step)) if entry.language == "ja" else str(step)).strip()
             if label and not label.startswith("stem-"):
                 inflections.setdefault(label, entry.language)
-    parts = []
+    parts = [pitch] if pitch else []
     if frequencies:
         muted = surface_colors(config.color_background, config.color_foreground)["muted"]
         if combine_frequencies:
@@ -477,16 +481,16 @@ def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""
             rank = harmonic_rank(raw_frequencies)
             if rank is not None:
                 detail = "; ".join(source + ": " + label for source, label in frequencies)
-                parts.append(f'<a href="frequency:{quote(detail)}" style="color:{muted}">#{max(1, round(rank)):,}</a>')
+                parts.append(f'<a href="frequency:{quote(detail)}" style="{font_style}color:{muted}">#{max(1, round(rank)):,}</a>')
         else:
             by_source = OrderedDict()
             for source, label in frequencies:
                 by_source.setdefault(source, []).append(label)
             parts.extend(f'<a href="frequency:{quote(source + ": " + ", ".join(labels))}" '
-                         f'style="color:{muted};white-space:nowrap">'
+                         f'style="{font_style}color:{muted}">'
                          f'{escape(_source_name(source))} {escape("/".join(labels))}</a>'
                          for source, labels in by_source.items())
-    if inflections:
+    if inflections and not inline:
         description = " · ".join(inflections)
         label = description
         if len(description) > 120 and set(inflections.values()) == {"tr"}:
@@ -502,8 +506,10 @@ def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""
                          f'style="color:{muted};text-decoration:none">{escape(label)}</a>')
         else:
             parts.append(escape(label))
-    if pitch:
-        parts.append(pitch)
+    if inline:
+        muted = surface_colors(config.color_background, config.color_foreground)["muted"]
+        return (f'<span style="font-size:{size}px;font-weight:normal;color:{muted}">'
+                + " ".join(parts) + '</span>') if parts else ""
     return '<p class="metadata"><small>' + " · ".join(parts) + '</small></p>' if parts else ""
 
 
@@ -578,21 +584,26 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             f'<a href="headkanji:{quote(character, safe="")}" title="Kanji" '
             f'style="color:{config.color_highlight_word}">{escape(character)}</a>'
             if character in kanji and not preview else escape(character) for character in display_term)
+        group_entries = tuple(entry for entries in dictionaries.values() for entry in entries)
+        pitches = (tuple(pitch for entry in group_entries for pitch in entry.pitches)
+                   if result.source == "ja" and (not preview or preview_pitch) else ())
+        pitch = ""
+        if pitches:
+            from meikipop.dictionary.pitch import render_pitches
+            pitch = render_pitches(pitches, inline=True, separator=" ",
+                                   font_size=max(10, min(config.font_size_definitions - 1, config.font_size_header - 4)))
+        metadata = _metadata(group_entries, combine_frequencies, show_frequencies=not preview or preview_frequency,
+                             pitch=pitch, inline=True)
+        metadata = " " + metadata if metadata else ""
         reading_html = (f' <span style="color:{config.color_highlight_reading};font-size:'
                         f'{max(12, config.font_size_header - 3)}px">{escape(display_reading)}</span>'
-                        if reading and reading != term else "")
+                        if reading and reading != term and not any(pitch.reading == reading for pitch in pitches) else "")
         if result.source == "ja" and headword_furigana and reading and reading != term:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>'
-                         f'{ruby_html(escape(term), escape(reading), config.color_highlight_word, kanji=kanji if not preview else ())}</h2>')
+                         f'{ruby_html(escape(term), escape(reading), config.color_highlight_word, kanji=kanji if not preview else ())}{metadata}</h2>')
         else:
-            parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{display_term_html}{reading_html}</h2>')
-        pitch = ""
-        if result.source == "ja" and (not preview or preview_pitch):
-            from meikipop.dictionary.pitch import render_pitches
-            pitch = render_pitches((pitch for entries in dictionaries.values() for entry in entries
-                                    for pitch in entry.pitches), inline=True)
-        parts.append(_metadata((entry for entries in dictionaries.values() for entry in entries), combine_frequencies,
-                               show_frequencies=not preview or preview_frequency, pitch=pitch))
+            parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{display_term_html}{reading_html}{metadata}</h2>')
+        parts.append(_metadata(group_entries, show_frequencies=False))
         if preview and result.source == "tr":
             alternatives = tuple(dict.fromkeys(f"{other.term} · {' · '.join(other.inflection)}"
                                  for other in result.entries if other.term != term and other.inflection))[:3]

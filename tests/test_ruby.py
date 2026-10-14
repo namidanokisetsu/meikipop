@@ -119,6 +119,57 @@ class RubyTests(unittest.TestCase):
                 self.assertEqual(tooltips, [combined_detail] if combined else list(details))
                 self.assertIn("#160" if combined else "#100/900㋕", self.browser.toPlainText())
 
+    def test_inline_pitch_then_frequency_stay_small_and_wrap_with_headword_ruby(self):
+        from meikipop.dictionary.metadata import Frequency
+        from meikipop.dictionary.pitch import Pitch, PITCH_OBJECT, PITCH_PREFIX
+        word = Entry("1", "祈願", "きがん", "Words", "ja", ("prayer",), inflection=("past",),
+                     frequencies=(Frequency("Corpus <one>", 123, "123"),), pitches=(Pitch("NHK", "きがん", 1),))
+        result = SearchResult("祈願", "ja", "en", (word,))
+        with patch.object(config, "font_size_header", 24), patch.object(config, "font_size_definitions", 14):
+            for preview in (False, True):
+                for furigana in (False, True):
+                    with self.subTest(preview=preview, furigana=furigana):
+                        html = render_result(result, preview=preview, headword_furigana=furigana)
+                        self.assertLess(html.index(PITCH_PREFIX), html.index("frequency:"))
+                        self.assertLess(html.index("frequency:"), html.index("</h2>"))
+                        self.browser.setHtml(html)
+                        self.assertIn("きがん [1]", self.browser.toPlainText())
+                        self.assertNotIn("[きがん]", self.browser.toPlainText())
+                        document = self.browser.document()
+                        frequency = document.find("#123")
+                        heading = frequency.block()
+                        self.assertEqual(heading.blockFormat().headingLevel(), 2)
+                        self.assertEqual(frequency.charFormat().font().pixelSize(), 13)
+                        self.assertEqual(frequency.charFormat().toolTip(), "Corpus <one>: #123")
+                        self.assertNotEqual(document.find("past").block().position(), heading.position())
+                        iterator = heading.begin()
+                        pitch_sizes = []
+                        while not iterator.atEnd():
+                            fmt = iterator.fragment().charFormat()
+                            if fmt.objectType() == PITCH_OBJECT:
+                                pitch_sizes.append(fmt.font().pixelSize())
+                            iterator += 1
+                        self.assertEqual(pitch_sizes, [13])
+                        if furigana:
+                            self.assertEqual(self.objects()[0].charFormat().font().pixelSize(), 24)
+                        self.browser.setLineWrapMode(self.browser.LineWrapMode.FixedPixelWidth)
+                        for width in (120, 320):
+                            self.browser.setLineWrapColumnOrWidth(width)
+                            document.documentLayout().documentSize()
+                            layout = heading.layout()
+                            self.assertGreater(layout.lineCount(), 0)
+                            self.assertTrue(all(layout.lineAt(line).naturalTextWidth() <= width
+                                                for line in range(layout.lineCount())))
+
+    def test_bracketed_reading_remains_when_inline_pitch_does_not_supply_it(self):
+        from meikipop.dictionary.pitch import Pitch
+        word = Entry("1", "猫", "ねこ", "Words", "ja", ("cat",), pitches=(Pitch("NHK", "ねこ", 1),))
+        self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", (word,)), preview=True, preview_pitch=False))
+        self.assertIn("猫 [ねこ]", self.browser.toPlainText())
+        alternate = Entry("2", "猫", "ねこ", "Words", "ja", ("cat",), pitches=(Pitch("Other", "ネコ", 1),))
+        self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", (alternate,))))
+        self.assertIn("猫 [ねこ]", self.browser.toPlainText())
+
     def test_headword_ruby_links_each_kanji_and_preserves_reading_and_copy(self):
         self.browser.setHtml('<h2>' + ruby_html("祈願", "きがん", kanji="祈願") + '</h2>')
         self.browser.show()
