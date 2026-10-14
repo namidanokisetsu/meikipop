@@ -138,6 +138,20 @@ class TurkishLookupTests(unittest.TestCase):
         self.assertEqual([e.term for e in result.entries], ['kırklar', 'kırk'])
         self.assertTrue(all(e.route == 'morphology' for e in result.entries))
 
+    def test_missing_definition_keeps_lemma_and_grammar_without_a_false_entry(self):
+        reading = TrAnalysis('cevir', 'NOUN', paths=((TrMorpheme('Noun', 'cevr', 'Noun'),
+                            TrMorpheme('P1pl', 'imiz', 'FirstPersonPluralPossessive'),
+                            TrMorpheme('Acc', 'i', 'Accusative')),))
+        self.analyzer.candidates.return_value = (reading,)
+        result = self.search('cevrimizi')
+        self.assertEqual(result.entries, ())
+        self.assertEqual(result.analyses, (reading,))
+        from meikipop.gui.quick_lookup import render_result
+        html = render_result(result)
+        for text in ('cevir', '-imiz (our)', '-i (accusative)', 'No dictionary entry.'):
+            self.assertIn(text, html)
+        self.assertNotIn('-imiz (our)', render_result(result, grammar=False))
+
     def test_missing_first_lemma_does_not_hide_attested_alternative(self):
         self.analyzer.candidates.return_value = (TrAnalysis('missing', 'NOUN'), TrAnalysis('pervane', 'NOUN'),
                                                  TrAnalysis('pervane', 'ADJ'))

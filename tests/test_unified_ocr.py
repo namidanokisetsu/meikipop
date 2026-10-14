@@ -813,6 +813,20 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window.show_entries.assert_called_once_with(result.entries, text="kitap", source="tr",
                                                          peek=True, kanji=[])
 
+    def test_ocr_keeps_suggestions_and_grammar_without_a_definition(self):
+        from meikipop.dictionary.search import SearchResult
+        from meikipop.language.turkish_analyzer import TrAnalysis
+        hit = ContextHit('cevrimizi', 'cevrimizi', 0, 9, 'tr')
+        result = SearchResult('cevrimizi', 'tr', 'en', analyses=(TrAnalysis('cevir', 'NOUN'),),
+                              message='No dictionary entry.')
+        with patch.object(QApplication, 'activeWindow', return_value=None):
+            self.controller.deliver(self.controller.generation, result, hit, '')
+        self.assertEqual(self.window.show_entries.call_args.kwargs['analyses'], result.analyses)
+        result = SearchResult('kitpa', 'tr', 'en', suggestions=('kitap',))
+        with patch.object(QApplication, 'activeWindow', return_value=None):
+            self.controller.deliver(self.controller.generation, result, hit, '')
+        self.assertEqual(self.window.show_entries.call_args.kwargs['suggestions'], ('kitap',))
+
     def test_outside_click_dismisses_pinned_popup(self):
         self.window.show()
         self.window.pin.setChecked(True)

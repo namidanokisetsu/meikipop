@@ -943,11 +943,13 @@ class UnifiedOCR(QObject):
             self.restore_capture_visibility()
             self.window.show_message(error)
             return
-        if result is None or not (result.entries or result.kanji):
+        extras = {key: getattr(result, key) for key in ("analyses", "suggestions", "message")
+                  if getattr(result, key, None)} if result is not None else {}
+        if result is None or not (result.entries or result.kanji or extras.get("analyses") or extras.get("suggestions")):
             self._hide_preview()
             return
         if self.window.show_entries(result.entries, text=result.text, source=result.source,
-                                    peek=True, kanji=result.kanji):
+                                    peek=True, kanji=result.kanji, **extras):
             mark("hit_delivery", frame.request.revision if frame is not None else generation,
                  popup_revision=getattr(self.window, "revision", 0))
             self.window.set_context(*hit.sentence)

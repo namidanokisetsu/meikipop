@@ -24,6 +24,7 @@ class SearchResult:
     kanji: tuple = ()
     translation_model: str = ""
     matched_length: int = 0
+    analyses: tuple = ()
 
 
 class SearchEngine:
@@ -35,6 +36,7 @@ class SearchEngine:
         self._analyzer = None
         self._turkish_analyzer = None
         self._analysis_errors = {}
+        self._analyses = ()
 
     def close(self):
         self.library.close()
@@ -124,6 +126,7 @@ class SearchEngine:
                 raise ValueError("Choose different source and target languages.")
             target = foreign if source == "en" and foreign != "en" else "en"
         entries, suggestions, message = (), (), ""
+        self._analyses = ()
         matched_length = 0
         if text and not translate:
             if (source == "en" and foreign != "en") or pair and source == pair[1]:
@@ -136,7 +139,7 @@ class SearchEngine:
                     matched_length = len(text)
                 if not entries and morphology and foreign != "ja":
                     entries = self._lemma_lookup(text, foreign, context)
-                    if entries:
+                    if entries or self._analyses:
                         source, target = foreign, source
                         matched_length = len(text)
                 if not entries:
@@ -173,7 +176,11 @@ class SearchEngine:
                 message = str(error)
         kanji = self.library.kanji_info(entries[0].term if entries else text) if not translate and (source == "ja" or target == "ja") else ()
         model = getattr(self.translator, "last_model", "") if translation else ""
-        result = SearchResult(text, source, target, entries, suggestions, translation, message, kanji, model, matched_length)
+        analyses = self._analyses if not entries else ()
+        if analyses:
+            message = "No dictionary entry."
+        result = SearchResult(text, source, target, entries, suggestions, translation, message, kanji, model, matched_length,
+                              analyses=analyses)
         # A missing or starting local server must be retryable on the same text.
         if (not translate or translation) and not (cancelled is not None and cancelled.is_set()):
             self.cache[cache_key] = result
@@ -224,7 +231,8 @@ class SearchEngine:
         if original[start:end] != text:
             return ()
         entries, candidates = {}, {}
-        for reading in self._turkish_analyzer.candidates(original, start, end):
+        self._analyses = self._turkish_analyzer.candidates(original, start, end)
+        for reading in self._analyses:
             if reading.pos1 != "X":
                 candidates.setdefault(reading.lemma, []).append(reading)
         for lemma, readings in candidates.items():

@@ -669,11 +669,20 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                 parts.append(supplement)
             if more and not full and not hidden and not preview:
                 parts.append(f'<p class="metadata"><a href="expand:{group_index}:{index}" style="text-decoration:underline">More</a></p>')
+    if result.analyses and not result.entries:
+        from meikipop.language.turkish_analyzer import grammar_labels
+        lemmas = OrderedDict()
+        for reading in result.analyses:
+            lemmas.setdefault(reading.lemma, []).append(reading)
+        for lemma, readings in lemmas.items():
+            parts.append(f'<h2>{escape(lemma)}</h2>')
+            if show_inflections:
+                parts.append(f'<p class="metadata">{escape(" · ".join(grammar_labels(readings)))}</p>')
     if result.suggestions:
         parts.append('<p>Did you mean: ' + " · ".join(
             f'<a href="suggest:{index}">{escape(str(word))}</a>'
             for index, word in enumerate(result.suggestions)) + "</p>")
-    unmatched_text = result.text.strip() if not result.entries and not result.translation and not result.kanji else ""
+    unmatched_text = result.text.strip() if not (result.entries or result.translation or result.kanji or result.analyses) else ""
     if unmatched_text and not (show_source and source_text):
         parts.append(f'<p>{escape(unmatched_text).replace(chr(10), "<br>")}</p>')
     if result.message and not (unmatched_text and result.message == "No entry found."):
@@ -2074,12 +2083,14 @@ class QuickLookupWindow(QDialog):
             return
         self.audio.play_text(text, language, self.revision, self.settings, profile=self.preferred_foreign)
 
-    def show_entries(self, entries, text="", source="ja", peek=False, kanji=()):
+    def show_entries(self, entries, text="", source="ja", peek=False, kanji=(), analyses=(), suggestions=(), message=""):
         if peek and self.is_pinned:
             return False
         entries = tuple(entries or ())
         if (peek and self._peek and self._result is not None and self._result.text == text
                 and self._result.source == source and self._result.entries == entries
+                and self._result.analyses == tuple(analyses) and self._result.suggestions == tuple(suggestions)
+                and self._result.message == message
                 and self._result.kanji == tuple(kanji) and self.isVisible()):
             if self._autoplayed is not None and audio_autoplay_mode(self.settings, self.preferred_foreign) == "lookup":
                 self._autoplay()
@@ -2091,7 +2102,8 @@ class QuickLookupWindow(QDialog):
         entries = tuple(entries or ())
         partner = self.foreign.currentData()
         target = self.preferred_foreign if source == partner else partner
-        result = SearchResult(text, source, target, entries, kanji=tuple(kanji))
+        result = SearchResult(text, source, target, entries, kanji=tuple(kanji), analyses=tuple(analyses),
+                              suggestions=tuple(suggestions), message=message)
         with QSignalBlocker(self.search):
             self.search.setText(text)
         self.translate.setEnabled(bool(text) and self.translation_available())
