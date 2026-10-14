@@ -146,6 +146,8 @@ class SearchEngine:
                 else:
                     from meikipop.language.profiles import get_profile
                     entries = self.library.lookup(text, source)
+                    if not entries and source == "fa":
+                        entries = self._persian_lookup(text)
                     matched_length = len(text) if entries else 0
                     if not entries and get_profile(source).word_mode == "unspaced":
                         entries, matched_length = self._prefix_lookup(text, source)
@@ -216,6 +218,18 @@ class SearchEngine:
             entries = self.library.lookup(original_lemma, language, tolerant=False)
         return tuple(replace(entry, route="lemma", inflection=("lemma",))
                      for entry in entries)
+
+    def _persian_lookup(self, text):
+        unified = text.translate(str.maketrans("كي", "کی"))
+        variants = dict.fromkeys((unified, text.replace("\u200c", ""), unified.replace("\u200c", "")))
+        for candidate in variants:
+            if candidate == text:
+                continue
+            entries = self.library.lookup(candidate, "fa", tolerant=False)
+            if entries:
+                return tuple(replace(entry, route="form spelling" if entry.route == "form" else "spelling")
+                             for entry in entries)
+        return ()
 
     def _prefix_lookup(self, text, language):
         from meikipop.language.profiles import get_profile

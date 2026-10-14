@@ -114,6 +114,35 @@ class LibraryTests(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_persian_spelling_variants_reuse_forms_before_models_and_keep_source(self):
+        from unittest.mock import patch
+        self.pack("Persian", [self.row("کتاب", ["book"]), self.row("رفتن", ["go"]),
+                               self.row("میروم", [["رفتن", ["first-person singular present"]]]),
+                               self.row("میرفتم", [["رفتن", ["first-person singular imperfect"]]])], language="fa")
+        engine = SearchEngine(self.directory)
+        try:
+            with patch.object(engine, "_lemma_lookup", side_effect=AssertionError("Model must not be needed")):
+                for text, expected, route in (("می‌روم", "رفتن", "form spelling"),
+                                               ("می‌رفتم", "رفتن", "form spelling"),
+                                               ("مي‌روم", "رفتن", "form spelling"),
+                                               ("كتاب", "کتاب", "spelling")):
+                    with self.subTest(text=text):
+                        original = "من " + text + "."
+                        context = (original, 3, 3 + len(text))
+                        result = engine.search(text, source="fa", foreign="fa", morphology=True, context=context)
+                        self.assertEqual((result.entries[0].term, result.entries[0].route), (expected, route))
+                        self.assertEqual(result.text, text)
+                        self.assertEqual(result.matched_length, len(text))
+                        self.assertEqual(original[context[1]:context[2]], result.text)
+                        if route == "form spelling":
+                            self.assertTrue(result.entries[0].inflection)
+            self.pack("Literal", [self.row("می‌روم", ["literal headword"])], language="fa")
+            engine.refresh()
+            result = engine.search("می‌روم", source="fa", foreign="fa")
+            self.assertEqual([(entry.term, entry.route) for entry in result.entries], [("می‌روم", "exact")])
+        finally:
+            engine.close()
+
     def test_form_cycles_are_bounded_and_exact_precedes_lemma(self):
         self.pack("Words", [self.row("yaz", ["summer"]), self.row("yazmak", ["write"])])
         self.pack("Forms", [self.row("yaz", [["yazmak", []]]), self.row("yazmak", [["yaz", []]])])

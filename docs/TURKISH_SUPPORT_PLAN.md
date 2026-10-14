@@ -98,6 +98,8 @@ clients remain explicit compatibility entrypoints.
    remain specialized. Other installed languages use indexed entries/readings
    and imported forms. Russian additionally tries bounded е/ё variants after
    an exact/form miss, reusing indexed packs without neural analysis.
+   Persian miss-only Kaf/Yeh and ZWNJ spelling variants reuse imported forms,
+   following [Anki Miner's lookup ladder](https://github.com/0xzerolight/anki_miner/blob/808b5208bf93d919b3f18ea3aba66db5fd7fd0ea/anki_miner/languages/fa/lookup.py).
    Unspaced profiles try bounded longest prefixes at complete source character clusters.
    Form labels retain equally short alternatives without cyclic homograph detours;
    Russian stress-only readings appear once in the headword.
