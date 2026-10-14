@@ -153,11 +153,15 @@ def _secondary(item: Any) -> str:
 class TurkishAnalyzer:
     """``analyse(word)``: every distinct reading of one word, the card-front choice first."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, rebuild_ranking=False) -> None:
         _uncached_phonetics()
         self._zeyrek = zeyrek.MorphAnalyzer(lexicon=_ordered_lexicon())
         self._zeyrek.analyzer = _DeterministicAnalyzer(self._zeyrek.morphotactics)
-        self._family = self._family_counts()
+        self._family = self._family_counts() if rebuild_ranking else self._load_family_counts()
+
+    def _load_family_counts(self):
+        from .turkish_ranking import load_counts
+        return collections.Counter(load_counts(self._family_counts))
 
     def _family_counts(self) -> collections.Counter[str]:
         """How many of zeyrek's own ``first-10K`` surfaces have a reading with each dictionary item."""

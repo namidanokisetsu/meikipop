@@ -92,6 +92,10 @@ def main(argv=None):
             import stanza
             import torch
             from meikipop.language.turkish_analyzer import TurkishAnalyzer
+            from meikipop.language.turkish_ranking import FILENAME, read_counts
+            from meikipop.utils.paths import paths
+            if read_counts(Path(paths.get_resource_path("turkish")) / FILENAME) is None:
+                raise RuntimeError("Bundled Turkish rankings are missing.")
             turkish = TurkishAnalyzer()
             if not any(r.lemma == "pervane" and any(m.id == "Loc" for p in r.paths for m in p)
                        for r in turkish.candidates("pervanelikte", 0, 12)):

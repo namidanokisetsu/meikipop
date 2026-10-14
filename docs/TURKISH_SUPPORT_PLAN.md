@@ -110,14 +110,16 @@ clients remain explicit compatibility entrypoints.
    preferences adapted from [Anki Miner](https://github.com/0xzerolight/anki_miner/tree/808b5208bf93d919b3f18ea3aba66db5fd7fd0ea/anki_miner/languages/tr).
    Its bundled lexicon loads lazily on the lookup worker. Unlike Anki Miner's
    single card-front choice, shared lookup retains dictionary-supported alternatives
-   in analyzer order, deduplicates entries and falls back to installed Stanza on a miss.
+   in analyzer order and deduplicates entries. Turkish lookup never starts Stanza.
+   Desktop builds precompute the lexicon family rankings; source runs cache them locally
+   so hover lookup does not reparse the 10,000-word ranking corpus on every launch.
    Each result retains full morpheme paths, including derivations and suffix surfaces.
    Existing grammar rendering shows compact labels and keeps ambiguous paths separate;
    long alternatives use its existing expansion control.
    Dictionary frequency packs do not select the analysis. Existing exact entries,
    imported forms and accent recovery retain precedence; source spans stay unchanged.
-   Stanza is optional for Turkish; Settings shows installed engines and offers its
-   fallback download separately. Unknown or missing vocabulary still produces a miss.
+   Settings shows Zeyrek for Turkish with no model download. Unknown or missing
+   vocabulary still produces a miss.
    Attribution and licenses ship in `resources/licenses`. The legacy Turkish client
    retains its existing Stanza adapter.
    Other installed languages use indexed entries/readings

@@ -1,9 +1,14 @@
 """Shared desktop app; runtimes are bundled, user dictionaries/models are not."""
 from pathlib import Path
+import subprocess
+import sys
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 root = Path(SPECPATH)
+ranking_dir = root / "build" / "turkish-ranking"
+subprocess.run([sys.executable, "-m", "meikipop.scripts.build_turkish_ranking", str(ranking_dir)], check=True)
 datas = [(str(root / "src/meikipop/resources"), "meikipop/resources"),
+         (str(ranking_dir / "*.json"), "meikipop/resources/turkish"),
          (str(root / "src/meikipop/scripts/deconjugator.json"), "meikipop/scripts"),
          (str(root / "LICENSE"), "licenses/meikipop")]
 binaries, hiddenimports = [], ["PyQt6.QtTextToSpeech", "pynput.keyboard._win32", "pynput.mouse._win32"]

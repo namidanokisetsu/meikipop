@@ -5,5 +5,5 @@ License: GPL-3.0. The accompanying GPL-3.0.txt contains the license.
 
 Meikipop adapts the analyzer's imports and the context selection to its source spans,
 retains ranked alternatives and full morpheme paths for dictionary lookup and display,
-and bounds/caches parsing.
+and bounds/caches parsing. Desktop builds precompute the lexicon family rankings.
 Zeyrek 0.1.3 parsing and suffix-generation portions retain the MIT license in zeyrek.txt.

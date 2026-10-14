@@ -18,9 +18,9 @@ Settings has six tabs: **Lookup**, **Dictionaries**, **Appearance**, **Audio**,
 **Translation**, and **Anki**. Dictionaries offers one download action for missing
 recommendations; Japanese includes Jitendex (JMdict-based definitions), KANJIDIC,
 BCCWJ frequency, and Kanjium pitch. Other Yomitan ZIPs can be imported.
-Turkish word forms use bundled Zeyrek morphology, with installed Stanza as a fallback.
-Dictionaries shows the installed engines and offers **Download Stanza fallback** when
-missing. No model download is needed for Zeyrek. Other languages offer word-form
+Turkish word forms use bundled Zeyrek morphology only, with precomputed rankings.
+Dictionaries shows **Word forms: Zeyrek**; no model download is needed.
+Other languages offer word-form
 support when their optional model is missing; OCR downloads
 are under Lookup → Screen recognition. Downloads stay explicit, and installed translation/OCR models are shared
 across languages. Base-form models are used automatically once installed.
@@ -251,7 +251,7 @@ outside Git. Additional local Yomitan packs can be added through the same UI.
 Exact entries and imported forms remain first. Russian also tries е/ё spelling
 variants after a miss, using the installed dictionary and forms without a model.
 **Settings → Dictionaries → Download word-form support** installs an optional
-Stanza model for the selected non-Japanese profile. Installed models are used
+Stanza model for profiles other than Japanese and Turkish. Installed models are used
 automatically; there is no separate enable switch.
 Japanese keeps its bundled rules. Models run in lookup workers, with original OCR
 sentence context where available; results are labeled as lemma matches.
@@ -485,7 +485,7 @@ the table describes available features whether or not their resources are alread
   Meikipop's installer currently supplies the v6 model pair.
 - **Morphology:** Japanese uses bundled Nazeka deconjugation rules. Turkish uses
   Zeyrek 0.1.3 with Anki Miner's fixes and dictionary-supported alternatives;
-  installed Stanza remains a miss-only fallback. **Stanza** enables optional lemma
+  Turkish does not use a Stanza fallback. **Stanza** enables optional lemma
   fallback after installing its [language model](https://stanfordnlp.github.io/stanza/available_models.html).
   Imported forms work in every profile. Turkish also supports accent recovery.
 - **Audio:** every profile offers online Wikimedia pronunciations, system TTS, and compatible
@@ -633,7 +633,7 @@ Sources and model versions: PaddleOCR 3.7 / PP-OCRv6 Small, Hy-MT2, and
 | Telugu | `te` | Wiktionary | Yes | - | - |
 | Thai | `th` | Wiktionary | Yes | - | - |
 | Tibetan | `bo` | Wiktionary | Yes | - | - |
-| Türkçe | `tr` | Wiktionary | Yes | Yes | Zeyrek; optional Stanza |
+| Türkçe | `tr` | Wiktionary | Yes | Yes | Zeyrek |
 | Urdu | `ur` | Wiktionary | Yes | - | Stanza |
 | Uyghur | `ug` | Wiktionary | Yes | - | Stanza |
 | Uzbek | `uz` | Wiktionary | - | Yes | - |

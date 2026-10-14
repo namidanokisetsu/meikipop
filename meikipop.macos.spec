@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import tomllib
+import subprocess
+import sys
 from pathlib import Path
 
 from PyInstaller.config import CONF
@@ -13,6 +15,8 @@ def _get_build_version() -> str:
 
 
 BUILD_VERSION = _get_build_version()
+ranking_dir = Path(CONF['specpath']) / 'build' / 'turkish-ranking'
+subprocess.run([sys.executable, '-m', 'meikipop.scripts.build_turkish_ranking', str(ranking_dir)], check=True)
 model_data, model_binaries, model_imports = collect_all('stanza')
 model_data += copy_metadata('stanza', recursive=True)
 model_data += copy_metadata('meikipop')
@@ -26,6 +30,7 @@ a = Analysis(
     pathex=['src'],
     binaries=model_binaries,
     datas=model_data + [
+        (str(ranking_dir / '*.json'), 'meikipop/resources/turkish'),
         ('src/meikipop/resources/icon.ico', 'meikipop/resources'),
         ('src/meikipop/resources/icon.inactive.ico', 'meikipop/resources'),
         ('src/meikipop/scripts/deconjugator.json', 'meikipop/scripts'),
