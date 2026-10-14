@@ -179,6 +179,9 @@ class SearchEngine:
         analyses = self._analyses if not entries else ()
         if analyses:
             message = "No dictionary entry."
+            alternatives = (entry.term for lemma in dict.fromkeys(reading.lemma for reading in analyses)
+                            for entry in self.library.lookup(lemma, "tr"))
+            suggestions = tuple(dict.fromkeys((*suggestions, *alternatives)))[:8]
         result = SearchResult(text, source, target, entries, suggestions, translation, message, kanji, model, matched_length,
                               analyses=analyses)
         # A missing or starting local server must be retryable on the same text.

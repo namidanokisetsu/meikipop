@@ -113,6 +113,7 @@ class TurkishLookupTests(unittest.TestCase):
         archive = root / 'tr.zip'
         rows = [(word, [word]) for word in ['pervane', 'divane', 'kırk', 'kırklar', 'mestanelik', 'Sıtkı', 'sıdk', 'gelmek']]
         rows += [('kırk', [['kırkmak', ['imperative']]]), ('kırkmak', ['shear'])]
+        rows += [('çevirmek', ['turn']), ('çevir', [['çevirmek', ['imperative']]])]
         with zipfile.ZipFile(archive, 'w') as bundle:
             bundle.writestr('index.json', json.dumps(dict(title='fixture', format=3, sourceLanguage='tr')))
             bundle.writestr('term_bank_1.json', json.dumps([[word, '', '', '', 0, definitions, -1, ''] for word, definitions in rows]))
@@ -146,10 +147,13 @@ class TurkishLookupTests(unittest.TestCase):
         result = self.search('cevrimizi')
         self.assertEqual(result.entries, ())
         self.assertEqual(result.analyses, (reading,))
+        self.assertEqual(result.suggestions, ('çevirmek',))
         from meikipop.gui.quick_lookup import render_result
         html = render_result(result)
         for text in ('cevir', '-imiz (our)', '-i (accusative)', 'No dictionary entry.'):
             self.assertIn(text, html)
+        self.assertIn('Did you mean:', html)
+        self.assertIn('href="suggest:0">çevirmek</a>', html)
         self.assertNotIn('-imiz (our)', render_result(result, grammar=False))
 
     def test_detected_turkish_miss_keeps_suggestions_in_turkish(self):
