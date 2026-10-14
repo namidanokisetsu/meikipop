@@ -195,6 +195,29 @@ class FirstRunTests(unittest.TestCase):
         self.assertTrue(any(task.kind == "translation" for task in setup.call_args.args[0]))
         self.wizard.operation = None
 
+    def test_partial_setup_retries_only_unfinished_tasks_including_translation(self):
+        from meikipop.gui.language_setup import SetupTask
+        translation = SetupTask("translation", "Local translation", "lightweight")
+        completed = [(task, "") for task in self.wizard.selected_tasks() if task.kind != "translation"]
+        self.wizard.operation = Mock(cancelled=threading.Event())
+        self.wizard.bar.setRange(0, len(completed) + 1)
+        self.wizard.download_finished(completed, ["Local translation: fixture failure"])
+        self.assertEqual(self.wizard.selected_tasks(), [translation])
+        self.assertEqual(self.wizard.install.text(), "Retry")
+        self.assertLess(self.wizard.bar.value(), self.wizard.bar.maximum())
+        self.assertTrue(all(not check.isEnabled() for task, check in self.wizard.choices if task.kind != "translation"))
+        self.wizard.operation = Mock(cancelled=threading.Event())
+        self.wizard.download_finished([(translation, "")], [])
+        self.assertFalse(self.wizard.selected_tasks())
+
+    def test_successful_translation_is_not_repeated_when_dictionary_setup_failed(self):
+        task = next(task for task in self.wizard.selected_tasks() if task.kind == "translation")
+        self.wizard.operation = Mock(cancelled=threading.Event())
+        self.wizard.download_finished([(task, "")], ["Dictionary: fixture failure"])
+        self.assertNotIn(task, self.wizard.selected_tasks())
+        self.wizard.translation.setCurrentIndex(1)
+        self.assertIn("quality", [task.value for task in self.wizard.selected_tasks() if task.kind == "translation"])
+
     def test_language_plan_uses_supported_models_and_native_mac_ocr(self):
         from meikipop.gui.language_setup import language_plan
         japanese = language_plan("ja", platform="win32")

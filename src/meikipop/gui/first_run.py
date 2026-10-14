@@ -71,6 +71,7 @@ class LanguageSuggestion(QDialog):
         self.window = window
         self.language = language or window.preferred_foreign
         self.operation = None
+        self.completed_tasks = []
         from meikipop.gui.quick_lookup import language_name
         from meikipop.gui.language_setup import language_plan
         self.setWindowTitle(language_name(self.language))
@@ -88,6 +89,7 @@ class LanguageSuggestion(QDialog):
         self.translation = QComboBox()
         self.translation.addItem("Lightweight (1.9 GB)", "lightweight")
         self.translation.addItem("Quality (8 GB)", "quality")
+        self.translation.currentIndexChanged.connect(self.refresh_choices)
         form.addRow("Translation model", self.translation)
         form.setRowVisible(self.translation, any(task.kind == "translation" for task, check in self.choices))
         self.translation.setEnabled(any(task.kind == "translation" for task, check in self.choices))
@@ -114,8 +116,17 @@ class LanguageSuggestion(QDialog):
 
     def selected_tasks(self):
         from dataclasses import replace
-        return [replace(task, value=self.translation.currentData()) if task.kind == "translation" else task
-                for task, check in self.choices if check.isChecked()]
+        tasks = [replace(task, value=self.translation.currentData()) if task.kind == "translation" else task
+                 for task, check in self.choices if check.isChecked()]
+        return [task for task in tasks if task not in self.completed_tasks]
+
+    def refresh_choices(self):
+        from dataclasses import replace
+        for task, check in self.choices:
+            selected = replace(task, value=self.translation.currentData()) if task.kind == "translation" else task
+            installed = selected in self.completed_tasks
+            check.setText(task.label + (" ✓" if installed else ""))
+            check.setEnabled(self.operation is None and not installed)
 
     def accept(self):
         if self.operation is not None:
@@ -163,10 +174,11 @@ class LanguageSuggestion(QDialog):
             self.window._setup.sync_profile(self.window.preferred_foreign)
         cancelled = self.operation.cancelled.is_set()
         self.operation = None
-        self.bar.setValue(self.bar.maximum())
+        self.completed_tasks.extend(task for task, _ in completed if task not in self.completed_tasks)
+        self.bar.setValue(len(completed))
         self.install.setEnabled(True)
-        for task, check in self.choices:
-            check.setEnabled(True)
+        self.install.setText("Retry" if errors else "Install")
+        self.refresh_choices()
         self.translation.setEnabled(any(task.kind == "translation" and check.isChecked()
                                         for task, check in self.choices))
         self.later.setText("Later")

@@ -86,5 +86,7 @@ class LanguageSetup(QObject):
             except InterruptedError:
                 break
             except Exception as error:
+                import logging
+                logging.getLogger(__name__).exception("Setup failed for %s", task.label)
                 errors.append(f"{task.label}: {error}")
         self.finished.emit(completed, errors)
