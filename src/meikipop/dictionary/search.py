@@ -185,19 +185,7 @@ class SearchEngine:
         if not self.library._active(language):
             return ()
         if language == "tr":
-            from meikipop.language.turkish_analyzer import available
-            from meikipop.language.stanza_analyzer import model_status
-            if available():
-                try:
-                    entries = self._turkish_lookup(text, context)
-                except Exception:
-                    if model_status("tr") != "Installed":
-                        raise
-                    import logging
-                    logging.getLogger(__name__).exception("Turkish morphology failed; trying Stanza")
-                    entries = ()
-                if entries or model_status("tr") != "Installed":
-                    return entries
+            return self._turkish_lookup(text, context)
         if language in self._analysis_errors:
             raise RuntimeError(self._analysis_errors[language])
         try:
@@ -218,20 +206,13 @@ class SearchEngine:
         if not tokens or tokens[0].start != start or tokens[-1].end != end:
             return ()
         candidate = original[start:end]
-        original_lemma = candidate
         for token in reversed(tokens):
             if token.lemma and token.lemma != "_":
                 lemma = token.lemma
-                original_lemma = original_lemma[:token.start-start] + lemma + original_lemma[token.end-start:]
-                if language == "tr" and token.pos in ("VERB", "AUX"):
-                    from meikipop.language.turkish_recovery import verb_infinitive
-                    lemma = verb_infinitive(lemma)
                 candidate = candidate[:token.start-start] + lemma + candidate[token.end-start:]
         if candidate == text:
             return ()
         entries = self.library.lookup(candidate, language, tolerant=False)
-        if not entries and original_lemma != candidate:
-            entries = self.library.lookup(original_lemma, language, tolerant=False)
         return tuple(replace(entry, route="lemma", inflection=("lemma",))
                      for entry in entries)
 

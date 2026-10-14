@@ -43,17 +43,17 @@ class MorphologyTests(unittest.TestCase):
             factory.assert_not_called()
 
     def test_context_span_preserves_original_text_and_bounds_lemma_lookup(self):
-        self.pack("tr", [("kitap", ["book"], ""), ("okumak", ["read"], "")])
+        self.pack("de", [("Buch", ["book"], ""), ("lesen", ["read"], "")])
         analyzer = Mock()
-        analyzer.analyze.return_value = (Token(0, 3, "dün"), Token(4, 17, "kitap"), Token(18, 24, "okumak"))
-        self.engine._analyzer = ("tr", analyzer)
-        text = "Dün kitaplarımdan okudum."
-        result = self.engine.search("kitaplarımdan", source="tr", morphology=True, context=(text, 4, 17))
-        self.assertEqual([e.term for e in result.entries], ["kitap"])
+        analyzer.analyze.return_value = (Token(0, 3, "das"), Token(4, 10, "Buch"), Token(11, 16, "lesen"))
+        self.engine._analyzer = ("de", analyzer)
+        text = "Die Bücher lesen."
+        result = self.engine.search("Bücher", source="de", morphology=True, context=(text, 4, 10))
+        self.assertEqual([e.term for e in result.entries], ["Buch"])
         self.assertEqual(result.entries[0].route, "lemma")
-        self.assertEqual(result.text, "kitaplarımdan")
+        self.assertEqual(result.text, "Bücher")
         analyzer.analyze.assert_called_once_with(text)
-        self.engine.search("kitaplarımdan", source="tr", morphology=True, context=(text, 4, 17))
+        self.engine.search("Bücher", source="de", morphology=True, context=(text, 4, 10))
         analyzer.analyze.assert_called_once()
 
     def test_automatic_detection_can_recover_a_profile_language_lemma(self):
@@ -72,32 +72,32 @@ class MorphologyTests(unittest.TestCase):
             factory.assert_not_called()
 
     def test_turkish_verb_stems_find_infinitives_without_forms_or_nominal_homographs(self):
+        from meikipop.language.turkish_analyzer import TrAnalysis
         self.pack("tr", [("okumak", ["read"], ""), ("ok", ["arrow"], ""),
                          ("oku", ["imperative: read"], ""), ("gelmek", ["come"], ""),
                          ("dinlemek", ["listen"], ""), ("kitap", ["book"], "")])
         analyzer = Mock()
-        self.engine._analyzer = ("tr", analyzer)
-        for text, lemma, expected in (("okuyorlar", "oku", "okumak"), ("geldik", "gel", "gelmek"),
-                                     ("dinliyor", "dinle", "dinlemek")):
+        self.engine._turkish_analyzer = analyzer
+        for text, expected in (("okuyorlar", "okumak"), ("geldik", "gelmek"), ("dinliyor", "dinlemek")):
             with self.subTest(text=text):
-                analyzer.analyze.return_value = (Token(0, len(text), lemma, "VERB"),)
+                analyzer.candidates.return_value = (TrAnalysis(expected, "VERB"),)
                 result = self.engine.search(text, source="tr", morphology=True)
                 self.assertEqual([entry.term for entry in result.entries], [expected])
-        analyzer.analyze.return_value = (Token(0, 8, "kitap", "NOUN"),)
+        analyzer.candidates.return_value = (TrAnalysis("kitap", "NOUN"),)
         self.assertEqual(self.engine.search("kitaplar", source="tr", morphology=True).entries[0].term, "kitap")
 
     def test_missing_models_are_retryable_after_refresh_without_download(self):
-        self.pack("tr", [("kitap", ["book"], "")])
+        self.pack("de", [("Buch", ["book"], "")])
         with patch("meikipop.language.stanza_analyzer.default_model_dir", return_value=self.root), \
                 patch("meikipop.language.stanza_analyzer.StanzaAnalyzer") as factory:
             with self.assertRaisesRegex(RuntimeError, "Base-form model unavailable"):
-                self.engine.search("kitaplarımdan", source="tr", morphology=True)
+                self.engine.search("Bücher", source="de", morphology=True)
             factory.assert_not_called()
-            self.assertTrue(self.engine.search("kitap", source="tr", morphology=True).entries)
+            self.assertTrue(self.engine.search("Buch", source="de", morphology=True).entries)
             (self.root / "resources.json").write_text("{}")
-            factory.return_value.analyze.return_value = (Token(0, 13, "kitap"),)
+            factory.return_value.analyze.return_value = (Token(0, 6, "Buch"),)
             self.engine.refresh()
-            self.assertTrue(self.engine.search("kitaplarımdan", source="tr", morphology=True).entries)
+            self.assertTrue(self.engine.search("Bücher", source="de", morphology=True).entries)
 
     def test_shared_stanza_setup_keeps_downloads_explicit(self):
         stanza = SimpleNamespace(__version__="1.14.0", download=Mock(), Pipeline=Mock())

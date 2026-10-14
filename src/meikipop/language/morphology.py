@@ -4,7 +4,6 @@
 def model_available(language):
     if language == "tr":
         from .turkish_analyzer import available
-        if available():
-            return True
+        return available()
     from .stanza_analyzer import model_available as stanza_available
     return stanza_available(language)

@@ -2187,14 +2187,13 @@ class DictionaryManagerTests(unittest.TestCase):
                 patch("meikipop.language.stanza_analyzer.model_status", return_value="Installed") as status:
             self.dialog.sync_profile("tr")
             resources = self.dialog.resources
-            self.assertEqual(resources.base_status.text(), "Word forms: Zeyrek + Stanza")
+            self.assertEqual(resources.base_status.text(), "Word forms: Zeyrek")
             self.assertFalse(resources.base_status.isHidden())
             self.assertTrue(resources.base_install.isHidden())
             status.return_value = "Model needed"
             resources.refresh()
             self.assertEqual(resources.base_status.text(), "Word forms: Zeyrek")
-            self.assertEqual(resources.base_install.text(), "Download Stanza fallback")
-            self.assertFalse(resources.base_install.isHidden())
+            self.assertTrue(resources.base_install.isHidden())
             self.dialog.sync_profile("ja")
             self.assertTrue(resources.base_status.isHidden())
 

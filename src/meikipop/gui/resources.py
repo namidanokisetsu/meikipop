@@ -142,16 +142,16 @@ class ResourcesPanel(QWidget):
         self.ocr_install.setEnabled(downloadable and not busy)
         from meikipop.language.stanza_analyzer import model_status
         from meikipop.language.support import STANZA_LANGUAGES
-        supported = code in STANZA_LANGUAGES and code != "ja"
+        supported = code in STANZA_LANGUAGES and code not in {"ja", "tr"}
         ready = supported and model_status(code) == "Installed"
         from meikipop.language.turkish_analyzer import available
         turkish = code == "tr" and available()
         engines = [name for name, installed in (("Zeyrek", turkish), ("Stanza", ready)) if installed]
         self.base_status.setText("Word forms: " + " + ".join(engines))
         self.base_status.setVisible(bool(engines))
-        self.base_status.setToolTip("Offline Turkish morphology; Stanza is used after a miss" if turkish else
+        self.base_status.setToolTip("Offline Turkish morphology" if turkish else
                                    "Offline base-form lookup")
-        self.base_install.setText("Download Stanza fallback" if turkish else "Download word-form support")
+        self.base_install.setText("Download word-form support")
         self.base_install.setVisible(supported and not ready)
         self.dictionary_section.setVisible(bool(self.missing_dictionaries) or supported or turkish)
         self.base_install.setEnabled(not busy)

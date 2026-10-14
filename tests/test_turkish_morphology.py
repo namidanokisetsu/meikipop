@@ -119,7 +119,7 @@ class TurkishLookupTests(unittest.TestCase):
         self.analyzer.candidates.assert_called_once_with(line, start, len(line))
         self.assertEqual(result.text, 'pervanelikte')
 
-    def test_stanza_fallback_is_used_only_when_installed_and_candidates_miss(self):
+    def test_missing_words_never_load_stanza_even_when_installed(self):
         stanza = Mock()
         stanza.analyze.return_value = (Token(0, 12, 'mestanelik', 'NOUN'),)
         self.engine._analyzer = ('tr', stanza)
@@ -127,8 +127,24 @@ class TurkishLookupTests(unittest.TestCase):
         stanza.analyze.assert_not_called()
         self.stanza_status.return_value = 'Installed'
         self.engine.refresh()
-        self.assertEqual(self.search('mestanelikte').entries[0].term, 'mestanelik')
-        stanza.analyze.assert_called_once_with('mestanelikte')
+        self.assertEqual(self.search('mestanelikte').entries, ())
+        stanza.analyze.assert_not_called()
+        self.stanza_status.assert_not_called()
+
+    def test_analyzer_failure_does_not_start_a_second_engine(self):
+        self.stanza_status.return_value = 'Installed'
+        self.analyzer.candidates.side_effect = RuntimeError('fixture failure')
+        with patch('meikipop.language.stanza_analyzer.StanzaAnalyzer') as stanza:
+            with self.assertRaisesRegex(RuntimeError, 'fixture failure'):
+                self.search('mestanelikte')
+            stanza.assert_not_called()
+
+    def test_turkish_readiness_does_not_depend_on_old_stanza_models(self):
+        from meikipop.language.morphology import model_available
+        with patch('meikipop.language.turkish_analyzer.available', return_value=False):
+            self.assertFalse(model_available('tr'))
+        self.assertTrue(model_available('tr'))
+        self.stanza_status.assert_not_called()
 
     def test_successful_morphology_does_not_call_stanza(self):
         self.stanza_status.return_value = 'Installed'
