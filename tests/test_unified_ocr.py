@@ -484,6 +484,16 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         capture.assert_not_called()
         self.assertFalse(self.controller.session.scanning())
 
+    def test_macos_hidden_search_with_stale_focus_allows_hover_scan(self):
+        self.enable_hover()
+        self.window._peek = False
+        with patch("meikipop.gui.unified_ocr.sys.platform", "darwin"), \
+                patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(QApplication, "activeWindow", return_value=self.window), \
+                patch.object(self.controller, "_request_capture") as capture:
+            self.controller.scan()
+        capture.assert_called_once()
+
     def test_hover_can_run_with_all_scan_shortcuts_disabled(self):
         self.enable_hover()
         self.controller.input = SimpleNamespace(activation=Mock(), pin_ready=threading.Event(),

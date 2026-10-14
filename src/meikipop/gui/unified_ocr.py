@@ -727,7 +727,7 @@ class UnifiedOCR(QObject):
             return
         if QApplication.activeModalWidget() or QApplication.activePopupWidget():
             return
-        if QApplication.activeWindow() is self.window and not self.window._peek:
+        if QApplication.activeWindow() is self.window and self.window.isVisible() and not self.window._peek:
             if not self.holding:
                 return
             # An explicit scan outside Search hands focus back to the source app.
