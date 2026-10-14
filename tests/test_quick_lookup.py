@@ -2054,6 +2054,7 @@ class DictionaryManagerTests(unittest.TestCase):
             self.assertEqual(provider.currentData(), "paddle")
             self.assertTrue(provider.model().item(provider.findData("paddle")).isEnabled())
 
+    @patch("meikipop.gui.dictionary_manager.sys.platform", "win32")
     def test_unsupported_ocr_profile_keeps_dictionary_and_saved_provider(self):
         self.settings.setValue("profiles/gem-pro/ocr_provider", "screenai")
         self.dialog.sync_profile("gem-pro")
@@ -2071,6 +2072,7 @@ class DictionaryManagerTests(unittest.TestCase):
         self.assertTrue(provider.model().item(provider.findData("screenai")).isEnabled())
         self.assertFalse(provider.model().item(provider.findData("paddle")).isEnabled())
 
+    @patch("meikipop.gui.dictionary_manager.sys.platform", "win32")
     def test_mandarin_ocr_alias_uses_supported_provider(self):
         self.dialog.sync_profile("cmn")
         provider = self.dialog.other_ocr_provider
