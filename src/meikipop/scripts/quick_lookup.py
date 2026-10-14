@@ -91,6 +91,10 @@ def main(argv=None):
                 require_extra("ocr-core")
             import stanza
             import torch
+            from meikipop.language.turkish_analyzer import TurkishAnalyzer
+            turkish = TurkishAnalyzer()
+            if not any(r.lemma == "pervane" for r in turkish.candidates("pervanelikte", 0, 12)):
+                raise RuntimeError("Turkish morphology runtime is incomplete.")
         if sys.platform == "darwin":
             import ssl
             import Vision

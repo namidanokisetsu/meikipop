@@ -17,6 +17,9 @@ class MorphologyTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.engine = SearchEngine(self.root / "library")
+        self.turkish_available = patch("meikipop.language.turkish_analyzer.available", return_value=False)
+        self.turkish_available.start()
+        self.addCleanup(self.turkish_available.stop)
 
     def tearDown(self):
         self.engine.close()

@@ -16,6 +16,10 @@ BUILD_VERSION = _get_build_version()
 model_data, model_binaries, model_imports = collect_all('stanza')
 model_data += copy_metadata('stanza', recursive=True)
 model_data += copy_metadata('meikipop')
+data, binaries, imports = collect_all('zeyrek')
+model_data += data + copy_metadata('zeyrek', recursive=True)
+model_binaries += binaries
+model_imports += imports
 
 a = Analysis(
     ['src/meikipop/scripts/quick_lookup.py'],
@@ -26,6 +30,7 @@ a = Analysis(
         ('src/meikipop/resources/icon.inactive.ico', 'meikipop/resources'),
         ('src/meikipop/scripts/deconjugator.json', 'meikipop/scripts'),
         ('src/meikipop/resources/turkish/*.json', 'meikipop/resources/turkish'),
+        ('src/meikipop/resources/licenses/*.txt', 'meikipop/resources/licenses'),
     ],
     hiddenimports=model_imports + ['PyQt6.QtTextToSpeech', 'Vision', 'Foundation', 'Quartz', 'AppKit', 'pynput.keyboard._darwin', 'pynput.mouse._darwin'],
     hookspath=[],

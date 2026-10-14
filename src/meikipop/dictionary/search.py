@@ -33,11 +33,13 @@ class SearchEngine:
         self.cache = OrderedDict()
         self.deconjugator = None
         self._analyzer = None
+        self._turkish_analyzer = None
         self._analysis_errors = {}
 
     def close(self):
         self.library.close()
         self._analyzer = None
+        self._turkish_analyzer = None
 
     def refresh(self):
         self.library.refresh()
@@ -182,6 +184,20 @@ class SearchEngine:
     def _lemma_lookup(self, text, language, context):
         if not self.library._active(language):
             return ()
+        if language == "tr":
+            from meikipop.language.turkish_analyzer import available
+            from meikipop.language.stanza_analyzer import model_status
+            if available():
+                try:
+                    entries = self._turkish_lookup(text, context)
+                except Exception:
+                    if model_status("tr") != "Installed":
+                        raise
+                    import logging
+                    logging.getLogger(__name__).exception("Turkish morphology failed; trying Stanza")
+                    entries = ()
+                if entries or model_status("tr") != "Installed":
+                    return entries
         if language in self._analysis_errors:
             raise RuntimeError(self._analysis_errors[language])
         try:
@@ -218,6 +234,24 @@ class SearchEngine:
             entries = self.library.lookup(original_lemma, language, tolerant=False)
         return tuple(replace(entry, route="lemma", inflection=("lemma",))
                      for entry in entries)
+
+    def _turkish_lookup(self, text, context):
+        from meikipop.language.turkish_analyzer import TurkishAnalyzer
+        if self._turkish_analyzer is None:
+            self._turkish_analyzer = TurkishAnalyzer()
+        original, start, end = context or (text, 0, len(text))
+        if original[start:end] != text:
+            return ()
+        entries, seen = {}, set()
+        for reading in self._turkish_analyzer.candidates(original, start, end):
+            if reading.pos1 == "X" or reading.lemma in seen:
+                continue
+            seen.add(reading.lemma)
+            found = self.library.lookup(reading.lemma, "tr", tolerant=False)
+            direct = tuple(entry for entry in found if entry.route == "exact")
+            for entry in direct or found:
+                entries.setdefault(entry.id, replace(entry, route="morphology", inflection=("base form",)))
+        return tuple(entries.values())[:60]
 
     def _persian_lookup(self, text):
         unified = text.translate(str.maketrans("كي", "کی"))

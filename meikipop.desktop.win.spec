@@ -7,13 +7,13 @@ datas = [(str(root / "src/meikipop/resources"), "meikipop/resources"),
          (str(root / "src/meikipop/scripts/deconjugator.json"), "meikipop/scripts"),
          (str(root / "LICENSE"), "licenses/meikipop")]
 binaries, hiddenimports = [], ["PyQt6.QtTextToSpeech", "pynput.keyboard._win32", "pynput.mouse._win32"]
-for package in ("stanza", "paddle", "paddleocr", "paddlex", "imagesize", "mss", "meikiocr"):
+for package in ("stanza", "zeyrek", "paddle", "paddleocr", "paddlex", "imagesize", "mss", "meikiocr"):
     data, binary, hidden = collect_all(package)
     datas += data
     binaries += binary
     hiddenimports += hidden
 # PaddleX checks OCR extras through distribution metadata, including in bundles.
-for distribution in ("meikipop", "stanza", "torch", "paddlepaddle", "paddleocr", "paddlex",
+for distribution in ("meikipop", "stanza", "zeyrek", "torch", "paddlepaddle", "paddleocr", "paddlex",
                      "imagesize", "opencv-contrib-python", "pyclipper", "pypdfium2", "python-bidi", "shapely"):
     datas += copy_metadata(distribution, recursive=True)
 

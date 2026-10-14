@@ -1,0 +1,142 @@
+from collections import OrderedDict
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import Mock, patch
+import zipfile
+
+from meikipop.dictionary.library import import_yomitan
+from meikipop.dictionary.search import SearchEngine
+from meikipop.language.analyzer import Token
+from meikipop.language.turkish_analyzer import TrAnalysis, TurkishAnalyzer
+
+
+class TurkishCandidateTests(unittest.TestCase):
+    def setUp(self):
+        self.analyzer = TurkishAnalyzer.__new__(TurkishAnalyzer)
+        self.analyzer.engine = Mock()
+        self.analyzer._words = OrderedDict()
+        self.readings = {}
+        self.analyzer.engine.analyse.side_effect = lambda word: self.readings.get(word, ())
+
+    def candidates(self, text, word):
+        start = text.index(word)
+        return self.analyzer.candidates(text, start, start + len(word))
+
+    def test_alternatives_and_source_spans_are_preserved(self):
+        self.readings['Kırkların'] = (TrAnalysis('kırklar', 'NOUN'), TrAnalysis('kırk', 'NUM'))
+        self.assertEqual(self.candidates('Kırkların ceminde', 'Kırkların'), self.readings['Kırkların'])
+        self.assertEqual(self.candidates('Kırkların ceminde', 'Kırk'), ())
+        self.assertEqual(self.candidates('Kırkların ceminde', 'Kırkların ceminde'), ())
+        self.candidates('Kırkların ceminde', 'Kırkların')
+        self.assertEqual(self.analyzer.engine.analyse.call_count, 2)
+
+    def test_proper_apostrophes_do_not_require_a_lexicon_entry(self):
+        for word in ["İstanbul'da", 'İstanbul’da', 'İstanbulʼda']:
+            with self.subTest(word=word):
+                self.assertEqual(self.candidates(word, word), (TrAnalysis('İstanbul', 'PROPN', 'Prop'),))
+        self.analyzer.engine.analyse.assert_not_called()
+
+    def test_name_context_prefers_name_without_discarding_other_readings(self):
+        common, name = TrAnalysis('sel', 'NOUN'), TrAnalysis('Selin', 'PROPN', 'Prop')
+        self.readings['Selin'] = (common, name)
+        self.assertEqual(self.candidates('Merhaba Selin', 'Selin'), (name, common))
+        self.assertEqual(self.candidates('Selin nerede?', 'Selin'), (common, name))
+
+    def test_imperatives_and_aorist_requests_use_context(self):
+        meat, imperative = TrAnalysis('et', 'NOUN'), TrAnalysis('etmek', 'VERB', imperative=True)
+        self.readings['et'] = (meat, imperative)
+        self.assertEqual(self.candidates('Yardım et!', 'et'), (imperative, meat))
+        self.readings['bir'] = (TrAnalysis('bir', 'DET'),)
+        self.assertEqual(self.candidates('bir et!', 'et'), (meat, imperative))
+        noun, verb = TrAnalysis('bekler', 'NOUN'), TrAnalysis('beklemek', 'VERB', aorist=True)
+        self.readings.update(bekler=(noun, verb), misin=(TrAnalysis('mi', 'PART'),))
+        self.assertEqual(self.candidates('Beni bekler misin?', 'bekler'), (verb, noun))
+
+    def test_unknown_names_and_oversized_words_do_not_get_invented_roots(self):
+        self.assertEqual(self.candidates('mestanelikte', 'mestanelikte'), ())
+        word = 'a' * 65
+        self.assertEqual(self.candidates(word, word), ())
+        self.analyzer.engine.analyse.assert_called_once_with('mestanelikte')
+
+    def test_imports_and_readiness_do_not_load_nlp(self):
+        check = subprocess.run([sys.executable, '-c',
+            "import sys; from meikipop.language.morphology import model_available; "
+            "model_available('tr'); model_available('ja'); "
+            "assert not {'stanza', 'torch', 'zeyrek', 'nltk'} & sys.modules.keys()"], capture_output=True, text=True)
+        self.assertEqual(check.returncode, 0, check.stderr)
+
+
+class TurkishLookupTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        archive = root / 'tr.zip'
+        rows = [(word, [word]) for word in ['pervane', 'divane', 'kırk', 'kırklar', 'mestanelik', 'Sıtkı', 'sıdk', 'gelmek']]
+        rows += [('kırk', [['kırkmak', ['imperative']]]), ('kırkmak', ['shear'])]
+        with zipfile.ZipFile(archive, 'w') as bundle:
+            bundle.writestr('index.json', json.dumps(dict(title='fixture', format=3, sourceLanguage='tr')))
+            bundle.writestr('term_bank_1.json', json.dumps([[word, '', '', '', 0, definitions, -1, ''] for word, definitions in rows]))
+        import_yomitan(archive, root / 'library')
+        self.engine = SearchEngine(root / 'library')
+        self.addCleanup(self.engine.close)
+        self.analyzer = Mock()
+        self.analyzer.candidates.return_value = ()
+        self.engine._turkish_analyzer = self.analyzer
+        ready = patch('meikipop.language.turkish_analyzer.available', return_value=True)
+        ready.start()
+        self.addCleanup(ready.stop)
+        stanza = patch('meikipop.language.stanza_analyzer.model_status', return_value='Model needed')
+        self.stanza_status = stanza.start()
+        self.addCleanup(stanza.stop)
+
+    def search(self, text, **kwargs):
+        return self.engine.search(text, source='tr', morphology=True, **kwargs)
+
+    def test_dictionary_supported_alternatives_keep_analyzer_order(self):
+        self.analyzer.candidates.return_value = (TrAnalysis('kırklar', 'NOUN'), TrAnalysis('kırk', 'NUM'))
+        result = self.search('Kırkların')
+        self.assertEqual([e.term for e in result.entries], ['kırklar', 'kırk'])
+        self.assertTrue(all(e.route == 'morphology' for e in result.entries))
+
+    def test_missing_first_lemma_does_not_hide_attested_alternative(self):
+        self.analyzer.candidates.return_value = (TrAnalysis('missing', 'NOUN'), TrAnalysis('pervane', 'NOUN'),
+                                                 TrAnalysis('pervane', 'ADJ'))
+        line = 'On dört bin yıl gezdim pervanelikte'
+        start = line.index('pervanelikte')
+        result = self.search('pervanelikte', context=(line, start, len(line)))
+        self.assertEqual([e.term for e in result.entries], ['pervane'])
+        self.analyzer.candidates.assert_called_once_with(line, start, len(line))
+        self.assertEqual(result.text, 'pervanelikte')
+
+    def test_stanza_fallback_is_used_only_when_installed_and_candidates_miss(self):
+        stanza = Mock()
+        stanza.analyze.return_value = (Token(0, 12, 'mestanelik', 'NOUN'),)
+        self.engine._analyzer = ('tr', stanza)
+        self.assertEqual(self.search('mestanelikte').entries, ())
+        stanza.analyze.assert_not_called()
+        self.stanza_status.return_value = 'Installed'
+        self.engine.refresh()
+        self.assertEqual(self.search('mestanelikte').entries[0].term, 'mestanelik')
+        stanza.analyze.assert_called_once_with('mestanelikte')
+
+    def test_successful_morphology_does_not_call_stanza(self):
+        self.stanza_status.return_value = 'Installed'
+        self.analyzer.candidates.return_value = (TrAnalysis('divane', 'ADJ'),)
+        with patch('meikipop.language.stanza_analyzer.StanzaAnalyzer') as stanza:
+            self.assertEqual(self.search('divanelikte').entries[0].term, 'divane')
+            stanza.assert_not_called()
+
+    def test_exact_entries_and_disabled_morphology_skip_analyzers(self):
+        self.assertEqual(self.search('Sıtkı').entries[0].term, 'Sıtkı')
+        self.engine.search('divanelikte', source='tr')
+        self.analyzer.candidates.assert_not_called()
+
+    def test_mismatched_context_cannot_lookup_another_word(self):
+        self.analyzer.candidates.return_value = (TrAnalysis('divane', 'ADJ'),)
+        self.assertEqual(self.search('divanelikte', context=('pervanelikte', 0, 12)).entries, ())
+        self.analyzer.candidates.assert_not_called()

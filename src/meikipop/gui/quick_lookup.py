@@ -1340,7 +1340,7 @@ class QuickLookupWindow(QDialog):
         except (ValueError, TypeError) as error:
             self._failed(self.revision, str(error))
             return
-        from meikipop.language.stanza_analyzer import model_available
+        from meikipop.language.morphology import model_available
         worker.request(self.revision, text, source,
                        self.preferred_foreign, translate=bool(translate),
                        target=target,

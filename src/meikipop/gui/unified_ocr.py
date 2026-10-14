@@ -504,7 +504,7 @@ class UnifiedOCR(QObject):
         if frozen != self.freeze_while_held:
             self.invalidate()
         self.freeze_while_held = frozen
-        from meikipop.language.stanza_analyzer import model_available
+        from meikipop.language.morphology import model_available
         morphology = model_available(profile)
         if morphology != getattr(self, "morphology", False):
             self.invalidate()
