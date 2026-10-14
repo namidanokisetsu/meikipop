@@ -12,7 +12,7 @@ from PyQt6.QtCore import QPoint, QRect, pyqtSignal
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication, QCheckBox, QLineEdit, QToolButton, QWidget
 
-from meikipop.gui.unified_ocr import PaddleScan, ScanWorker, UnifiedOCR
+from meikipop.gui.unified_ocr import HitWorker, PaddleScan, ScanWorker, UnifiedOCR
 from meikipop.ocr.context import ContextHit
 from meikipop.ocr.interface import BoundingBox, Paragraph, Word
 
@@ -260,7 +260,9 @@ class ScanWorkerTests(unittest.TestCase):
         worker, sink = self.make_worker([
             (1, image, (.5, .4), "tr", ("paddle", "")),
             (2, image, (.5, .4), "cmn", ("paddle", "")), None])
-        with patch("meikipop.dictionary.search.SearchEngine", return_value=Mock()), \
+        engine = Mock()
+        engine.search.return_value = SimpleNamespace(entries=(), matched_length=0)
+        with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
                 patch.object(worker, "provider", return_value=scanner) as factory:
             worker.run()
         factory.assert_called_once_with("tr", "paddle", "")
@@ -272,6 +274,29 @@ class ScanWorkerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "does not support"):
                 ScanWorker.provider("ar", "paddle")
         factory.assert_not_called()
+
+    def test_unspaced_matched_prefix_highlight_uses_original_source_length(self):
+        from meikipop.dictionary.search import SearchResult
+
+        for language, text, term, matched, expected_end in [
+            ("cmn", "你好猫", "你好", 2, 2),
+            ("ja", "食べています", "食べる", 6, 1),
+        ]:
+            with self.subTest(language=language):
+                sink = SimpleNamespace(emit=Mock())
+                worker = HitWorker(sink)
+                worker.queue = Queue()
+                frame = SimpleNamespace(language=language, request=SimpleNamespace(revision=1))
+                hit = ContextHit(text, text, 0, 1, language)
+                worker.queue.put((1, frame, hit, False))
+                worker.queue.put(None)
+                engine = Mock()
+                engine.search.return_value = SearchResult(text, language, "en", (SimpleNamespace(term=term),), matched_length=matched)
+                with patch("meikipop.dictionary.search.SearchEngine", return_value=engine):
+                    worker.run()
+                delivered = sink.emit.call_args.args[2][1]
+                self.assertEqual((delivered.query, delivered.text, delivered.start, delivered.end),
+                                 (text, text, 0, expected_end))
 
 
 class FakeWindow(QWidget):

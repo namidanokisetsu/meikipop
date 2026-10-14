@@ -82,6 +82,38 @@ class LibraryTests(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_unspaced_profiles_match_longest_source_prefix_and_keep_offsets(self):
+        for language in ("cmn", "zh", "yue"):
+            self.pack(language, [self.row("你", ["you"]), self.row("你好", ["hello"]),
+                                 self.row("猫", ["cat"])], language=language)
+        engine = SearchEngine(self.directory)
+        try:
+            for language in ("cmn", "zh", "yue"):
+                with self.subTest(language=language):
+                    result = engine.search("你好猫", source=language, foreign=language)
+                    self.assertEqual([entry.term for entry in result.entries], ["你好"])
+                    self.assertEqual(result.source, language)
+                    self.assertEqual(result.matched_length, 2)
+                    self.assertEqual(result.text[:result.matched_length], "你好")
+                    tail = engine.search("猫", source=language, foreign=language)
+                    self.assertEqual(tail.entries[0].term, "猫")
+                    self.assertEqual(tail.matched_length, 1)
+        finally:
+            engine.close()
+
+    def test_unspaced_prefixes_preserve_thai_marks_and_spaced_words(self):
+        self.pack("Thai", [self.row("เก่ง", ["skillful"]), self.row("ก", ["letter"])], language="th")
+        self.pack("English", [self.row("cat", ["feline"])], language="en")
+        engine = SearchEngine(self.directory)
+        try:
+            result = engine.search("เก่งมาก", source="th", foreign="th")
+            self.assertEqual(result.entries[0].term, "เก่ง")
+            self.assertEqual(result.text[:result.matched_length], "เก่ง")
+            self.assertFalse(engine.search("ก่ข", source="th", foreign="th").entries)
+            self.assertFalse(engine.search("catapult", source="en", foreign="en").entries)
+        finally:
+            engine.close()
+
     def test_form_cycles_are_bounded_and_exact_precedes_lemma(self):
         self.pack("Words", [self.row("yaz", ["summer"]), self.row("yazmak", ["write"])])
         self.pack("Forms", [self.row("yaz", [["yazmak", []]]), self.row("yazmak", [["yaz", []]])])

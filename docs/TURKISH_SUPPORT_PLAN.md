@@ -98,6 +98,7 @@ clients remain explicit compatibility entrypoints.
    remain specialized. Other installed languages use indexed entries/readings
    and imported forms. Russian additionally tries bounded е/ё variants after
    an exact/form miss, reusing indexed packs without neural analysis.
+   Unspaced profiles try bounded longest prefixes at complete source character clusters.
    Form labels retain equally short alternatives without cyclic homograph detours;
    Russian stress-only readings appear once in the headword.
    Small Unicode word/sentence policies share a registry

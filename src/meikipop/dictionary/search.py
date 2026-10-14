@@ -140,10 +140,18 @@ class SearchEngine:
                 if not entries:
                     suggestions = self.library.suggest(text, target)
             else:
-                entries = self._japanese(text) if source == "ja" else self.library.lookup(text, source)
+                if source == "ja":
+                    entries = self._japanese(text)
+                    matched_length = self._matched_length
+                else:
+                    from meikipop.language.profiles import get_profile
+                    entries = self.library.lookup(text, source)
+                    matched_length = len(text) if entries else 0
+                    if not entries and get_profile(source).word_mode == "unspaced":
+                        entries, matched_length = self._prefix_lookup(text, source)
                 if not entries and morphology and source != "ja":
                     entries = self._lemma_lookup(text, source, context)
-                matched_length = self._matched_length if source == "ja" else len(text) if entries else 0
+                    matched_length = len(text) if entries else 0
                 if not entries:
                     suggestions = self.library.suggest(text, source)
             if not entries and not suggestions:
@@ -208,6 +216,16 @@ class SearchEngine:
             entries = self.library.lookup(original_lemma, language, tolerant=False)
         return tuple(replace(entry, route="lemma", inflection=("lemma",))
                      for entry in entries)
+
+    def _prefix_lookup(self, text, language):
+        from meikipop.language.profiles import get_profile
+        # Only complete source clusters may end a prefix; Thai tone marks stay attached.
+        lengths = [end for _, end in get_profile(language).word_spans(text) if end < len(text) and end <= 25]
+        for length in reversed(lengths):
+            entries = self.library.lookup(text[:length], language, tolerant=False)
+            if entries:
+                return entries, length
+        return (), 0
 
     def _japanese(self, text):
         self._matched_length = 0

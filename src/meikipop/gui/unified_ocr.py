@@ -15,6 +15,18 @@ from meikipop.utils.lastest_queue import LatestValueQueue
 from meikipop.utils.capture import CaptureRequest, PixelFrame, RegionCapture
 from meikipop.utils.timing import mark
 from meikipop.gui.lookup_session import LookupSession
+from meikipop.language.profiles import get_profile
+
+
+def _matched_hit(hit, result, language):
+    if result.entries:
+        if language == "ja":
+            surface = result.entries[0].term
+            if hit.text.startswith(surface, hit.start):
+                return replace(hit, end=hit.start + len(surface))
+        elif get_profile(language).word_mode == "unspaced" and result.matched_length:
+            return replace(hit, end=min(len(hit.text), hit.start + result.matched_length))
+    return hit
 
 
 class PaddleScan:
@@ -172,11 +184,7 @@ class ScanWorker(threading.Thread):
                     morphology = bool(options[1]) if len(options) > 1 else False
                     analysis = {"morphology": True, "context": (hit.text, hit.start, hit.end)} if morphology else {}
                     result = engine.search(hit.query, source=language, foreign=language, **analysis)
-                    # A Japanese lookup can cover several recognized character boxes.
-                    if language == "ja" and result.entries:
-                        surface = result.entries[0].term
-                        if hit.text.startswith(surface, hit.start):
-                            hit = replace(hit, end=hit.start + len(surface))
+                    hit = _matched_hit(hit, result, language)
                     self._emit(generation, result, hit, "")
                 except Exception as error:
                     detail = str(error).strip() or type(error).__name__
@@ -265,10 +273,7 @@ class HitWorker(threading.Thread):
                     mark("hit_lookup_begin", frame.request.revision)
                     options = {"morphology": True, "context": (hit.text, hit.start, hit.end)} if morphology else {}
                     result = engine.search(hit.query, source=frame.language, foreign=frame.language, **options)
-                    if frame.language == "ja" and result.entries:
-                        surface = result.entries[0].term
-                        if hit.text.startswith(surface, hit.start):
-                            hit = replace(hit, end=hit.start + len(surface))
+                    hit = _matched_hit(hit, result, frame.language)
                     mark("hit_lookup_done", frame.request.revision)
                     if not self.stopped.is_set():
                         self.completed.emit(generation, result, (frame, hit), "")
