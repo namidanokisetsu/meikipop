@@ -3,13 +3,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path
 import tempfile
 import threading
+import sys
+import types
 import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QApplication, QWidget
-from meikipop.gui.first_run import FirstLanguage, LanguageSuggestion, needs_setup
+from meikipop.gui.first_run import FirstLanguage, LanguageSuggestion, complete_first_setup, needs_setup
 
 
 class FirstRunTests(unittest.TestCase):
@@ -37,6 +39,18 @@ class FirstRunTests(unittest.TestCase):
         self.assertTrue(needs_setup(self.settings))
         self.settings.setValue("profiles/ja/target", "en")
         self.assertFalse(needs_setup(self.settings))
+
+    def test_first_language_keeps_dictionary_languages_and_existing_profiles(self):
+        from meikipop.gui.quick_lookup import LANGUAGE_NAMES
+        from meikipop.language.support import DICTIONARY_LANGUAGES
+        self.settings.setValue("profiles/fil/target", "en")
+        picker = FirstLanguage(self.settings, imported=("abc",))
+        self.addCleanup(picker.deleteLater)
+        codes = {picker.language.itemData(i) for i in range(1, picker.language.count())}
+        self.assertEqual(codes, DICTIONARY_LANGUAGES | {"fil", "abc"})
+        self.assertTrue({"ja", "tr", "en", "fr", "ru", "yi"} <= codes)
+        self.assertIn("zh-hant", LANGUAGE_NAMES)
+        self.assertNotIn("zh-hant", codes)
 
     def test_selected_language_survives_window_and_settings_without_extra_profiles(self):
         from meikipop.gui.quick_lookup import QuickLookupWindow
@@ -99,6 +113,53 @@ class FirstRunTests(unittest.TestCase):
         picker.reject()
         self.assertTrue(needs_setup(self.settings))
 
+    def test_first_setup_registers_the_current_install_only_after_acceptance(self):
+        from meikipop.utils import startup
+        values = {}
+        key = Mock()
+        key.__enter__ = Mock(return_value=key)
+        key.__exit__ = Mock(return_value=False)
+        registry = types.SimpleNamespace(
+            HKEY_CURRENT_USER=object(), KEY_SET_VALUE=1, REG_SZ=1,
+            OpenKey=Mock(side_effect=FileNotFoundError), CreateKeyEx=Mock(return_value=key),
+            SetValueEx=lambda _key, name, _reserved, _kind, value: values.__setitem__(name, value))
+        picker = FirstLanguage(self.settings)
+        self.addCleanup(picker.deleteLater)
+        with patch.object(startup.sys, "platform", "win32"), \
+                patch.object(startup.sys, "frozen", True, create=True), \
+                patch.dict(sys.modules, {"winreg": registry}):
+            picker.reject()
+            self.assertFalse(values)
+            self.assertFalse(self.settings.contains("start_with_windows"))
+            picker.language.setCurrentIndex(picker.language.findData("tr"))
+            picker.accept()
+            self.assertFalse(values)
+            complete_first_setup(self.settings)
+            self.assertEqual(values, {startup.VALUE_NAME: f'"{Path(sys.executable).resolve()}"'})
+            self.assertTrue(self.settings.value("start_with_windows", False, bool))
+
+    def test_first_setup_preserves_saved_startup_choice_and_existing_registration(self):
+        with patch("sys.platform", "win32"), \
+                patch("meikipop.utils.startup.is_startup_enabled", return_value=True) as enabled, \
+                patch("meikipop.utils.startup.set_startup_enabled") as register:
+            self.settings.setValue("start_with_windows", False)
+            complete_first_setup(self.settings)
+            enabled.assert_not_called()
+            register.assert_not_called()
+            self.assertFalse(self.settings.value("start_with_windows", True, bool))
+            self.settings.remove("start_with_windows")
+            complete_first_setup(self.settings)
+            register.assert_not_called()
+            self.assertTrue(self.settings.value("start_with_windows", False, bool))
+
+    def test_failed_startup_registration_keeps_setup_usable_and_the_choice_unset(self):
+        with patch("sys.platform", "win32"), \
+                patch("meikipop.utils.startup.is_startup_enabled", return_value=False), \
+                patch("meikipop.utils.startup.set_startup_enabled", side_effect=OSError("denied")), \
+                self.assertLogs("meikipop.gui.first_run", level="ERROR"):
+            complete_first_setup(self.settings)
+        self.assertFalse(self.settings.contains("start_with_windows"))
+
     def test_suggestion_is_shown_once_per_profile_even_after_later(self):
         from meikipop.gui.first_run import offer_resources
         first = offer_resources(self.window, "ja")
@@ -139,7 +200,8 @@ class FirstRunTests(unittest.TestCase):
         japanese = language_plan("ja", platform="win32")
         self.assertEqual([task.kind for task in japanese], ["dictionary"] * 4 + ["ocr", "translation"])
         self.assertEqual(japanese[-1].value, "lightweight")
-        turkish = language_plan("tr", platform="darwin")
+        with patch("meikipop.ocr.macos_vision.supported_languages", return_value={"tr"}):
+            turkish = language_plan("tr", platform="darwin")
         self.assertEqual([task.kind for task in turkish], ["dictionary", "morphology", "translation"])
 
     def test_cancelled_language_setup_does_not_start_downloads(self):

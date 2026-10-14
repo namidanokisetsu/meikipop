@@ -120,13 +120,15 @@ def main(argv=None):
     if not instance.start(args.text, background):
         return 0
     app.aboutToQuit.connect(instance.shutdown)
-    from meikipop.gui.first_run import FirstLanguage, needs_setup, offer_resources
+    from meikipop.gui.first_run import FirstLanguage, complete_first_setup, needs_setup, offer_resources
     settings = QSettings("Meikipop", "QuickLookup")
     settings.setFallbacksEnabled(False)
     fresh_install = needs_setup(settings)
     if (fresh_install or args.setup) and FirstLanguage(settings).exec() != 1:
         instance.shutdown()
         return 0
+    if fresh_install:
+        complete_first_setup(settings)
     first_run = args.setup or fresh_install
     window = QuickLookupWindow(args.library, settings=settings)
     def open_requested(text=""):
@@ -193,7 +195,7 @@ def main(argv=None):
     if binding == "default":
         binding = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
     try:
-        window.restore_shortcut(window.settings.value("hotkey", "") if first_run and binding is None else binding)
+        window.restore_shortcut(binding)
     except (ValueError, OSError, RuntimeError) as error:
         window.show_message(str(error))
     if first_run:

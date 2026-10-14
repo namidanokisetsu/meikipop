@@ -9,20 +9,37 @@ def needs_setup(settings):
     return not configured_profiles(settings)
 
 
+def complete_first_setup(settings):
+    import sys
+    if sys.platform != "win32" or settings.contains("start_with_windows"):
+        return
+    from meikipop.utils.startup import is_startup_enabled, set_startup_enabled
+    try:
+        if not is_startup_enabled():
+            set_startup_enabled(True)
+    except OSError:
+        import logging
+        logging.getLogger(__name__).exception("Could not enable Windows startup")
+        return
+    settings.setValue("start_with_windows", True)
+    settings.sync()
+
+
 class FirstLanguage(QDialog):
-    def __init__(self, settings):
+    def __init__(self, settings, imported=()):
         super().__init__()
-        from meikipop.gui.quick_lookup import LANGUAGE_NAMES
-        from meikipop.language.support import AVAILABLE_LANGUAGES
+        from meikipop.gui.quick_lookup import language_name
+        from meikipop.language.profiles import configured_profiles
+        from meikipop.language.support import profile_languages
         self.settings = settings
         self.setWindowTitle("Meikipop Setup")
         self.setMinimumWidth(360)
         layout = QVBoxLayout(self)
         self.language = QComboBox()
         self.language.addItem("Choose a language…", None)
-        for code, name in sorted(LANGUAGE_NAMES.items(), key=lambda item: item[1].casefold()):
-            if code in AVAILABLE_LANGUAGES:
-                self.language.addItem(name, code)
+        for code in sorted(profile_languages(imported, configured_profiles(settings)),
+                           key=lambda code: language_name(code).casefold()):
+            self.language.addItem(language_name(code), code)
         form = QFormLayout()
         form.addRow("Lookup language", self.language)
         layout.addLayout(form)
