@@ -41,12 +41,47 @@ def upos(primary, secondary):
 
 
 @dataclass(frozen=True)
+class TrMorpheme:
+    id: str
+    surface: str
+    name: str
+    derivational: bool = False
+
+
+@dataclass(frozen=True)
 class TrAnalysis:
     lemma: str
     pos1: str
     pos2: str = ""
     imperative: bool = False
     aorist: bool = False
+    paths: tuple[tuple[TrMorpheme, ...], ...] = ()
+
+
+_LABELS = {"A1sg": "1sg", "A2sg": "2sg", "A3sg": "3sg", "A1pl": "1pl", "A2pl": "2pl",
+           "A3pl": "plural", "P1sg": "my", "P2sg": "your", "P3sg": "3sg possessive",
+           "P1pl": "our", "P2pl": "your (plural)", "P3pl": "3pl possessive",
+           "Ness": "noun derivation", "Past": "past", "Narr": "reported past", "Fut": "future",
+           "Prog1": "progressive", "Prog2": "progressive", "Pres": "present", "Cond": "conditional",
+           "Imp": "imperative", "Neces": "necessitative", "Zero": "conversion",
+           "Inf1": "infinitive", "Inf2": "verbal noun", "Inf3": "verbal noun"}
+_HIDDEN = frozenset({"Root", "Noun", "Adj", "Verb", "Pron", "Adv", "Conj", "Punc", "Postp",
+                     "Det", "Num", "Dup", "Interj", "Nom", "Pnon"})
+
+
+def grammar_labels(readings):
+    alternatives = []
+    for reading in readings:
+        for path in reading.paths:
+            labels = []
+            for step in path[1:]:
+                if step.id in _HIDDEN or step.id == "A3sg" and not step.surface:
+                    continue
+                label = _LABELS.get(step.id, re.sub(r"(?<=[a-z])(?=[A-Z])", " ", step.name).lower())
+                labels.append(f"-{step.surface} ({label})" if step.surface else label)
+            if labels:
+                alternatives.append(" · ".join(labels))
+    return (" OR ".join(dict.fromkeys(alternatives)),) if alternatives else ("base form",)
 
 
 def _starts_sentence(surfaces, index):
@@ -88,13 +123,15 @@ class TurkishAnalyzer:
         if not surface[0].isalpha() or len(surface) > MAX_WORD_LENGTH:
             return ()
         head = _APOSTROPHE.split(surface, maxsplit=1)[0]
-        if head != surface and head[0].isupper():
-            return (TrAnalysis(head, "PROPN", "Prop"),)
         if surface not in self._words:
             if self.engine is None:
                 from ._zeyrek import TurkishAnalyzer as Engine
                 self.engine = Engine()
-            self._words[surface] = tuple(self.engine.analyse(unicodedata.normalize("NFC", surface)))
+            readings = tuple(self.engine.analyse(unicodedata.normalize("NFC", surface)))
+            if head != surface and head[0].isupper():
+                readings = tuple(r for r in readings if r.pos1 == "PROPN" and
+                                 tr_casefold(r.lemma) == tr_casefold(head)) or (TrAnalysis(head, "PROPN", "Prop"),)
+            self._words[surface] = readings
         self._words.move_to_end(surface)
         if len(self._words) > 4096:
             self._words.popitem(last=False)

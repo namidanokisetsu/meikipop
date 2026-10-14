@@ -61,6 +61,7 @@ class Entry:
     frequencies: tuple = ()
     inflection: tuple = ()
     pitches: tuple = ()
+    morphology: tuple = ()
 
     def glosses(self):
         from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter

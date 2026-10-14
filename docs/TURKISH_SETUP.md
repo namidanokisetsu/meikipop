@@ -24,6 +24,8 @@ missing. No model download is needed for Zeyrek. Other languages offer word-form
 support when their optional model is missing; OCR downloads
 are under Lookup → Screen recognition. Downloads stay explicit, and installed translation/OCR models are shared
 across languages. Base-form models are used automatically once installed.
+Turkish morphology results retain suffix and derivation labels under the existing
+Preview/Pinned grammar controls; long alternatives expand when clicked.
 Appearance groups theme and typography under General, with separate Preview and Pinned
 controls. Settings save immediately. The language selector scopes preferences;
 the text lookup shortcut is shared by all languages.

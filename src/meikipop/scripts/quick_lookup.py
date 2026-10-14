@@ -93,7 +93,8 @@ def main(argv=None):
             import torch
             from meikipop.language.turkish_analyzer import TurkishAnalyzer
             turkish = TurkishAnalyzer()
-            if not any(r.lemma == "pervane" for r in turkish.candidates("pervanelikte", 0, 12)):
+            if not any(r.lemma == "pervane" and any(m.id == "Loc" for p in r.paths for m in p)
+                       for r in turkish.candidates("pervanelikte", 0, 12)):
                 raise RuntimeError("Turkish morphology runtime is incomplete.")
         if sys.platform == "darwin":
             import ssl

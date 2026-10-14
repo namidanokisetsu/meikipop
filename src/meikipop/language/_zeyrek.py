@@ -3,7 +3,7 @@
 Source: 0xzerolight/anki_miner, 808b5208bf93d919b3f18ea3aba66db5fd7fd0ea.
 See resources/licenses/turkish-analysis.txt and zeyrek.txt.
 Fixes: isolated phonetic sets, deterministic root attributes, suffix-internal harmony.
-Loaded only on the Turkish lookup worker. Adapted imports and documentation.
+Loaded only on the Turkish lookup worker. Adapted imports; retains morpheme paths.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from zeyrek.lexicon import RootLexicon
 from zeyrek.morphotactics import SurfaceTransition
 from zeyrek.rulebasedanalyzer import RuleBasedAnalyzer
 
-from .turkish_analyzer import TrAnalysis, front_spelling, tr_casefold, upos
+from .turkish_analyzer import TrAnalysis, TrMorpheme, front_spelling, tr_casefold, upos
 
 #: Readings of a lowercased word with no capital evidence: ``bize`` → ``Bize``, ``mu`` → ``Mu``.
 MARKED_SECONDARY_POS = frozenset({"Prop", "Abbrv"})
@@ -205,7 +205,10 @@ class TurkishAnalyzer:
             key = (lemma if pos1 == "PROPN" else tr_casefold(lemma), pos1, secondary)
             morphemes = {morpheme.id_ for morpheme, _surface in reading.morphemes} if pos1 == "VERB" else set()
             seen = out.get(key, TrAnalysis(*key))
+            path = tuple(TrMorpheme(m.id_, surface, m.name, m.derivational)
+                         for m, surface in reading.morphemes)
             out[key] = TrAnalysis(
-                *key, imperative=seen.imperative or "Imp" in morphemes, aorist=seen.aorist or "Aor" in morphemes
+                *key, imperative=seen.imperative or "Imp" in morphemes, aorist=seen.aorist or "Aor" in morphemes,
+                paths=seen.paths if path in seen.paths else (*seen.paths, path),
             )
         return list(out.values())

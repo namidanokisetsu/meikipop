@@ -11,7 +11,7 @@ import zipfile
 from meikipop.dictionary.library import import_yomitan
 from meikipop.dictionary.search import SearchEngine
 from meikipop.language.analyzer import Token
-from meikipop.language.turkish_analyzer import TrAnalysis, TurkishAnalyzer
+from meikipop.language.turkish_analyzer import TrAnalysis, TrMorpheme, TurkishAnalyzer, grammar_labels
 
 
 class TurkishCandidateTests(unittest.TestCase):
@@ -38,7 +38,13 @@ class TurkishCandidateTests(unittest.TestCase):
         for word in ["İstanbul'da", 'İstanbul’da', 'İstanbulʼda']:
             with self.subTest(word=word):
                 self.assertEqual(self.candidates(word, word), (TrAnalysis('İstanbul', 'PROPN', 'Prop'),))
-        self.analyzer.engine.analyse.assert_not_called()
+        self.assertEqual(self.analyzer.engine.analyse.call_count, 3)
+
+    def test_proper_names_retain_available_suffix_paths(self):
+        name = TrAnalysis('İstanbul', 'PROPN', 'Prop', paths=((TrMorpheme('Noun', 'istanbul', 'Noun'),
+                          TrMorpheme('Loc', 'da', 'Locative')),))
+        self.readings["İstanbul'da"] = (name, TrAnalysis('istanbul', 'NOUN'))
+        self.assertEqual(self.candidates("İstanbul'da", "İstanbul'da"), (name,))
 
     def test_name_context_prefers_name_without_discarding_other_readings(self):
         common, name = TrAnalysis('sel', 'NOUN'), TrAnalysis('Selin', 'PROPN', 'Prop')
@@ -140,3 +146,30 @@ class TurkishLookupTests(unittest.TestCase):
         self.analyzer.candidates.return_value = (TrAnalysis('divane', 'ADJ'),)
         self.assertEqual(self.search('divanelikte', context=('pervanelikte', 0, 12)).entries, ())
         self.analyzer.candidates.assert_not_called()
+
+    def test_popup_retains_derivation_and_case_from_every_reading(self):
+        path = (TrMorpheme('Adj', 'pervane', 'Adjective'), TrMorpheme('Ness', 'lik', 'Ness', True),
+                TrMorpheme('Noun', '', 'Noun'), TrMorpheme('A3sg', '', 'ThirdPersonSingular'),
+                TrMorpheme('Pnon', '', 'NoPosession'), TrMorpheme('Loc', 'te', 'Locative'))
+        readings = (TrAnalysis('pervane', 'ADJ', paths=(path,)),
+                    TrAnalysis('pervane', 'NOUN', paths=(path,)))
+        self.analyzer.candidates.return_value = readings
+        result = self.search('pervanelikte')
+        entry = result.entries[0]
+        self.assertEqual(entry.morphology, readings)
+        self.assertEqual(entry.inflection, ('-lik (noun derivation) · -te (locative)',))
+        from meikipop.gui.quick_lookup import render_result
+        html = render_result(result)
+        self.assertIn('-lik (noun derivation)', html)
+        self.assertIn('-te (locative)', html)
+        self.assertNotIn('-te (locative)', render_result(result, grammar=False))
+
+    def test_ambiguous_paths_stay_alternatives_instead_of_a_combined_claim(self):
+        root = TrMorpheme('Noun', 'pervane', 'Noun')
+        paths = ((root, TrMorpheme('P2sg', 'n', 'SecondPersonSingularPossessive')),
+                 (root, TrMorpheme('Gen', 'nin', 'Genitive')))
+        readings = (TrAnalysis('pervane', 'NOUN', paths=paths),)
+        self.analyzer.candidates.return_value = readings
+        entry = self.search('pervanenin').entries[0]
+        self.assertEqual(entry.morphology[0].paths, paths)
+        self.assertEqual(grammar_labels(readings), ('-n (your) OR -nin (genitive)',))

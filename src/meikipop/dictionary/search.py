@@ -236,21 +236,25 @@ class SearchEngine:
                      for entry in entries)
 
     def _turkish_lookup(self, text, context):
-        from meikipop.language.turkish_analyzer import TurkishAnalyzer
+        from meikipop.language.turkish_analyzer import TurkishAnalyzer, grammar_labels
         if self._turkish_analyzer is None:
             self._turkish_analyzer = TurkishAnalyzer()
         original, start, end = context or (text, 0, len(text))
         if original[start:end] != text:
             return ()
-        entries, seen = {}, set()
+        entries, candidates = {}, {}
         for reading in self._turkish_analyzer.candidates(original, start, end):
-            if reading.pos1 == "X" or reading.lemma in seen:
-                continue
-            seen.add(reading.lemma)
-            found = self.library.lookup(reading.lemma, "tr", tolerant=False)
+            if reading.pos1 != "X":
+                candidates.setdefault(reading.lemma, []).append(reading)
+        for lemma, readings in candidates.items():
+            found = self.library.lookup(lemma, "tr", tolerant=False)
             direct = tuple(entry for entry in found if entry.route == "exact")
             for entry in direct or found:
-                entries.setdefault(entry.id, replace(entry, route="morphology", inflection=("base form",)))
+                previous = entries.get(entry.id, entry)
+                analyses = tuple(dict.fromkeys((*previous.morphology, *readings)))
+                labels = grammar_labels(analyses)
+                entries[entry.id] = replace(previous, route="morphology", morphology=analyses,
+                                            inflection=(*labels, *entry.inflection))
         return tuple(entries.values())[:60]
 
     def _persian_lookup(self, text):

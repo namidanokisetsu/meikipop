@@ -111,6 +111,9 @@ clients remain explicit compatibility entrypoints.
    Its bundled lexicon loads lazily on the lookup worker. Unlike Anki Miner's
    single card-front choice, shared lookup retains dictionary-supported alternatives
    in analyzer order, deduplicates entries and falls back to installed Stanza on a miss.
+   Each result retains full morpheme paths, including derivations and suffix surfaces.
+   Existing grammar rendering shows compact labels and keeps ambiguous paths separate;
+   long alternatives use its existing expansion control.
    Dictionary frequency packs do not select the analysis. Existing exact entries,
    imported forms and accent recovery retain precedence; source spans stay unchanged.
    Stanza is optional for Turkish; Settings shows installed engines and offers its

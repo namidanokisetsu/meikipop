@@ -4,5 +4,6 @@ Files: anki_miner/languages/tr/analyzer.py, morphology.py, tokenizer.py.
 License: GPL-3.0. The accompanying GPL-3.0.txt contains the license.
 
 Meikipop adapts the analyzer's imports and the context selection to its source spans,
-retains ranked alternatives for dictionary lookup, and bounds/caches parsing.
+retains ranked alternatives and full morpheme paths for dictionary lookup and display,
+and bounds/caches parsing.
 Zeyrek 0.1.3 parsing and suffix-generation portions retain the MIT license in zeyrek.txt.
