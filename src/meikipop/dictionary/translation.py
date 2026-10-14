@@ -37,6 +37,16 @@ LANGUAGE_NAMES = {
 # Publisher's 33 languages and five regional/minority varieties, with code aliases.
 # Other local servers may support more; dictionary support is independent.
 MANAGED_LANGUAGES = frozenset("zh cmn en fr pt es ja tr ru ar ko th it de vi ms id tl fil hi pl cs nl km my fa gu ur te mr he bn ta uk bo kk mn ug yue".split())
+TRANSLATION_ALIASES = {"cmn": "zh", "fil": "tl", "zh-hans": "zh", "zh-tw": "zh-hant", "zh-hk": "zh-hant"}
+
+
+def translation_language(code):
+    code = language_code(code)
+    return TRANSLATION_ALIASES.get(code, code)
+
+
+def managed_translation_languages():
+    return frozenset(translation_language(code) for code in MANAGED_LANGUAGES) | {"zh-hant"}
 
 
 def default_translation_path():
@@ -208,7 +218,7 @@ class LocalTranslator:
         settings = self.cache_key()
         if settings.provider == "server":
             for code in (source, target):
-                if code.split("-", 1)[0] not in MANAGED_LANGUAGES:
+                if translation_language(code) not in managed_translation_languages():
                     raise ValueError(f"Hy-MT2 does not list support for {code}. Dictionary lookup is still available.")
         if settings.provider == "server" and settings.auto_start:
             from meikipop.scripts.translation_server import request_lock

@@ -54,6 +54,10 @@ class VisionGeometryTests(unittest.TestCase):
     def test_language_matches_platform_region_and_explicit_script(self):
         self.assertEqual(macos_vision._language_id("tr", ["en-US", "tr-TR"]), "tr-TR")
         self.assertEqual(macos_vision._language_id("zh_Hant", ["zh-Hans", "zh-Hant"]), "zh-Hant")
+        self.assertEqual(macos_vision._language_id("zh-tw", ["zh-Hans", "zh-Hant"]), "zh-Hant")
+        self.assertEqual(macos_vision._language_id("cmn", ["zh-Hans", "zh-Hant"]), "zh-Hans")
+        self.assertFalse(macos_vision.supports_language("zh-Hant", ["zh-Hans"]))
+        self.assertFalse(macos_vision.supports_language("zh-tw", ["zh-Hans"]))
         with self.assertRaisesRegex(RuntimeError, "typed or selected text"):
             macos_vision._language_id("tr", ["en-US", "ja-JP"])
 
@@ -64,6 +68,10 @@ class VisionGeometryTests(unittest.TestCase):
 
 
 class VisionBridgeTests(unittest.TestCase):
+    def setUp(self):
+        macos_vision._supported_languages.cache_clear()
+        self.addCleanup(macos_vision._supported_languages.cache_clear)
+
     def bridge(self, supported=("ja-JP", "tr-TR", "en-US")):
         request = Mock()
         request.supportedRecognitionLanguagesAndReturnError_.return_value = (supported, None)
@@ -91,6 +99,26 @@ class VisionBridgeTests(unittest.TestCase):
         request.setRecognitionLanguages_.assert_called_once_with(["tr-TR"])
         handler.performRequests_error_.assert_called_once_with([request], None)
         self.assertEqual(result[0].full_text, "kitap ve kitap")
+
+    def test_supported_languages_queries_once_without_recognition(self):
+        request, handler, modules = self.bridge(("ja-JP", "en-US"))
+        with patch.object(macos_vision.sys, "platform", "darwin"), patch.dict(sys.modules, modules):
+            self.assertEqual(macos_vision.supported_languages(), ("ja-JP", "en-US"))
+            self.assertEqual(macos_vision.supported_languages(), ("ja-JP", "en-US"))
+        request.supportedRecognitionLanguagesAndReturnError_.assert_called_once_with(None)
+        handler.performRequests_error_.assert_not_called()
+        request.setRecognitionLanguages_.assert_not_called()
+
+    def test_supported_languages_on_other_platforms_imports_no_bridge(self):
+        with patch.object(macos_vision.sys, "platform", "win32"), patch.dict(sys.modules, {"Vision": None}):
+            self.assertEqual(macos_vision.supported_languages(), ())
+
+    def test_language_query_failure_reports_unavailable_resources(self):
+        request, _, modules = self.bridge()
+        request.supportedRecognitionLanguagesAndReturnError_.return_value = (None, "fixture")
+        with patch.object(macos_vision.sys, "platform", "darwin"), patch.dict(sys.modules, modules):
+            with self.assertRaisesRegex(RuntimeError, "could not list"):
+                macos_vision.supported_languages()
 
     def test_unsupported_language_fails_before_running_recognition(self):
         _, handler, modules = self.bridge(("en-US",))

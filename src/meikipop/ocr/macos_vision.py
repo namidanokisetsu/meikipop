@@ -1,6 +1,7 @@
 """Offline macOS Vision OCR with the shared popup's normalized geometry."""
 from __future__ import annotations
 
+from functools import lru_cache
 from io import BytesIO
 import re
 import sys
@@ -10,18 +11,52 @@ from PIL import Image
 from meikipop.ocr.interface import BoundingBox, Paragraph, Word
 
 
+def supported_languages() -> tuple[str, ...]:
+    """Query this Mac's accurate recognizer without starting OCR or capture."""
+    return _supported_languages() if sys.platform == "darwin" else ()
+
+
+@lru_cache(maxsize=1)
+def _supported_languages() -> tuple[str, ...]:
+    try:
+        import objc
+        import Vision
+    except ImportError as error:
+        raise RuntimeError("Apple Vision is unavailable. Reinstall Meikipop with its macOS dependencies.") from error
+    with objc.autorelease_pool():
+        request = Vision.VNRecognizeTextRequest.alloc().init()
+        request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+        languages, error = request.supportedRecognitionLanguagesAndReturnError_(None)
+        if error is not None or languages is None:
+            raise RuntimeError("macOS could not list its installed recognition languages.")
+        return tuple(str(code) for code in languages)
+
+
 def _language_id(language: str, supported) -> str:
     requested = language.replace("_", "-").lower()
+    requested = {"cmn": "zh", "zh-tw": "zh-hant", "zh-hk": "zh-hant",
+                 "zh-cn": "zh-hans", "zh-sg": "zh-hans"}.get(requested, requested)
     available = {str(code).lower(): str(code) for code in supported}
     if requested in available:
         return available[requested]
-    matches = [code for key, code in available.items() if key.split("-")[0] == requested.split("-")[0]]
+    parts = requested.split("-")
+    script = next((part for part in parts[1:] if len(part) == 4), None)
+    matches = [code for key, code in available.items()
+               if key.split("-")[0] == parts[0] and (script is None or script in key.split("-"))]
     if matches:
         return matches[0]
     raise RuntimeError(
         f"This macOS version does not support {language!r} screen recognition. "
         "Use typed or selected text lookup, or update macOS."
     )
+
+
+def supports_language(language: str, supported=None) -> bool:
+    try:
+        _language_id(language, supported_languages() if supported is None else supported)
+        return True
+    except RuntimeError:
+        return False
 
 
 def _normalized_box(rect) -> BoundingBox:
