@@ -1,4 +1,4 @@
-"""Optional animated section navigation with a persistent lexical heading."""
+"""Optional section navigation with a persistent lexical heading."""
 from bisect import bisect_left, bisect_right
 
 from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSignalBlocker, QTimer, Qt, pyqtSlot
@@ -62,8 +62,7 @@ class SectionScroller(QObject):
         self._gesture_idle.setSingleShot(True)
         self._gesture_idle.setInterval(180)
         self._gesture_idle.timeout.connect(self._reset_gesture)
-        from meikipop.utils.window_focus import reduce_motion_enabled
-        self.animation_enabled = not reduce_motion_enabled()
+        self.animation_enabled = False
         self.animation = QPropertyAnimation(browser.verticalScrollBar(), b"value", self)
         self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.finished.connect(self._animation_finished)

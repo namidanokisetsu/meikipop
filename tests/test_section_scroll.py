@@ -244,15 +244,15 @@ class SectionScrollTests(unittest.TestCase):
         self.wheel(angle=0, pixel=10000)
         self.assertEqual(self.bar.value(), second - self.browser.viewport().height())
 
-    def test_mouse_wheel_retargets_smooth_motion(self):
+    def test_mouse_wheel_scrolls_immediately_without_intermediate_animation(self):
         self.render(lines=20)
         self.scroller.set_enabled(True)
         step = self.bar.singleStep() * QApplication.wheelScrollLines()
         self.wheel()
-        self.scroller.animation.setCurrentTime(60)
-        self.assertGreater(self.bar.value(), 0)
-        self.assertLess(self.bar.value(), step)
+        self.assertEqual(self.bar.value(), step)
+        self.assertIsNone(self.scroller._target)
         self.wheel()
+        self.assertEqual(self.bar.value(), step * 2)
         self.finish_animation()
         self.assertEqual(self.bar.value(), step * 2)
 
@@ -337,7 +337,7 @@ class SectionScrollTests(unittest.TestCase):
         self.scroller.set_enabled(True)
         for _ in range(3):
             self.wheel(angle=-30)
-        self.assertEqual(self.bar.value(), 0)
+        self.assertAlmostEqual(self.bar.value(), self.bar.singleStep() * QApplication.wheelScrollLines() * .75, delta=2)
         self.wheel(angle=-30)
         self.finish_animation()
         self.assertAlmostEqual(self.bar.value(), self.bar.singleStep() * QApplication.wheelScrollLines(), delta=2)
