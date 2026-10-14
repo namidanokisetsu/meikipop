@@ -635,7 +635,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                     parts.append(f'<p class="source"><small>{label}</small></p>')
                 parts.append(supplement)
             if more and not full and not hidden and not preview:
-                parts.append(f'<p class="metadata"><a href="expand:{index}"><small>More</small></a></p>')
+                parts.append(f'<p class="metadata"><a href="expand:{index}" style="text-decoration:underline">More</a></p>')
     if result.suggestions:
         parts.append('<p>Did you mean: ' + " · ".join(
             f'<a href="suggest:{index}">{escape(str(word))}</a>'
@@ -777,6 +777,7 @@ class QuickLookupWindow(QDialog):
         self._document_revision = None
         self._render_identity = None
         self._fit_identity = None
+        self._static_disclosure = False
         self._needs_place = False
         self._context = ""
         self._peek = False
@@ -1416,24 +1417,26 @@ class QuickLookupWindow(QDialog):
         if (self._peek or self._selection_lookup) and (result.entries or result.translation) and autoplay == "lookup":
             self._autoplay()
 
-    def _render(self):
+    def _render(self, static=False):
         if self._result is not None:
+            self._static_disclosure = self._static_disclosure or static
             if self.browser.selecting:
                 self.render_timer.start(50)
                 return
+            static, self._static_disclosure = self._static_disclosure, False
             compact = self.compact_preview()
             prefix = f"profiles/{self.preferred_foreign}/"
             preview_options = dict(
                 preview_frequency=self.settings.value(prefix + "preview_frequency", True, bool),
                 preview_pitch=self.settings.value(prefix + "preview_pitch", True, bool),
-                preview_definitions=self.settings.value(prefix + "preview_definitions", 1, int))
+                preview_definitions=self.settings.value(prefix + "preview_definitions", 3, int))
             self.browser.section_scroll.set_preview(self._peek and not self.is_pinned)
             expanded = self._expanded
             if self._peek and not self.is_pinned and not compact:
                 expanded = {entry.source for entry in self._result.entries}
             show_source, source_text = self._peek, None
             if self._peek and self.is_pinned:
-                show_source = self.settings.value(f"profiles/{self.preferred_foreign}/pinned_sentence", True, bool)
+                show_source = self.settings.value(f"profiles/{self.preferred_foreign}/pinned_sentence", False, bool)
                 source_text = self._result_context or (self._result.text if self._result.translation else "")
                 if show_source and source_text:
                     width = (self.browser.viewport().width() - self.audio_actions.sizeHint().width()
@@ -1473,7 +1476,7 @@ class QuickLookupWindow(QDialog):
             mark("document_ready", self.revision)
             # Restore snap-page padding before restoring a position near the end.
             self.browser.section_scroll._refresh_header()
-            if scroll:
+            if scroll and not static:
                 block = self.browser.document().begin()
                 while block.isValid() and block.text() != block_text:
                     block = block.next()
@@ -1483,9 +1486,13 @@ class QuickLookupWindow(QDialog):
                     restored.setPosition(block.position() + position_in_block)
                     scroll = (self.browser.verticalScrollBar().value()
                               + self.browser.cursorRect(restored).top() - offset)
-                self.browser.verticalScrollBar().setValue(scroll)
+            self.browser.verticalScrollBar().setValue(scroll)
             self.browser.setToolTip("")
-            self.fit_timer.start(0)
+            if static:
+                self.fit_timer.stop()
+                self._fit_identity = (self._render_identity, self.browser.viewport().width())
+            else:
+                self.fit_timer.start(0)
 
     def _fit_preview(self):
         preview = self._peek and not self.is_pinned and self.compact_preview()
@@ -1566,12 +1573,12 @@ class QuickLookupWindow(QDialog):
             return
         if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
             self._kanji_details.symmetric_difference_update((url.path(),))
-            self._render()
+            self._render(static=True)
             return
         if url.scheme() == "details" and re.fullmatch(r"\d+:\d+:\d+", url.path()):
             key = url.path()
             self._details_expanded.symmetric_difference_update((key,))
-            self._render()
+            self._render(static=True)
             return
         try:
             index = int(url.path())
@@ -1593,7 +1600,7 @@ class QuickLookupWindow(QDialog):
                     self._collapsed.add(source)
             else:
                 self._expanded.add(source)
-            self._render()
+            self._render(static=True)
         elif url.scheme() == "suggest" and 0 <= index < len(self._result.suggestions):
             self.lookup_word(str(self._result.suggestions[index]))
 
@@ -2274,4 +2281,4 @@ def shortcut_preset():
 
 
 def audio_autoplay_mode(settings, profile):
-    return settings.value(f"profiles/{profile}/audio_autoplay_mode", "off")
+    return settings.value(f"profiles/{profile}/audio_autoplay_mode", "pin")

@@ -51,12 +51,52 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_default_preview_and_pin_preferences_preserve_full_context(self):
+        from meikipop.gui.quick_lookup import audio_autoplay_mode
+        self.settings.remove("profiles/ja/audio_autoplay_mode")
+        self.window.audio = Mock()
+        word = entry(definitions=("first", "second", "third", "fourth"))
+        self.window.show_entries((word,), "cat", peek=True)
+        self.window.set_context("Original sentence")
+        text = self.window.browser.toPlainText()
+        self.assertIn("third", text)
+        self.assertNotIn("fourth", text)
+        self.window.audio.play.assert_not_called()
+        self.window.pin.setChecked(True)
+        self.assertEqual(audio_autoplay_mode(self.settings, "ja"), "pin")
+        self.window.audio.play.assert_called_once()
+        self.assertNotIn("Original sentence", self.window.browser.toPlainText())
+        self.assertEqual(self.window._result_context, "Original sentence")
+
+    def test_more_click_keeps_window_geometry_and_scroll_position(self):
+        words = tuple(entry(source=f"Source {index}", definitions=tuple(
+            f"Meaning {index}:{sense}" for sense in range(9))) for index in range(6))
+        self.window.show_entries(words, "cat")
+        self.app.processEvents()
+        browser = self.window.browser
+        cursor = browser.document().find("More")
+        browser.verticalScrollBar().setValue(20)
+        cursor.setPosition(cursor.selectionStart() + 1)
+        point = browser.cursorRect(cursor).center()
+        self.assertEqual(browser.anchorAt(point), "expand:0")
+        self.assertTrue(cursor.charFormat().fontUnderline())
+        geometry = self.window.geometry()
+        scroll = browser.verticalScrollBar().value()
+        QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+        self.wait_until(lambda: not self.window.render_timer.isActive())
+        self.app.processEvents()
+        self.assertIn("Meaning 0:8", browser.toPlainText())
+        self.assertEqual(browser.verticalScrollBar().value(), scroll)
+        self.assertEqual(self.window.geometry(), geometry)
+        self.assertFalse(self.window.fit_timer.isActive())
+
     def test_preview_options_limit_first_dictionary_without_changing_pinned_results(self):
         from meikipop.dictionary.pitch import Pitch
         first = replace(entry(definitions=("first meaning", "second meaning", "third meaning")),
                         frequencies=(Frequency("Rank", 123, "123"),), pitches=(Pitch("Pitch", "ねこ", 1),))
         self.settings.setValue("profiles/ja/preview_frequency", False)
         self.settings.setValue("profiles/ja/preview_pitch", False)
+        self.settings.setValue("profiles/ja/preview_definitions", 1)
         self.window.show_entries((first, entry(source="Other", definitions=("other meaning",))), "猫", peek=True)
         text = self.window.browser.toPlainText()
         self.assertIn("first meaning", text)
@@ -106,6 +146,8 @@ class QuickLookupTests(unittest.TestCase):
         self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
         self.settings.setValue("profile", "ja")
         self.settings.setValue("profiles/ja/target", "en")
+        for profile in ("ja", "tr", "id"):
+            self.settings.setValue(f"profiles/{profile}/audio_autoplay_mode", "off")
         self.model_status_patch = patch("meikipop.language.stanza_analyzer.model_status", return_value="Model needed")
         self.model_status = self.model_status_patch.start()
         self.addCleanup(self.model_status_patch.stop)
@@ -629,6 +671,7 @@ class QuickLookupTests(unittest.TestCase):
                 self.window.pin.setChecked(False)
 
     def test_pinned_translate_uses_original_sentence_and_retains_copy_and_history(self):
+        self.settings.setValue("profiles/tr/pinned_sentence", True)
         self.window.set_mode("tr")
         self.window.show_entries((entry(),), "猫", source="ja", peek=True)
         sentence = "公園で猫が寝ている。"
@@ -949,12 +992,15 @@ class QuickLookupTests(unittest.TestCase):
         self.window.audio.play_text.assert_not_called()
 
     def test_ocr_translation_keeps_source_when_input_is_hidden(self):
+        self.settings.setValue("profiles/ja/pinned_sentence", True)
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.pin.setChecked(True)
         self.window._display(SearchResult("猫がいる。", "ja", "en", translation="There is a cat."))
         self.assertIn("猫がいる。", self.window.browser.toPlainText())
 
     def test_pinned_sentence_is_optional_per_profile_and_reuses_unchanged_document(self):
+        self.settings.setValue("profiles/ja/pinned_sentence", True)
+        self.settings.setValue("profiles/tr/pinned_sentence", True)
         sentence = "公園で猫が寝ている。 <&>"
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.set_context(sentence)
@@ -982,6 +1028,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertFalse(appearance.pinned_sentence.isChecked())
 
     def test_long_pinned_sentence_keeps_definitions_visible_and_full_context(self):
+        self.settings.setValue("profiles/ja/pinned_sentence", True)
         sentence = "猫 <&> 😀 " + "長い文の中に猫がいる。\n" * 80
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.set_context(sentence)
