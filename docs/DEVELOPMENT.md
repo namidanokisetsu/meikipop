@@ -1,0 +1,148 @@
+# Development
+
+See the [user guide](USER_GUIDE.md) for everyday use and
+[AGENTS.md](../AGENTS.md) for repository conventions. The shared desktop app is
+the main entrypoint; the original Japanese and Turkish clients remain available
+for compatibility.
+
+## Run from source
+
+Use Python 3.12 for the desktop dependencies. On Windows:
+
+```powershell
+py -3.12 -m venv .venv-desktop
+.\.venv-desktop\Scripts\python -m pip install -e .
+.\Start-Meikipop.cmd
+```
+
+On macOS, create `.venv`, install with `python -m pip install -e .`, and use
+[Start-Meikipop.command](../Start-Meikipop.command). Grant screen/input
+permissions to the launching app or terminal. `meikipop`, `meikipop search`
+and `meikipop-search` open the shared popup;
+`python -m meikipop.scripts.quick_lookup --no-ocr` starts dictionary search alone.
+Use Settings for explicit dictionary, OCR and model downloads.
+
+## Architecture and constraints
+
+Paths below are relative to `src/meikipop/`.
+
+| Area | Main modules | Contract |
+| --- | --- | --- |
+| Dictionary library | `dictionary/library.py`, `dictionary/search.py` | Indexed local Yomitan packs; atomic imports, explicit ordering and removal; cache invalidation follows library revisions. |
+| Language handling | `language/profiles.py`, `language/support.py`, `language/*_analyzer.py` | Preserve text offsets and dictionary-supported alternatives. Keep language-specific analysis separate. |
+| Results and settings | `gui/quick_lookup.py`, `gui/dictionary_manager.py` | Shared renderer; retain source labels, independent expansion, selection and Back. |
+| Screen lookup | `gui/unified_ocr.py`, `gui/lookup_session.py`, `ocr/` | Capture/OCR and lookup run off the UI thread. Reject stale results; pinning freezes the current result. |
+| Translation | `dictionary/translation.py` | Explicit model setup; lazy local inference, cancellation and loopback-only custom servers. |
+
+Japanese uses bundled deconjugation rules. Turkish uses Zeyrek 0.1.3, accent
+recovery and precomputed lexicon rankings; exact entries and imported forms
+retain precedence. Full morpheme paths remain attached to their analyses.
+Turkish lookup never starts Stanza. Other supported languages can install an
+optional Stanza fallback; Russian and Persian also have bounded spelling
+recovery. Imports stay lazy and runtime analysis stays offline.
+
+Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
+independently configurable. Reuse shared rendering and input components;
+preserve Japanese behavior when adding another language. Model weights,
+dictionary packs, generated assets and environments stay outside Git.
+
+**Do not add LLM explanation, rewriting, aggregation or reranking to dictionary
+lookup.** The [experiment record](LLM_EXPERIMENTS.md) documents the measured
+benefits, failures and decision that integration is unjustified. Explicit
+sentence translation is a separate feature.
+
+Language availability lives in [support.py](../src/meikipop/language/support.py)
+and the translation model registry. Settings uses those definitions; avoid
+maintaining a second exhaustive language table in documentation.
+
+## Validation
+
+After implementation changes, run the fixture suite once with the project
+environment:
+
+```sh
+python -m unittest discover -s tests
+```
+
+Use small fixtures for lookup, rendering, cancellation and import changes.
+Real-model checks are for analysis changes or specific failures, not routine
+documentation work. OCR accuracy, global input, exclusive fullscreen, display
+scaling and clean-machine installation still need platform acceptance.
+`MEIKIPOP_TIMING=1` enables stage timings without logging text, pixels or paths.
+
+## OCR providers
+
+The shared desktop selects providers explicitly in
+`gui/unified_ocr.py` (`ScanWorker.provider`), with language coverage in
+`language/support.py`. Adding a provider also requires its Settings/setup
+handling; dropping a directory into `ocr/providers/` does not register it here.
+Keep recognition local, model setup explicit and initialization worker-bound.
+
+The legacy Japanese client discovers `OcrProvider` subclasses from packages in
+`src/meikipop/ocr/providers/`. Copy the `dummy/` package, retain `__init__.py`
+and `provider.py`, supply a unique `NAME`, and implement
+`scan(PIL.Image.Image) -> Optional[List[Paragraph]]`. Return `[]` for no text or
+`None` for failure. Select it through that client's tray OCR menu.
+
+Both paths use [ocr/interface.py](../src/meikipop/ocr/interface.py):
+`Paragraph(full_text, words, box, is_vertical)` contains
+`Word(text, separator, box, source_start=None)` records. Preserve the original
+text and offsets. Boxes use normalized center x/y, width and height relative
+to the input image: a pixel box `(x, y, w, h)` in an image `(W, H)` becomes
+`((x + w/2)/W, (y + h/2)/H, w/W, h/H)`. Supply actual writing orientation;
+a tall box alone does not establish vertical text.
+
+### Optional Paddle ONNX export
+
+Ordinary Paddle setup uses the native runtime. An optional ONNX export needs
+a separate Python 3.12 conversion environment; keep the desktop on Paddle 3.2.2.
+Install the OCR models first with `meikipop setup-turkish-ocr`, then:
+
+```powershell
+py -3.12 -m venv .venv-ocr-export
+.\.venv-ocr-export\Scripts\python -m pip install paddlepaddle==3.1.1 paddle2onnx==2.1.0 onnx==1.17.0
+.\.venv-ocr-export\Scripts\python -m pip install --no-deps -e .
+.\.venv-ocr-export\Scripts\python -m meikipop.scripts.export_turkish_ocr --source-dir "$env:USERPROFILE\.paddlex\official_models" --output build\turkish-onnx
+.\.venv-desktop\Scripts\python -m meikipop.scripts.turkish setup-turkish-ocr --onnx-dir build\turkish-onnx
+```
+
+Setup verifies source/export hashes and loads both models before activation.
+Normal setup restores native Paddle; `--rollback` restores the previous asset
+installation. Conversion dependencies are not needed at runtime.
+
+## Packaging and compatibility
+
+Desktop releases contain the Windows setup EXE and two macOS DMGs, for Apple
+silicon and Intel. Bundles include Python and inference libraries; user
+dictionaries and model weights are downloaded separately. Windows upgrades
+preserve settings/data; uninstall offers removal, also available unattended
+through `/REMOVEUSERDATA=1`.
+
+macOS releases reuse one self-signed identity; PR builds are ad-hoc signed.
+Create the release identity with OpenSSL 3 and
+`bash packaging/create-macos-signing.sh /absolute/private/backup-directory`.
+Store base64-encoded `signing.p12` as `MACOS_SIGNING_P12` and `password.txt`
+contents as `MACOS_SIGNING_PASSWORD` in repository Actions secrets. Back up
+both outside Git and reuse them across releases and architectures. Apple
+notarization and Windows publisher signing still require release credentials.
+Permission retention across macOS updates needs hands-on verification.
+
+`meikipop legacy-japanese` retains the original Japanese app;
+`meikipop-turkish` and [Start-Turkish.cmd](../Start-Turkish.cmd) retain the
+separate Turkish client. Its TDK/Wiktionary/KeNet assets, optional Stanza,
+`languages/tr` data and `Meikipop/Turkish` settings remain separate from shared
+Yomitan packs and `Meikipop/QuickLookup`. Legacy setup commands remain in
+`meikipop.scripts.turkish`; use its help for individual asset commands and
+close that client before asset updates.
+
+## Upstream work
+
+Japanese rules were inherited from upstream Meikipop's
+[Nazeka rules](https://github.com/wareya/nazeka/blob/master/dict/deconjugator.json).
+Turkish analyzer fixes/context preferences and Persian spelling recovery were
+adapted from [Anki Miner](https://github.com/0xzerolight/anki_miner/tree/808b5208bf93d919b3f18ea3aba66db5fd7fd0ea/anki_miner/languages).
+Shared word/sentence policies were independently implemented with its registry
+design as a reference. Pitch, input and Anki integration drew on
+[Chibipop](https://github.com/stellarie/chibipop); the Screen AI adapter follows
+[Meikikai's native bridge](https://github.com/hectahertz/meikikai/tree/50efb401/src/meikikai/ocr/providers/chrome_screen_ai).
+Licenses and attributions ship in `src/meikipop/resources/licenses/`.

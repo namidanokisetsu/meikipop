@@ -1,6 +1,6 @@
 @echo off
 if not exist "%~dp0.venv\Scripts\pythonw.exe" (
-    echo Install the project environment first. See docs\TURKISH_SETUP.md.
+    echo Install the project environment first. See docs\DEVELOPMENT.md.
     pause
     exit /b 1
 )
