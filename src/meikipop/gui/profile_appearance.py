@@ -99,11 +99,11 @@ class ProfileAppearance(QWidget):
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
                 ("font_size_definitions", "Definition size", 10, 48),
-                ("furigana_scale", "Furigana size (%)", 30, 100),
-                ("scale", "Text size (%)", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
+                ("furigana_scale", "Furigana size", 30, 100),
+                ("scale", "Text size", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
             widget = QSpinBox()
             widget.setRange(minimum, maximum)
-            if key == "background_opacity":
+            if key in ("furigana_scale", "scale", "background_opacity"):
                 widget.setSuffix("%")
             self.controls[key] = widget
             (form if key in ("scale", "background_opacity") else detail_form).addRow(label, widget)
@@ -141,7 +141,7 @@ class ProfileAppearance(QWidget):
         prefix = f"profiles/{self.profile()}/"
         self.preview_frequency.setChecked(self.settings.value(prefix + "preview_frequency", True, bool))
         self.preview_pitch.setChecked(self.settings.value(prefix + "preview_pitch", True, bool))
-        self.preview_definitions.setValue(self.settings.value(prefix + "preview_definitions", 1, int))
+        self.preview_definitions.setValue(self.settings.value(prefix + "preview_definitions", 3, int))
         self.detail_form.setRowVisible(self.preview_pitch, self.profile() == "ja")
         custom = custom_palette(self.settings, self.profile())
         self.theme.blockSignals(True)
@@ -149,7 +149,7 @@ class ProfileAppearance(QWidget):
         self.theme.setCurrentText(name)
         self.theme.blockSignals(False)
         self.compact_preview.setChecked(self.settings.value(f"profiles/{self.profile()}/compact_preview", True, bool))
-        self.pinned_sentence.setChecked(self.settings.value(f"profiles/{self.profile()}/pinned_sentence", True, bool))
+        self.pinned_sentence.setChecked(self.settings.value(f"profiles/{self.profile()}/pinned_sentence", False, bool))
         self.snap_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/snap_scrolling", False, bool))
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family",
                                                          _configured_font or default_family(self.profile()))))
