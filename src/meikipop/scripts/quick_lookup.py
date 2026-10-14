@@ -169,7 +169,7 @@ def main(argv=None):
             profile_group.addAction(action)
             action.triggered.connect(lambda _, code=code: window.set_mode(code))
     profiles.aboutToShow.connect(populate_profiles)
-    menu.addAction("Settings", window.open_settings)
+    settings_action = menu.addAction("Settings", window.open_settings)
     menu.addSeparator()
     menu.addAction("Quit", app.quit)
     tray.setContextMenu(menu)
@@ -186,6 +186,7 @@ def main(argv=None):
         try:
             from meikipop.gui.unified_ocr import UnifiedOCR
             ocr = UnifiedOCR(window)
+            ocr.add_tray_actions(menu, settings_action)
         except (ImportError, RuntimeError) as error:
             window.scan_toggle.setEnabled(False)
             window.scan_toggle.setToolTip(str(error))

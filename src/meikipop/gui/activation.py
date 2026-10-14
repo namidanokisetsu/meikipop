@@ -67,15 +67,16 @@ class ActivationTransition:
 class ActivationState:
     """Locked pressed-state set with edge detection for independent bindings."""
 
-    def __init__(self, bindings: str = "shift"):
+    def __init__(self, bindings: str = "shift", *, allow_empty=False):
         self._lock = threading.RLock()
         self._pressed: set[str] = set()
-        self._bindings = parse_activation_bindings(bindings)
+        self._allow_empty = allow_empty
+        self._bindings = () if allow_empty and not bindings else parse_activation_bindings(bindings)
         self._active = False
         self._activation_id = 0
 
     def set_bindings(self, bindings: str) -> ActivationTransition:
-        parsed = parse_activation_bindings(bindings)
+        parsed = () if self._allow_empty and not bindings else parse_activation_bindings(bindings)
         with self._lock:
             was_active = self._active
             self._bindings = parsed

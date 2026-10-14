@@ -35,6 +35,17 @@ class ScanGestureTests(unittest.TestCase):
         self.input.pin_ready.set()
         self.input.pin_gesture = gesture
 
+    def test_hover_preview_consumes_pin_gesture_without_a_held_key(self):
+        self.input.hover_active.set()
+        self.input.visible.set()
+        self.input.pin_ready.set()
+        self.input.pin_gesture = "left"
+        self.assertFalse(self.input.filter_mouse(0x201, None))
+        self.input.hover_active.clear()
+        self.assertFalse(self.input.filter_mouse(0x202, None))
+        self.requested.assert_called_once_with()
+
+
     def test_windows_suppresses_only_eligible_pin_click_and_matching_release(self):
         self.assertTrue(self.input.filter_mouse(0x201, None))
         self.input.activation.update("shift", True)

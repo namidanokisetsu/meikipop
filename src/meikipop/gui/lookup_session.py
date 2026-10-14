@@ -7,6 +7,9 @@ class LookupSession:
     enabled: bool = False
     holding: bool = False
     dismissed: bool = False
+    hovering: bool = False
+    hover_dismissed: bool = False
+    suspended: bool = False
     generation: int = 0
     capture_generation: int | None = None
 
@@ -14,6 +17,15 @@ class LookupSession:
         self.enabled = bool(enabled)
         if not enabled:
             self.holding = self.dismissed = False
+            self.hovering = self.hover_dismissed = False
+
+    def hover(self, active):
+        active = bool(active) and self.enabled
+        changed = active != self.hovering
+        self.hovering = active
+        if not active:
+            self.hover_dismissed = False
+        return changed
 
     def hold(self, active):
         if not active:
@@ -25,17 +37,20 @@ class LookupSession:
 
     def dismiss(self):
         self.dismissed = self.dismissed or self.holding
+        self.hover_dismissed = self.hover_dismissed or self.hovering
         self.holding = False
 
     def hide(self):
         self.dismissed = self.dismissed or self.holding
+        self.hover_dismissed = self.hover_dismissed or self.hovering
 
     def invalidate(self):
         self.generation += 1
         self.capture_generation = None
 
     def scanning(self, pinned=False):
-        return self.enabled and self.holding and not self.dismissed and not pinned
+        return (self.enabled and not self.suspended and not pinned and
+                (self.holding and not self.dismissed or self.hovering and not self.hover_dismissed))
 
     def accepts(self, generation, pinned=False):
         return generation == self.generation and self.scanning(pinned)

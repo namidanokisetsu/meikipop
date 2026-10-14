@@ -338,6 +338,179 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.window.deleteLater()
         self.app.processEvents()
 
+    def enable_hover(self):
+        self.controller.holding = False
+        self.controller.hover_enabled = True
+        self.controller.hover_region = QRect(50, 50, 300, 150)
+        self.controller.hover_screen = self.controller._screen_key(QApplication.primaryScreen())
+
+    def test_hover_refreshes_stationary_area_every_half_second_without_overlapping_jobs(self):
+        self.enable_hover()
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(QApplication, "activeWindow", return_value=None), \
+                patch("meikipop.gui.unified_ocr.monotonic", return_value=10) as clock, \
+                patch.object(self.controller, "hit_latest") as hit, \
+                patch.object(self.controller, "_request_capture") as capture:
+            self.controller.scan()
+            self.assertFalse(self.controller.freeze_capture)
+            capture.assert_called_once()
+            self.controller._last_capture_at = 10
+            clock.return_value = 10.3
+            self.controller.scan()
+            capture.assert_called_once()
+            clock.return_value = 10.5
+            self.controller.busy = True
+            self.controller.scan()
+            capture.assert_called_once()
+            self.controller.busy = False
+            self.controller.scan()
+            self.assertEqual(capture.call_count, 2)
+            self.assertEqual(hit.call_count, 4)
+
+    def test_hover_exit_rejects_old_results_and_shift_still_scans_outside(self):
+        self.enable_hover()
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(self.controller, "_request_capture"):
+            self.controller.scan()
+        generation = self.controller.generation
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(400, 300)), \
+                patch.object(self.controller, "_request_capture") as capture:
+            self.controller.deliver(generation, Mock(), Mock(), "")
+            self.window.show_entries.assert_not_called()
+            self.controller.scan()
+            capture.assert_not_called()
+            self.controller.hold_changed(True)
+            capture.assert_called_once()
+            self.assertTrue(self.controller.freeze_capture)
+
+    def test_hover_bounds_are_fixed_and_never_expand_for_clipped_context(self):
+        self.enable_hover()
+        point = QPoint(100, 100)
+        self.controller._update_hover(point)
+        screen = QApplication.primaryScreen()
+        self.assertEqual(self.controller._capture_bounds(point, screen.geometry(), self.controller.hover_screen),
+                         self.controller.hover_region)
+        frame = SimpleNamespace(request=SimpleNamespace(revision=1))
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=point), \
+                patch.object(self.controller, "hit_latest"), \
+                patch("meikipop.ocr.boundaries.expanded_crop") as expand:
+            self.controller.accept_frame(self.controller.generation, frame, "")
+        expand.assert_not_called()
+
+    def test_pinned_popup_and_menu_pause_hover(self):
+        self.enable_hover()
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(self.controller, "_request_capture") as capture:
+            self.window.is_pinned = True
+            self.controller.scan()
+            capture.assert_not_called()
+            self.window.is_pinned = False
+            with patch.object(QApplication, "activePopupWidget", return_value=Mock()):
+                self.controller.scan()
+                capture.assert_not_called()
+            self.controller.scan()
+            capture.assert_called_once()
+
+    def test_cancelled_reselection_retains_area_and_invalidates_pending_work(self):
+        self.enable_hover()
+        old = self.controller.generation
+        region = QRect(self.controller.hover_region)
+        self.controller.busy = True
+        def cancel(**options):
+            self.assertEqual(options, {"logical": True})
+            self.assertTrue(self.controller.session.suspended)
+            self.assertFalse(self.controller.timer.isActive())
+            self.assertFalse(self.controller.session.accepts(old))
+            return None
+        with patch("meikipop.gui.region_selector.RegionSelector.get_region", side_effect=cancel):
+            self.assertFalse(self.controller.select_scan_area())
+        self.assertEqual(self.controller.hover_region, region)
+        self.assertTrue(self.controller.timer.isActive())
+        self.assertFalse(self.controller.session.suspended)
+        self.assertGreater(self.controller.generation, old)
+        self.assertFalse(self.controller.busy)
+
+    def test_reselection_replaces_area_and_display_changes_pause_hover(self):
+        self.enable_hover()
+        replacement = QRect(400, 200, 100, 50)
+        with patch("meikipop.gui.region_selector.RegionSelector.get_region", return_value=replacement):
+            self.assertTrue(self.controller.select_scan_area())
+        self.assertEqual(self.controller.hover_region, replacement)
+        self.controller._update_hover(replacement.center())
+        self.assertTrue(self.controller.session.scanning())
+        self.controller.hover_screen = ("removed display",)
+        self.controller._update_hover(replacement.center())
+        self.assertFalse(self.controller.session.scanning())
+
+    def test_selector_retains_logical_and_physical_coordinates_for_mixed_dpi(self):
+        from meikipop.gui.region_selector import RegionSelector
+        with patch("pynput.mouse.Controller") as mouse, \
+                patch("meikipop.gui.region_selector.QCursor.pos", return_value=QPoint(0, 0)) as cursor:
+            mouse.return_value.position = (1000, 200)
+            selector = RegionSelector()
+            selector.mousePressEvent(None)
+            cursor.return_value = QPoint(200, 100)
+            mouse.return_value.position = (1300, 350)
+            selector.mouseReleaseEvent(None)
+            self.assertEqual(selector.logical_selection_rect, QRect(0, 0, 201, 101))
+            self.assertEqual(selector.selection_rect, QRect(1000, 200, 301, 151))
+            selector.deleteLater()
+
+    def test_tray_enable_cancel_is_unchecked_and_reselection_is_disabled(self):
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu()
+        before = menu.addAction("Settings")
+        self.controller.holding = False
+        self.controller.add_tray_actions(menu, before)
+        hover, area, _ = menu.actions()
+        self.assertFalse(hover.isChecked())
+        self.assertFalse(area.isEnabled())
+        with patch("meikipop.gui.region_selector.RegionSelector.get_region", return_value=None):
+            hover.trigger()
+            self.app.processEvents()
+        menu.aboutToShow.emit()
+        self.assertFalse(hover.isChecked())
+        self.assertFalse(self.controller.hover_enabled)
+        self.assertFalse(area.isEnabled())
+        menu.deleteLater()
+
+    def test_visible_manual_search_pauses_hover(self):
+        self.enable_hover()
+        self.window._peek = False
+        self.window.show()
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(self.controller, "_request_capture") as capture:
+            self.controller.scan()
+        capture.assert_not_called()
+        self.assertFalse(self.controller.session.scanning())
+
+    def test_hover_can_run_with_all_scan_shortcuts_disabled(self):
+        self.enable_hover()
+        self.controller.input = SimpleNamespace(activation=Mock(), pin_ready=threading.Event(),
+                                               pin_pending=threading.Event(), shutdown=Mock(),
+                                               set_pin_shortcut=Mock())
+        self.window.settings = SimpleNamespace(value=lambda name, default, kind=None:
+                                             "" if name.endswith("/scan_bindings") else default)
+        self.controller.reload_settings()
+        self.assertTrue(self.controller.enabled)
+        self.controller.input.activation.set_bindings.assert_called_once_with("")
+        self.controller.set_hover_enabled(False)
+        self.assertFalse(self.controller.enabled)
+
+    def test_hover_dismissal_stays_closed_until_pointer_leaves_and_returns(self):
+        self.enable_hover()
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)), \
+                patch.object(self.controller, "_request_capture") as capture:
+            self.controller.scan()
+            self.controller.dismiss()
+            self.controller.scan()
+            capture.assert_called_once()
+            self.assertTrue(self.controller.timer.isActive())
+            with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(400, 300)):
+                self.controller.scan()
+            self.controller.scan()
+            self.assertEqual(capture.call_count, 2)
+
     def test_programmatic_search_invalidates_pending_ocr(self):
         generation = self.controller.generation
         self.window.search.setText("typed lookup")

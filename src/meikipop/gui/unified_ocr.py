@@ -315,6 +315,9 @@ class UnifiedOCR(QObject):
         self._fallback_capture = False
         self._crop_retries = 0
         self.freeze_while_held = True
+        self.hover_enabled = False
+        self.hover_region = None
+        self.hover_screen = None
         self._frozen_pixels = None
         self._frozen_screen = None
         self.timer = QTimer(self)
@@ -377,6 +380,95 @@ class UnifiedOCR(QObject):
     def busy(self, value):
         self.session.capture_generation = self.generation if value else None
 
+    @property
+    def freeze_capture(self):
+        return self.freeze_while_held and not self.session.hovering
+
+    def _sync_timer(self):
+        if self.enabled and (self.holding or self.hover_enabled) and not self.session.suspended:
+            self.timer.start()
+        else:
+            self.timer.stop()
+
+    def add_tray_actions(self, menu, before):
+        from PyQt6.QtGui import QAction
+        hover = QAction("Hover scan", menu)
+        hover.setCheckable(True)
+        area = QAction("Select scan area…", menu)
+        menu.insertAction(before, hover)
+        menu.insertAction(before, area)
+        hover.triggered.connect(lambda checked: QTimer.singleShot(0, lambda: self.set_hover_enabled(checked)))
+        area.triggered.connect(lambda: QTimer.singleShot(0, self.select_scan_area))
+        def sync():
+            from meikipop.language.support import ocr_supported
+            hover.setChecked(self.hover_enabled)
+            hover.setEnabled(ocr_supported(self.window.preferred_foreign, self.profile_ocr_provider))
+            area.setEnabled(self.hover_enabled)
+        menu.aboutToShow.connect(sync)
+        sync()
+
+    def set_hover_enabled(self, enabled):
+        if enabled and self.hover_region is None and not self.select_scan_area():
+            return
+        self.hover_enabled = bool(enabled)
+        self.session.hover(False)
+        if not self.holding and hasattr(self.window, "scan_hold_changed"):
+            self.window.scan_hold_changed(False)
+        self.invalidate()
+        self.reload_settings()
+        self._sync_timer()
+        self._sync_pin_ready()
+        if not enabled and not self.holding:
+            self.restore_capture_visibility()
+            self.leave_timer.start()
+
+    def select_scan_area(self):
+        from meikipop.gui.region_selector import RegionSelector
+        self.session.suspended = True
+        self.restore_capture_visibility()
+        self.invalidate()
+        self._sync_timer()
+        self._sync_pin_ready()
+        try:
+            region = RegionSelector.get_region(logical=True)
+            if region is None or region.width() < 2 or region.height() < 2:
+                return False
+            screen = QApplication.screenAt(region.center())
+            if screen is None or not screen.geometry().contains(region):
+                return False
+            self.hover_region = QRect(region)
+            self.hover_screen = self._screen_key(screen)
+            self.session.hover(False)
+            return True
+        finally:
+            self.session.suspended = False
+            self.invalidate()
+            self._sync_timer()
+            self._sync_pin_ready()
+
+    def _update_hover(self, point):
+        if not self.hover_enabled and not self.session.hovering:
+            return
+        screen = QApplication.screenAt(point)
+        active = (self.hover_enabled and self.hover_region is not None and
+                  self.hover_region.contains(point) and screen is not None and
+                  self._screen_key(screen) == self.hover_screen and not self.session.suspended and
+                  QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None and
+                  not (self.window.isVisible() and not self.window._peek))
+        was_scanning = self.session.scanning(self.window.is_pinned)
+        if self.session.hover(active):
+            self.invalidate()
+            self._last_capture_at = 0
+            scanning = self.session.scanning(self.window.is_pinned)
+            if not self.holding and hasattr(self.window, "scan_hold_changed"):
+                self.window.scan_hold_changed(scanning)
+            if scanning:
+                self.leave_timer.stop()
+            elif was_scanning:
+                self.restore_capture_visibility()
+                self.leave_timer.start()
+        self._sync_pin_ready()
+
     def eventFilter(self, watched, event):
         if watched is self.window:
             if event.type() == QEvent.Type.Enter:
@@ -429,10 +521,7 @@ class UnifiedOCR(QObject):
         if self.input:
             self.input.pin_gesture = self.pin_gesture
             self.input.set_pin_shortcut(settings.value(f"profiles/{profile}/pin_shortcut", "c") if settings else "c")
-        if self.enabled and self.holding:
-            self.timer.start()
-        else:
-            self.timer.stop()
+        self._sync_timer()
         self._sync_pin_ready()
 
         if settings is not None:
@@ -440,14 +529,18 @@ class UnifiedOCR(QObject):
             bindings = settings.value(f"profiles/{profile}/scan_bindings", "shift,middle")
             previous_bindings = getattr(self, "activation_bindings", None)
             self.activation_bindings = bindings
-            if self.input and bindings and bindings != previous_bindings:
+            if self.input and bindings != previous_bindings:
                 self.input.activation.set_bindings(bindings)
                 self.holding = False
-            enabled = bool(bindings) and ocr_supported(profile, self.profile_ocr_provider)
+            enabled = (bool(bindings) or self.hover_enabled) and ocr_supported(profile, self.profile_ocr_provider)
             if enabled != self.enabled:
                 self.set_enabled(enabled)
+        self._sync_timer()
 
     def _sync_pin_ready(self):
+        if self.input and hasattr(self.input, "hover_active"):
+            active = self.session.hovering and self.session.scanning(self.window.is_pinned)
+            (self.input.hover_active.set if active else self.input.hover_active.clear)()
         if self.input and hasattr(self.input, "pin_ready"):
             ready = (self.session.scanning(self.window.is_pinned) and
                      QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None and
@@ -475,6 +568,8 @@ class UnifiedOCR(QObject):
             self.restore_capture_visibility()
             self.invalidate()
             self.leave_timer.stop()
+        if self.hover_enabled and not self.holding and hasattr(self.window, "scan_hold_changed"):
+            self.window.scan_hold_changed(self.session.scanning(pinned))
         self._sync_pin_ready()
 
     def follow_cursor(self):
@@ -505,6 +600,10 @@ class UnifiedOCR(QObject):
             self.hit_worker.refresh()
 
     def _capture_bounds(self, point, geometry, screen_key):
+        if self.session.hovering:
+            self.capture_region = self.hover_region.intersected(geometry)
+            self.capture_screen = screen_key
+            return QRect(self.capture_region)
         # A cursor-centered crop changes pixels on every tiny pointer move,
         # defeating recognition caching even when the screen is static.
         if (self.capture_region is None or self.capture_screen != screen_key or
@@ -567,12 +666,13 @@ class UnifiedOCR(QObject):
         changed = self.session.hold(active)
         if not active:
             if hasattr(self.window, "scan_hold_changed"):
-                self.window.scan_hold_changed(False)
+                self.window.scan_hold_changed(self.session.scanning(self.window.is_pinned))
         if not changed:
             return
         if active and hasattr(self.window, "scan_hold_changed"):
             self.window.scan_hold_changed(True)
         if active:
+            self.invalidate()
             if self.window.is_pinned and not self.window.geometry().contains(QCursor.pos()):
                 self.window.pin.setChecked(False)
                 self._hide_preview()
@@ -583,7 +683,7 @@ class UnifiedOCR(QObject):
             self.scan()
         else:
             self.restore_capture_visibility()
-            self.timer.stop()
+            self._sync_timer()
             self.invalidate()
             self.leave_timer.start()
         self._sync_pin_ready()
@@ -591,9 +691,11 @@ class UnifiedOCR(QObject):
     def dismiss(self):
         self.restore_capture_visibility()
         self.session.dismiss()
+        if hasattr(self.window, "scan_hold_changed"):
+            self.window.scan_hold_changed(False)
         self._capture_hidden = False
         self.window._capture_visibility = False
-        self.timer.stop()
+        self._sync_timer()
         self.invalidate()
         self.window.hide()
         if self.input:
@@ -611,15 +713,16 @@ class UnifiedOCR(QObject):
         if QApplication.activeModalWidget() or QApplication.activePopupWidget():
             self.leave_timer.start()
             return
-        if (getattr(self.window, "_peek", False) and not self.holding and not self.window.is_pinned and
+        if (getattr(self.window, "_peek", False) and not self.session.scanning(self.window.is_pinned) and not self.window.is_pinned and
                 not self.window.geometry().contains(QCursor.pos())):
             self.window.hide()
 
     def scan(self):
+        point = QCursor.pos()
+        self._update_hover(point)
         if not self.session.scanning(self.window.is_pinned):
             return
         self._sync_pin_ready()
-        point = QCursor.pos()
         if self.window.isVisible() and self.window.geometry().contains(point):
             return
         if QApplication.activeModalWidget() or QApplication.activePopupWidget():
@@ -632,13 +735,14 @@ class UnifiedOCR(QObject):
             self._hide_preview()
         now = monotonic()
         self.hit_latest(point, now)
-        if self.freeze_while_held:
+        if self.freeze_capture:
             if self.frame is not None and self._valid_frame(self.frame, point, now):
                 return
             screen = QApplication.screenAt(point) or QApplication.primaryScreen()
             if self._frozen_screen is not None and self._screen_key(screen) != self._frozen_screen:
                 return
-        if self.busy or now - self._last_capture_at < .25:
+        interval = .5 if self.session.hovering else .25
+        if self.busy or now - self._last_capture_at < interval:
             return
         self._request_capture(point)
 
@@ -666,6 +770,7 @@ class UnifiedOCR(QObject):
         return (screen.name(), geometry.x(), geometry.y(), geometry.width(), geometry.height(), screen.devicePixelRatio())
 
     def capture(self, generation, point):
+        self._update_hover(QCursor.pos())
         if generation != self.generation:
             return
         if not self.session.accepts(generation, self.window.is_pinned):
@@ -685,7 +790,7 @@ class UnifiedOCR(QObject):
             geometry = screen.geometry()
             scale = screen.devicePixelRatio()
             screen_key = self._screen_key(screen)
-            if self.freeze_while_held:
+            if self.freeze_capture:
                 if self._frozen_screen is not None and self._frozen_screen != screen_key:
                     self.busy = False
                     return
@@ -695,19 +800,19 @@ class UnifiedOCR(QObject):
             request = CaptureRequest(self._capture_revision, screen.name(),
                                      (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
                                      (region.x(), region.y(), region.width(), region.height()), scale, generation,
-                                     self.freeze_while_held)
+                                     self.freeze_capture)
             if sys.platform == "win32" and not self._fallback_capture and self._capture_excluded:
                 self._queue_scan(generation, point, request, region)
                 self._last_capture_at = monotonic()
                 return
-            if self.freeze_while_held and self._frozen_pixels is not None:
+            if self.freeze_capture and self._frozen_pixels is not None:
                 snapshot, captured_at = self._frozen_pixels
             else:
                 pixmap = screen.grabWindow(0)
                 if pixmap.isNull():
                     raise RuntimeError("Screen capture unavailable. Allow screen recording in system settings.")
                 snapshot, captured_at = pixmap.toImage(), monotonic()
-                if self.freeze_while_held:
+                if self.freeze_capture:
                     self._frozen_pixels = (snapshot, captured_at)
             scale_x, scale_y = snapshot.width() / geometry.width(), snapshot.height() / geometry.height()
             pixels = snapshot.copy(round((region.x() - geometry.x()) * scale_x),
@@ -727,7 +832,7 @@ class UnifiedOCR(QObject):
                 self.window._capture_visibility = False
                 # Keep the prior peek usable while native recognition runs.
                 # The capture itself never contains our dictionary window.
-                if generation == self.generation and self.holding and not self._dismissed_hold:
+                if self.session.accepts(generation, self.window.is_pinned):
                     self.window.show()
                     self.follow_cursor()
 
@@ -754,6 +859,7 @@ class UnifiedOCR(QObject):
                 and QRect(*frame.request.crop).contains(point))
 
     def accept_frame(self, generation, frame, error):
+        self._update_hover(QCursor.pos())
         self.session.finish_capture(generation)
         if not self.session.accepts(generation, self.window.is_pinned):
             mark("discard", generation, reason="obsolete_frame")
@@ -770,7 +876,7 @@ class UnifiedOCR(QObject):
         mark("frame_accepted", frame.request.revision)
         point = QCursor.pos()
         self.hit_latest(point, monotonic())
-        if self._crop_retries < 2 and self._valid_frame(frame, point, monotonic()):
+        if not self.session.hovering and self._crop_retries < 2 and self._valid_frame(frame, point, monotonic()):
             from meikipop.ocr.boundaries import expanded_crop
             crop = expanded_crop(frame, (point.x(), point.y()))
             if crop is not None:
@@ -813,6 +919,7 @@ class UnifiedOCR(QObject):
             self._capture_excluded = False
 
     def deliver(self, generation, result, hit, error):
+        self._update_hover(QCursor.pos())
         frame = None
         if not self.session.accepts(generation, self.window.is_pinned):
             mark("discard", generation, reason="obsolete_hit")

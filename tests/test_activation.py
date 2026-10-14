@@ -8,6 +8,15 @@ from meikipop.gui.activation import (
 
 
 class ActivationBindingTests(unittest.TestCase):
+    def test_optional_empty_bindings_never_activate(self):
+        state = ActivationState("", allow_empty=True)
+        self.assertFalse(state.update("shift", True).became_active)
+        self.assertFalse(state.active)
+        self.assertTrue(state.set_bindings("shift").became_active)
+        self.assertTrue(state.set_bindings("").became_inactive)
+        with self.assertRaises(ValueError):
+            ActivationState("")
+
     def test_aliases_and_or_semantics(self):
         self.assertEqual(normalise_activation_bindings("Shift,button2"), "shift,middle")
         state = ActivationState("shift,middle")

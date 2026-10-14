@@ -31,6 +31,7 @@ class RegionSelector(QDialog):
         # Points for the final result (in physical coordinates)
         self.begin_physical = None
         self.selection_rect = None
+        self.logical_selection_rect = None
 
         self.has_selection_started = False
 
@@ -43,7 +44,7 @@ class RegionSelector(QDialog):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
 
-        if self.has_selection_started and not self.begin_logical.isNull() and not self.end_logical.isNull():
+        if self.has_selection_started:
             rect_logical = QRect(self.begin_logical - self.geometry().topLeft(),
                                  self.end_logical - self.geometry().topLeft()).normalized()
 
@@ -60,8 +61,6 @@ class RegionSelector(QDialog):
 
     def mousePressEvent(self, event: QMouseEvent):
         self.begin_logical = QCursor.pos()
-        if not self.begin_logical:  # when user selects upper left corner aka (0,0) aka None, the paint method won't work
-            self.begin_logical = QPoint(1, 1)
         self.end_logical = self.begin_logical
 
         # Store the physical position for the final result
@@ -84,7 +83,11 @@ class RegionSelector(QDialog):
         self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent):
+        if not self.has_selection_started:
+            return
         self.update_timer.stop()
+        self.end_logical = QCursor.pos()
+        self.logical_selection_rect = QRect(self.begin_logical, self.end_logical).normalized()
 
         # Get the final physical position
         px, py = self.mouse_controller.position
@@ -109,9 +112,9 @@ class RegionSelector(QDialog):
         return None
 
     @staticmethod
-    def get_region():
+    def get_region(*, logical=False):
         logger.info("Awaiting region selection... you can change the scan region in the tray")
         selector = RegionSelector()
         if selector.exec() == QDialog.DialogCode.Accepted:
-            return selector.selection_rect
+            return selector.logical_selection_rect if logical else selector.selection_rect
         return None

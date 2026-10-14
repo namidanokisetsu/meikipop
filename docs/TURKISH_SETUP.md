@@ -279,15 +279,21 @@ after Ctrl+Shift+D. Typing inside Search keeps its focus.
 
 New language profiles inherit the current profile's screen lookup shortcuts,
 including an explicitly disabled shortcut. Clear both screen lookup shortcuts to
-disable OCR; there is no additional toggle.
+disable held scanning. Hover scan can still be enabled separately from the tray.
 **Settings → Shortcuts → Pin with mouse** selects left click, middle click, or popup-only pinning.
 Windows and macOS consume the configured outside pin click while a scan preview is ready;
 on Linux it also reaches the underlying app. Other clicks are unchanged. Pinning gives
 the results keyboard focus; macOS uses a nonactivating panel to stay in the source Space.
 **Appearance → Compact preview** is on by default; turn it off for full definitions immediately.
-Scanning always requires a held trigger. Automatic hover scanning has been removed;
-old saved hover preferences are ignored. OCR runs separately from dictionary search
-and retains visible sentence context.
+For visual novels, enable **Hover scan** in the tray's right-click menu and drag around
+the dialogue box. Inside that area, word lookup needs no scan key. The area refreshes
+every half second, reusing OCR when pixels are unchanged; leaving it pauses scanning.
+Pinned results, menus and manual Search also pause it. **Select scan area…** replaces
+the rectangle; Escape cancels and keeps the previous area. Uncheck **Hover scan** to
+disable it. The mode and area last until the app exits. Close or Escape dismisses
+a hover preview until you leave the area and return. Hover always uses live captures;
+Shift scanning remains available elsewhere with its usual freeze setting.
+OCR runs separately from dictionary search and retains visible sentence context.
 
 Each profile shows one OCR selector. Windows defaults remain
 **MeikiOCR (CPU)** for Japanese and **PaddleOCR** for Turkish; macOS defaults to

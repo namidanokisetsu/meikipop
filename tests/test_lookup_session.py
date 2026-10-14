@@ -4,6 +4,24 @@ from meikipop.gui.lookup_session import LookupSession, popup_mode
 
 
 class LookupSessionTests(unittest.TestCase):
+    def test_hover_dismissal_requires_leaving_area_and_does_not_block_explicit_hold(self):
+        state = LookupSession(enabled=True)
+        state.hover(True)
+        self.assertTrue(state.scanning())
+        state.dismiss()
+        self.assertFalse(state.scanning())
+        state.hold(False)
+        self.assertFalse(state.scanning())
+        state.hold(True)
+        self.assertTrue(state.scanning())
+        state.hold(False)
+        self.assertFalse(state.scanning())
+        state.hover(False)
+        state.hover(True)
+        self.assertTrue(state.scanning())
+        state.suspended = True
+        self.assertFalse(state.accepts(state.generation))
+
     def test_dismissal_requires_release_before_another_hold(self):
         state = LookupSession(enabled=True)
         self.assertTrue(state.hold(True))

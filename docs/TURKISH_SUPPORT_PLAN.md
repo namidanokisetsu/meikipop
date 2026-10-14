@@ -154,7 +154,13 @@ clients remain explicit compatibility entrypoints.
    [Chibipop](https://github.com/stellarie/chibipop/blob/main/ARCHITECTURE.md)
    within the existing Qt pipeline.
    Previews stay anchored until the lookup changes and fit complete text lines.
-   Scanning requires a held trigger; automatic hover scanning is removed.
+   Held scanning remains the default. Opt-in tray Hover scan selects a fixed text area
+   in Qt logical coordinates and refreshes it every 500 ms while the pointer is inside.
+   Unchanged pixels reuse recognition; pointer lookup remains independent. Hover uses
+   live captures regardless of Freeze while held, never expands outside the selected area,
+   and pauses for menus, manual Search, region selection and pinned results. Select scan
+   area replaces the region; Escape keeps the previous region. Hover mode and its area
+   last for the current app session and work with scan shortcuts disabled.
 
 5. **Optional local translation.** Explicitly installed
    [Hy-MT2](https://huggingface.co/tencent/Hy-MT2-7B-GGUF) GGUF models run through

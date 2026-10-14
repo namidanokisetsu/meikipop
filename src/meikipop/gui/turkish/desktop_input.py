@@ -54,7 +54,8 @@ class DesktopInput(QObject):
 
     def __init__(self, bindings, clipboard_hotkey, search_hotkey, double_click_ms, parent=None):
         super().__init__(parent)
-        self.activation = ActivationState(bindings)
+        self.activation = ActivationState(bindings, allow_empty=True)
+        self.hover_active = threading.Event()
         self.visible = threading.Event()
         self.pin_ready = threading.Event()
         self.pin_pending = threading.Event()
@@ -129,7 +130,8 @@ class DesktopInput(QObject):
         self._pin_native = native
 
     def _request_ready_pin(self):
-        if self.activation.active and self.visible.is_set() and self.pin_ready.is_set():
+        if ((self.activation.active or self.hover_active.is_set())
+                and self.visible.is_set() and self.pin_ready.is_set()):
             self.pin_ready.clear()
             self.pin_pending.set()
             self.pin_requested.emit()
@@ -244,6 +246,7 @@ class DesktopInput(QObject):
                 self.selected.emit()
 
     def shutdown(self):
+        self.hover_active.clear()
         self.pin_ready.clear()
         self.pin_pending.clear()
         self._darwin_consumed_pin = None
