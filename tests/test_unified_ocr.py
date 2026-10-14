@@ -269,6 +269,19 @@ class ScanWorkerTests(unittest.TestCase):
         self.assertEqual(model.recognize.call_count, 2)
         self.assertEqual([call.args[2].query for call in sink.emit.call_args_list], ["中文", "文"])
 
+    def test_paddle_reuses_unchanged_pixels_when_pointer_moves(self):
+        scanner = PaddleScan(Mock(), 'tr')
+        scanner.scan = Mock(return_value=recognized())
+        image = image_bytes()
+        worker, sink = self.make_worker([
+            (1, image, (.2, .5), 'tr', ('paddle', '')),
+            (2, image, (.7, .5), 'tr', ('paddle', '')), None])
+        with patch('meikipop.dictionary.search.SearchEngine', return_value=Mock()), \
+                patch.object(worker, 'provider', return_value=scanner):
+            worker.run()
+        scanner.scan.assert_called_once()
+        self.assertEqual([call.args[2].query for call in sink.emit.call_args_list], ['kitap', 'ev'])
+
     def test_arabic_paddle_rejected_before_loading_latin_model(self):
         with patch("meikipop.ocr.turkish_paddle.LocalOCR") as factory:
             with self.assertRaisesRegex(RuntimeError, "does not support"):

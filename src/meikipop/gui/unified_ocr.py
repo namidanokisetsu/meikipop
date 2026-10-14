@@ -81,7 +81,7 @@ class ScanWorker(threading.Thread):
         from meikipop.dictionary.search import SearchEngine
         engine = None
         capture = None
-        providers, caches = {}, {}
+        providers, caches, scanners = {}, {}, {}
         try:
             while True:
                 job = self.queue.get()
@@ -157,9 +157,12 @@ class ScanWorker(threading.Thread):
                     if pixels is None:
                         paragraphs = cache.result
                     else:
-                        scanner = providers[model_key]
-                        if isinstance(scanner, PaddleScan):
-                            scanner = lambda image, shared=scanner: shared.scan(image, language)
+                        if provider_key not in scanners:
+                            scanner = providers[model_key]
+                            if isinstance(scanner, PaddleScan):
+                                scanner = lambda image, shared=scanner, code=language: shared.scan(image, code)
+                            scanners[provider_key] = scanner
+                        scanner = scanners[provider_key]
                         paragraphs = cache.scan(image, scanner)
                         mark("ocr_done", generation)
                     if self._stopped.is_set():
