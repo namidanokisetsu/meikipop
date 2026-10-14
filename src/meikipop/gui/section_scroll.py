@@ -70,6 +70,7 @@ class SectionScroller(QObject):
         self._refresh.setSingleShot(True)
         self._refresh.timeout.connect(self._refresh_header)
         self.header = StickyHeading(browser.viewport(), selection_lookup=False)
+        self.header.document().setDocumentMargin(0)
         self.header.setAccessibleName("Current headword")
         self.header.setFrameShape(self.header.Shape.NoFrame)
         self.header.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -191,7 +192,7 @@ class SectionScroller(QObject):
         fmt = frame.frameFormat()
         margin = document.documentMargin()
         boundaries = self.boundaries()
-        if self.enabled and not self.preview and boundaries:
+        if self.enabled and not self.preview and len(boundaries) > 1:
             # A short last section still needs enough scroll range to reach the top.
             content_height = document.size().height() - fmt.bottomMargin()
             margin = max(margin, boundaries[-1][0] + self.browser.viewport().height() - content_height)

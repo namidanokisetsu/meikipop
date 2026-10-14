@@ -139,6 +139,28 @@ class SectionScrollTests(unittest.TestCase):
                 self.assertAlmostEqual(copied, baseline, delta=1)
                 self.assertEqual(header.y(), 0)
 
+    def test_initial_and_scrolled_entries_align_all_rows_without_document_padding(self):
+        entries = tuple(Entry(str(i), term, "", "Source", "en", (f"meaning {i}",))
+                        for i, term in enumerate(("first", "second")))
+        self.browser.setHtml(render_result(SearchResult("first", "en", "ja", entries)))
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        self.app.processEvents()
+        def positions(word, definition):
+            points = []
+            for text in (word, definition):
+                cursor = self.browser.document().find(text)
+                cursor.setPosition(cursor.selectionStart())
+                points.append(self.browser.cursorRect(cursor).topLeft())
+            return points
+        initial = positions("first", "meaning 0")
+        self.assertEqual(initial[0].x(), 0)
+        self.assertEqual(initial[0].y(), 0)
+        self.bar.setValue(self.scroller.boundaries()[1][0])
+        self.assertEqual(positions("second", "meaning 1"), initial)
+        self.assertEqual(self.browser.document().documentMargin(), 0)
+        self.assertEqual(self.scroller.header.document().documentMargin(), 0)
+
     def test_sticky_heading_does_not_copy_preceding_rule_or_paragraph(self):
         from PyQt6.QtGui import QTextFormat
         self.browser.setHtml('<p>Sentence</p><hr><h2><a name="scroll-headword-0"></a>'

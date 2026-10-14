@@ -97,7 +97,7 @@ class DictionaryPresentationTests(unittest.TestCase):
                 {"tag": "table", "content": {"tag": "tr", "content": [
                     {"tag": "td", "content": "東京"}, {"tag": "td", "content": "東亰"}]}}]}]}
         text = self.render(result((definition,)), expanded=("Fixture",))
-        self.assertIn("[noun] Tokyo\nExample sentence\nSecond meaning", text)
+        self.assertIn("[noun]\nTokyo\nExample sentence\nSecond meaning", text)
         self.assertEqual(text.lower().count("forms"), 1)
         self.assertIn("東亰", text)
         self.assertEqual(definition["content"][0]["content"][1]["tag"], "div")
@@ -109,7 +109,7 @@ class DictionaryPresentationTests(unittest.TestCase):
                  for text in descriptions]
         definition = {"type": "structured-content", "content": [*nodes, "prayer"]}
         text = self.render(result((definition,)))
-        self.assertIn("[noun · suru · transitive] prayer", text)
+        self.assertIn("[noun · suru · transitive]\nprayer", text)
         cursor = self.browser.document().find("noun · suru")
         self.assertEqual(cursor.charFormat().toolTip(), " · ".join(descriptions))
         self.assertFalse(cursor.charFormat().isAnchor())
@@ -120,7 +120,7 @@ class DictionaryPresentationTests(unittest.TestCase):
         nodes = [{"tag": "span", "data": {"class": "tag"}, "content": text}
                  for text in descriptions]
         text = self.render(result(({"type": "structured-content", "content": [*nodes, "meaning"]},)))
-        self.assertIn("[noun] meaning", text)
+        self.assertIn("[noun]\nmeaning", text)
         self.assertNotIn("JMdict Sense", text)
         self.assertIn("JMdict Sense #1", self.browser.document().find("noun").charFormat().toolTip())
 

@@ -185,7 +185,7 @@ class _GlossConverter(StructuredContentConverter):
                 and (data.get("class") == "tag" or data.get("content") == "tag"))
 
     def _tags_to_html(self, nodes):
-        if self.preview:
+        if not self.grammar:
             return ""
         labels, descriptions = [], []
         for node in nodes:
@@ -201,15 +201,17 @@ class _GlossConverter(StructuredContentConverter):
             return ""
         description = " · ".join(dict.fromkeys(descriptions))
         label = " · ".join(dict.fromkeys(labels))
-        return (f'<a href="{TAG_PREFIX}{quote(description, safe="")}" '
+        return (f'<div class="metadata"><a href="{TAG_PREFIX}{quote(description, safe="")}" '
                 f'style="color:{self.colors["muted"]};text-decoration:none">'
-                f'<small>[{escape(label)}]</small></a> ')
+                f'<small>[{escape(label)}]</small></a></div>')
 
     def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term="",
-                 details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False, preview_definitions=3):
+                 details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False, preview_definitions=3,
+                 grammar=True):
         super().__init__()
         self.preview_definitions = preview_definitions
         self.definition_furigana = definition_furigana
+        self.grammar = grammar
         self.colors = surface_colors(config.color_background, config.color_foreground)
         self.expanded = expanded
         self.preview = preview
@@ -302,6 +304,8 @@ class _GlossConverter(StructuredContentConverter):
                     index += 1
             return "".join(parts)
         if isinstance(node, dict):
+            if self._is_tag(node):
+                return self._tags_to_html((node,))
             tag = node.get("tag")
             data = node.get("data")
             if (tag in ("span", "ruby") and not node.get("style")
@@ -456,7 +460,7 @@ class _GlossConverter(StructuredContentConverter):
         return parts
 
 
-def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch="", inline=False):
+def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch="", inline=False, show_inflections=True):
     size = max(10, min(config.font_size_definitions - 1, config.font_size_header - 4))
     font_style = f"font-size:{size}px;" if inline else ""
     frequencies, inflections = OrderedDict(), OrderedDict()
@@ -490,7 +494,7 @@ def _metadata(entries, combine_frequencies=True, show_frequencies=True, pitch=""
                          f'style="{font_style}color:{muted}">'
                          f'{escape(_source_name(source))} {escape("/".join(labels))}</a>'
                          for source, labels in by_source.items())
-    if inflections and not inline:
+    if inflections and not inline and show_inflections:
         description = " · ".join(inflections)
         label = description
         if len(description) > 120 and set(inflections.values()) == {"tr"}:
@@ -545,9 +549,12 @@ def _dictionary_section_key(term, reading, source):
 def render_result(result, expanded=(), preview=False, overlay_actions=False, show_source=True,
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
                   definition_furigana=False, collapsed=(), kanji_details=(),
-                  preview_frequency=True, preview_pitch=True, preview_definitions=3):
+                  preview_frequency=True, preview_pitch=True, preview_definitions=3,
+                  pinned_frequency=True, pinned_pitch=True, grammar=None, separate_headwords=False):
     """Share lexical headings while preserving the configured dictionary order."""
     preview_definitions = max(1, min(10, preview_definitions))
+    grammar_tags = not preview if grammar is None else grammar
+    show_inflections = grammar is not False
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
     clearance = 96 if overlay_actions is True else int(overlay_actions)
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
@@ -575,6 +582,8 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             parts.append("<hr>")
     anchored = set()
     for group_index, ((term, reading), dictionaries) in enumerate(groups.items()):
+        if group_index and separate_headwords:
+            parts.append("<hr>")
         first_source = next(source for source in sources if source in dictionaries)
         section = f'<a name="scroll-section-{group_index}-{sources.index(first_source)}"></a>'
         parts.append(section)
@@ -590,13 +599,13 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             if character in kanji and not preview else escape(character) for character in display_term)
         group_entries = tuple(entry for entries in dictionaries.values() for entry in entries)
         pitches = (tuple(pitch for entry in group_entries for pitch in entry.pitches)
-                   if result.source == "ja" and (not preview or preview_pitch) else ())
+                   if result.source == "ja" and (preview_pitch if preview else pinned_pitch) else ())
         pitch = ""
         if pitches:
             from meikipop.dictionary.pitch import render_pitches
             pitch = render_pitches(pitches, inline=True, separator=" ",
                                    font_size=max(10, min(config.font_size_definitions - 1, config.font_size_header - 4)))
-        metadata = _metadata(group_entries, combine_frequencies, show_frequencies=not preview or preview_frequency,
+        metadata = _metadata(group_entries, combine_frequencies, show_frequencies=preview_frequency if preview else pinned_frequency,
                              pitch=pitch, inline=True)
         metadata = " " + metadata if metadata else ""
         reading_html = (f' <span style="color:{config.color_highlight_reading};font-size:'
@@ -607,12 +616,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                          f'{ruby_html(escape(term), escape(reading), config.color_highlight_word, kanji=kanji if not preview else ())}{metadata}</h2>')
         else:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{display_term_html}{reading_html}{metadata}</h2>')
-        parts.append(_metadata(group_entries, show_frequencies=False))
-        if preview and result.source == "tr":
-            alternatives = tuple(dict.fromkeys(f"{other.term} · {' · '.join(other.inflection)}"
-                                 for other in result.entries if other.term != term and other.inflection))[:3]
-            if alternatives:
-                parts.append('<p class="metadata"><small>' + escape(" OR ".join(alternatives)) + '</small></p>')
+        parts.append(_metadata(group_entries, show_frequencies=False, show_inflections=show_inflections))
         for source in sources:
             if source not in dictionaries:
                 continue
@@ -629,6 +633,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                                         generic_source=generic_source, term=term,
                                         details_expanded=details_expanded, detail_prefix=f"{group_index}:{index}",
                                         definition_furigana=definition_furigana,
+                                        grammar=grammar_tags,
                                         definitions=tuple(definition for definitions in normalized for definition in definitions))
             definitions = []
             visible_entries = () if hidden else (normalized if full else normalized[:2])
@@ -683,6 +688,7 @@ class LocalDictionaryBrowser(RubyBrowser):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.document().setDocumentMargin(0)
         from meikipop.gui.section_scroll import SectionScroller
         self.section_scroll = SectionScroller(self)
 
@@ -965,7 +971,7 @@ class QuickLookupWindow(QDialog):
             f"profiles/{initial_profile}/selection_lookup", False, bool))
         from meikipop.dictionary.library import default_library_path
         self.browser.library_root = directory or default_library_path()
-        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{initial_profile}/snap_scrolling", False, bool))
+        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{initial_profile}/snap_scrolling", True, bool))
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)
         self.browser.setAccessibleName("Dictionary results")
@@ -1095,7 +1101,7 @@ class QuickLookupWindow(QDialog):
     def reload_appearance(self, render=True):
         from meikipop.gui.profile_appearance import load_appearance
         load_appearance(self.settings, self.preferred_foreign)
-        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{self.preferred_foreign}/snap_scrolling", False, bool))
+        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{self.preferred_foreign}/snap_scrolling", True, bool))
         self.apply_style()
         if render:
             self._render()
@@ -1501,7 +1507,13 @@ class QuickLookupWindow(QDialog):
             preview_options = dict(
                 preview_frequency=self.settings.value(prefix + "preview_frequency", True, bool),
                 preview_pitch=self.settings.value(prefix + "preview_pitch", True, bool),
-                preview_definitions=self.settings.value(prefix + "preview_definitions", 3, int))
+                preview_definitions=self.settings.value(prefix + "preview_definitions", 3, int),
+                pinned_frequency=self.settings.value(prefix + "pinned_frequency", True, bool),
+                pinned_pitch=self.settings.value(prefix + "pinned_pitch", True, bool),
+                grammar=self.settings.value(prefix + "preview_grammar", True, bool)
+                if self._peek and not self.is_pinned and compact else self.settings.value(prefix + "pinned_grammar", True, bool))
+            separate_headwords = (not self.browser.section_scroll.enabled and
+                                  len({(entry.term, entry.reading) for entry in self._result.entries}) > 1)
             self.browser.section_scroll.set_preview(self._peek and not self.is_pinned)
             expanded = self._expanded
             if self._peek and not self.is_pinned and not compact:
@@ -1524,7 +1536,7 @@ class QuickLookupWindow(QDialog):
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
                         self.settings.value("profiles/ja/definition_furigana", True, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool),
-                        tuple(sorted(self._collapsed)), tuple(sorted(self._kanji_details)))
+                        tuple(sorted(self._collapsed)), tuple(sorted(self._kanji_details)), separate_headwords)
             if identity == self._render_identity:
                 mark("render_reused", self.revision)
                 return
@@ -1542,6 +1554,7 @@ class QuickLookupWindow(QDialog):
                                                definition_furigana=self.settings.value("profiles/ja/definition_furigana", True, bool),
                                                collapsed=self._collapsed,
                                                kanji_details=self._kanji_details,
+                                               separate_headwords=separate_headwords,
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
             self._document_revision = self.revision

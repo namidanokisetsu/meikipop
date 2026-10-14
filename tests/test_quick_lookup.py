@@ -113,6 +113,11 @@ class QuickLookupTests(unittest.TestCase):
         text = self.window.browser.toPlainText()
         self.assertIn("other meaning", text)
         self.assertIn("#123", text)
+        self.settings.setValue("profiles/ja/pinned_frequency", False)
+        self.settings.setValue("profiles/ja/pinned_pitch", False)
+        self.window._render()
+        self.assertNotIn("#123", self.window.browser.toPlainText())
+        self.assertNotIn("ねこ [1]", self.window.browser.toPlainText())
 
     def test_plain_kana_fallback_when_matching_pitch_is_missing_or_hidden(self):
         from meikipop.dictionary.pitch import Pitch
@@ -217,21 +222,58 @@ class QuickLookupTests(unittest.TestCase):
         dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
         try:
             dialog.appearance.save()
-            self.assertFalse(dialog.appearance.snap_scrolling.isChecked())
-            self.assertFalse(self.window.browser.section_scroll.enabled)
-            with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
-                dialog.appearance.snap_scrolling.setChecked(True)
-                render.assert_not_called()
-            self.assertTrue(self.settings.value("profiles/ja/snap_scrolling", False, bool))
-            self.assertTrue(self.window.browser.section_scroll.enabled)
-            dialog.sync_profile("tr")
-            self.assertFalse(dialog.appearance.snap_scrolling.isChecked())
-            self.assertFalse(self.window.browser.section_scroll.enabled)
-            dialog.sync_profile("ja")
             self.assertTrue(dialog.appearance.snap_scrolling.isChecked())
             self.assertTrue(self.window.browser.section_scroll.enabled)
+            with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
+                dialog.appearance.snap_scrolling.setChecked(False)
+                render.assert_not_called()
+            self.assertFalse(self.settings.value("profiles/ja/snap_scrolling", True, bool))
+            self.assertFalse(self.window.browser.section_scroll.enabled)
+            dialog.sync_profile("tr")
+            self.assertTrue(dialog.appearance.snap_scrolling.isChecked())
+            self.assertTrue(self.window.browser.section_scroll.enabled)
+            dialog.sync_profile("ja")
+            self.assertFalse(dialog.appearance.snap_scrolling.isChecked())
+            self.assertFalse(self.window.browser.section_scroll.enabled)
         finally:
             dialog.deleteLater()
+
+    def test_disabling_snap_adds_rules_between_headwords_only(self):
+        from PyQt6.QtGui import QTextFormat
+        self.window.show_entries((entry(), entry("犬")), "猫")
+        def rules():
+            count, block = 0, self.window.browser.document().begin()
+            while block.isValid():
+                count += block.blockFormat().hasProperty(QTextFormat.Property.BlockTrailingHorizontalRulerWidth)
+                block = block.next()
+            return count
+        self.assertEqual(rules(), 0)
+        self.settings.setValue("profiles/ja/snap_scrolling", False)
+        self.window.reload_appearance()
+        self.assertEqual(rules(), 1)
+        self.settings.setValue("profiles/ja/snap_scrolling", True)
+        self.window.reload_appearance()
+        self.assertEqual(rules(), 0)
+
+    def test_preview_and_pinned_grammar_are_independent_and_keep_lemma_label(self):
+        definition = {"type": "structured-content", "content": [
+            {"tag": "span", "data": {"class": "tag"}, "content": "intransitive verb"}, "meaning"]}
+        word = replace(entry(definitions=(definition,)), inflection=("lemma",))
+        self.settings.setValue("profiles/ja/preview_grammar", True)
+        self.settings.setValue("profiles/ja/pinned_grammar", False)
+        self.window.show_entries((word,), "猫", peek=True)
+        self.assertIn("[intransitive]", self.window.browser.toPlainText())
+        self.assertIn("lemma", self.window.browser.toPlainText())
+        tag = self.window.browser.document().find("[intransitive]")
+        gloss = self.window.browser.document().find("meaning")
+        self.assertNotEqual(tag.block().position(), gloss.block().position())
+        self.window.pin.setChecked(True)
+        self.assertNotIn("[intransitive]", self.window.browser.toPlainText())
+        self.assertNotIn("lemma", self.window.browser.toPlainText())
+        self.settings.setValue("profiles/ja/pinned_grammar", True)
+        self.window._render()
+        self.assertIn("[intransitive]", self.window.browser.toPlainText())
+        self.assertIn("lemma", self.window.browser.toPlainText())
 
     def test_collapsed_dictionaries_keep_headings_and_compact_ocr_definitions(self):
         definition = {"type": "structured-content", "content": {"tag": "div", "content": [
@@ -775,6 +817,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window._context, "")
 
     def test_jitendex_preview_reduces_nesting_and_separates_tags(self):
+        self.settings.setValue("profiles/ja/preview_grammar", False)
         self.settings.setValue("profiles/ja/expanded_dictionaries", ['Dictionary'])
         definitions = ({"type": "structured-content", "content": [
             {"tag": "ul", "data": {"content": "sense-groups"}, "content": {
@@ -1197,7 +1240,20 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((entry("geldim", language="tr"),
                                   replace(entry("gelmek", language="tr"), inflection=("past", "I"))),
                                  "geldim", "tr", peek=True)
-        self.assertIn("gelmek · past · I", self.window.browser.toPlainText())
+        self.assertNotIn("gelmek · past · I", self.window.browser.toPlainText())
+        self.window.pin.setChecked(True)
+        self.assertIn("gelmek", self.window.browser.toPlainText())
+        self.assertIn("past · I", self.window.browser.toPlainText())
+
+    def test_ekim_preview_does_not_borrow_other_headwords_inflections(self):
+        alternatives = " OR ".join(f"first-person singular form {index}" for index in range(30))
+        words = (entry("ekim", definitions=("sowing",), language="tr"),
+                 replace(entry("ek", definitions=("appendix",), language="tr"), inflection=(alternatives,)))
+        self.window.show_entries(words, "ekim", "tr", peek=True)
+        self.assertIn("sowing", self.window.browser.toPlainText())
+        self.assertNotIn("first-person", self.window.browser.toPlainText())
+        self.window.pin.setChecked(True)
+        self.assertIn("first-person singular form 0 (+29)", self.window.browser.toPlainText())
 
     def test_long_turkish_form_variants_keep_gloss_visible_and_full_tooltip(self):
         variants = [f"their (poss.) · locative · relative form · adj. · variant {index}" for index in range(32)]
