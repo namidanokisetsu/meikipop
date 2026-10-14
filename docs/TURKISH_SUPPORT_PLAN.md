@@ -40,7 +40,7 @@ clients remain explicit compatibility entrypoints.
    Manual search translates misses. Launches without lookup text start in the tray.
    Edits invalidate old results immediately. Keep source labels,
    independent expansion, scrolling, pinning, resizing and Back. Optional per-profile
-   Snap scrolling animates wheel/arrow steps through dictionary blocks, retains trackpad
+   Snap scrolling moves wheel/arrow steps immediately through dictionary blocks, retains trackpad
    momentum, and settles between sections with overlapping pages for long blocks. A sticky
    headword retains Japanese ruby; the scrollbar hides only in this opt-in mode.
    A noninteractive vertical rail tracks equal section progress, interpolating within long
@@ -65,7 +65,7 @@ clients remain explicit compatibility entrypoints.
    best rank per dictionary; counts and nonnumeric labels are excluded. Optional per-source
    display labels each dictionary inline. Kanji summaries use up to three columns; clicking
    a character reveals complete details from every enabled kanji pack. Themes are Dark,
-   Green, Light and Custom; Dark defaults to 95% opacity. Custom retains its own palette.
+   Green, Light and Custom; Dark defaults to 90% opacity. Custom retains its own palette.
    Japanese pitch colors default on and can be disabled in Appearance → Customize.
    Unchanged render identities preserve documents and selections; fitting is coalesced.
    Selection lookup inside results is independently opt-in for each profile.
@@ -75,7 +75,7 @@ clients remain explicit compatibility entrypoints.
    Windows and macOS consume eligible pin gestures and their releases. Pinned results
    receive keyboard focus; macOS keys the nonactivating panel without activating the app.
    Exclusive-fullscreen games still require platform-specific hands-on acceptance.
-   Pinned OCR results include compact original context, enabled by default with
+   Pinned OCR results can include compact original context, disabled by default with
    a per-profile Appearance toggle. Long context is limited to two lines that adapt
    to the popup width; copy, translation and audio retain the complete context.
    Dictionary-provided disclosures remain independently collapsible after pinning,
@@ -119,7 +119,10 @@ clients remain explicit compatibility entrypoints.
 4. **Local OCR and context.** Windows defaults to MeikiOCR for Japanese and
    Paddle for Turkish and Indonesian. Languages outside Paddle's coverage,
    including Russian, default to Chrome Screen AI; incompatible Paddle choices
-   are disabled. New profiles inherit the current scan shortcuts, including disablement.
+   are disabled. Screen AI coverage is based on verified native fixtures, including Arabic,
+   Persian, Hindi, Urdu, Korean, Bengali, Thai and both Chinese scripts. Unsupported
+   or unverified providers remain disabled while dictionary profiles stay available.
+   New profiles inherit the current scan shortcuts, including disablement.
    macOS also offers native Vision with runtime language checks.
    The Windows desktop environment uses Python 3.12 and PaddleOCR 3.7
    PP-OCRv6 small models, supporting 50 languages on CPU. Unicode word assembly
@@ -158,6 +161,9 @@ clients remain explicit compatibility entrypoints.
    a sentence lookup or Translate is requested; downloads occur only in setup. Custom servers must
    use loopback HTTP, without proxies or redirects, and can extend translation
    coverage with other models. Results identify the model.
+   Managed language choices follow the publisher's coverage; saved unsupported choices remain
+   visible and disabled. System voice requires an installed matching voice, and online recordings
+   depend on the word. Mandarin recommendations use the broad Chinese dictionary in its own profile.
    Translation settings offer automatic or manual source and target language
    strips independently of the dictionary profile. Ordinary settings save immediately.
    Sentence lookups translate automatically; unpunctuated Japanese input falls back

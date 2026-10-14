@@ -181,10 +181,10 @@ depends on contributed recordings. Database controls appear when local sources a
 Right-click Read word to choose a source or open the current recording's attribution page.
 Sentence reading always uses an installed system voice.
 **Settings → Audio → Autoplay** saves immediately per profile: Off, On lookup, or When pinned.
-When pinned keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
+When pinned is the default; it keeps OCR hover previews silent and plays when expanded. Typed lookups never autoplay audio.
 Automatic selection lookups honor On lookup autoplay.
 Each pronunciation autoplays at most once during a held scan shortcut; manual audio can repeat.
-**Settings → Appearance** defaults to Dark: black at 95% opacity, white text
+**Settings → Appearance** defaults to Dark: black at 90% opacity, white text
 and muted readings. Green, Light and Custom remain available.
 Japanese text defaults to Yu Gothic UI on Windows, Hiragino Sans on macOS, or an installed
 Noto Japanese family on Linux. Other text uses the system UI family; saved font choices remain.
@@ -195,11 +195,11 @@ Japanese definition readings appear above their text. Headwords keep the full wo
 and bracketed reading by default; **Appearance → Headword reading → Furigana**
 switches the heading to an above-text reading too.
 Furigana uses the selected font, sits close to the text and defaults to muted gray
-at 50% size. **Appearance → Furigana size (%)** adjusts Japanese readings.
+at 50% size. **Appearance → Furigana size** adjusts Japanese readings.
 Expanded kanji use a large glyph. **Appearance → Customize → Download stroke-order font**
 installs the [author's Kanji Stroke Order font](https://www.nihilist.org.uk/) privately,
 with its original license; unsupported characters keep the normal font.
-**Settings → Lookup → Start with Windows** enables per-user tray startup.
+**Settings → Lookup → Start with Windows** enables per-user tray startup, on after fresh setup.
 
 **Settings → Translation** contains horizontal **From** and **To** language strips. Both default
 to **Automatic** within the profile's translation pair; manual selections override
@@ -214,9 +214,10 @@ Pin a scan preview to focus the popup for its keyboard shortcut. The pinned
 **Translate sentence** action translates that same scanned context locally.
 Pinned OCR results show the original sentence in compact text above the entry.
 **Settings → Appearance → Show sentence when pinned** toggles it per profile;
-it defaults on and does not change what Copy sentence copies.
-Dictionary sections labeled **More** stay collapsed when pinned; click their label
-to open or close them independently. Back restores opened sections.
+it defaults off and does not change what Copy sentence copies.
+Previews show up to three definitions. Dictionary labels collapse their sections;
+the underlined **More** link reveals the full preview without resizing or scrolling the window.
+Back restores opened sections. Snap scrolling moves immediately between sections.
 
 **Settings → Lookup** configures one text-lookup shortcut and optional automatic selection.
 Search defaults to Ctrl+Shift+D (Cmd+Shift+D on macOS): it copies selected
