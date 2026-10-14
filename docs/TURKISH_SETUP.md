@@ -21,8 +21,8 @@ BCCWJ frequency, and Kanjium pitch. Other Yomitan ZIPs can be imported.
 Word-form support appears only when an optional model is missing; OCR downloads
 are under Lookup → Screen recognition. Downloads stay explicit, and installed translation/OCR models are shared
 across languages. Base-form models are used automatically once installed.
-Appearance shows theme, text size, and opacity; Customize reveals detailed typography
-and reading controls. Settings save immediately. The language selector scopes preferences;
+Appearance groups theme and typography under General, with separate Preview and Pinned
+controls. Settings save immediately. The language selector scopes preferences;
 the text lookup shortcut is shared by all languages.
 Translation detects the input language within the selected pair and starts installed models
 on demand. Manual direction, streaming, and keep-warm controls remain under Advanced.
@@ -111,22 +111,24 @@ sit at the top right; Back and a compact nested-lookup trail sit at the bottom l
 with Copy and Close at the right. Back restores the previous result and sentence context.
 Dictionary labels and their small triangles collapse and reopen sections; **More** opens full definitions.
 Compact tags retain their full descriptions on hover.
-**Appearance → Snap scrolling**
+**Appearance → Pinned → Snap scrolling**
 keeps the current headword visible and scrolls continuously within long sections.
 The next section stays hidden until a new scroll gesture crosses its measured boundary.
-The sentence shares the first definition's page; headword sections have no divider line.
+The sentence shares the first definition's page; normal scrolling adds lines between headword sections.
 Page Up/Down page through long sections; Home/End reach the ends.
-It defaults off for each language and respects reduced motion.
+It defaults on for each language and respects saved disablement and reduced motion.
 In **Dictionaries**, select a definition dictionary and choose **Expanded**, **Preview**,
 or **Collapsed** for its initial display. Pinning preserves that choice; dictionary labels override
 it for the current result. Choices persist across reimports. Compact OCR previews use
-the first matching dictionary in priority order. **Appearance → Customize** controls
-preview frequency, pitch, and definition count (one by default); height follows content
+the first matching dictionary in priority order. **Appearance** has **General**, **Preview**
+and **Pinned** sections. Preview and Pinned have independent frequency, pitch and grammar
+switches. Preview also controls definition count (three by default); height follows content
 up to the preview height limit. Pitch patterns share one line and wrap when needed.
 Left-click a preview or use the scan gesture to freeze and resize it. Above-text previews expand upward;
 other previews grow down when space allows, switching upward near the bottom edge. Escape, outside click, Close, or a new
 scan leave the result. Entering a preview pauses its dismissal grace; leaving rearms it.
 Search also supports edge and corner resizing. Imported frequency, inflection and kanji information uses compact labels.
+Grammar labels occupy a separate line and belong only to their displayed headword.
 Frequency defaults to one harmonic-mean rank across enabled rank dictionaries, taking
 the best matching rank per dictionary. **Dictionaries → Combine frequency rankings**
 switches between the combined number and compact dictionary-labelled values. Counts and nonnumeric
@@ -135,7 +137,7 @@ Click a headword kanji to open its details at the bottom, or a kanji in the comp
 Import and enable a Yomitan pitch dictionary with the Japanese profile selected.
 Accents use Yomitan notation: high-mora bars and drop legs, a small solid nasal ring,
 and a dotted devoicing circle. Heiban is blue, atamadaka red, nakadaka orange, and odaka green.
-**Appearance → Customize → Pitch colors** is on by default and can be disabled.
+**Appearance → General → Pitch colors** is on by default and can be disabled.
 Brackets retain the supplied accent number or H/L pattern; distinct accents remain separate.
 Reimport an older mixed pack to add previously skipped pitch data.
 The copy button previews its sentence on hover; action icons have short tooltips.
@@ -196,7 +198,7 @@ and bracketed reading by default; **Appearance → Headword reading → Furigana
 switches the heading to an above-text reading too.
 Furigana uses the selected font, sits close to the text and defaults to muted gray
 at 50% size. **Appearance → Furigana size** adjusts Japanese readings.
-Expanded kanji use a large glyph. **Appearance → Customize → Download stroke-order font**
+Expanded kanji use a large glyph. **Appearance → General → Download stroke-order font**
 installs the [author's Kanji Stroke Order font](https://www.nihilist.org.uk/) privately,
 with its original license; unsupported characters keep the normal font.
 **Settings → Lookup → Start with Windows** enables per-user tray startup, on after fresh setup.

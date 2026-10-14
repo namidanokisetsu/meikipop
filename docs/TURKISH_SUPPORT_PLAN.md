@@ -39,10 +39,16 @@ clients remain explicit compatibility entrypoints.
    search. OCR misses hide the preview and scanning continues while held.
    Manual search translates misses. Launches without lookup text start in the tray.
    Edits invalidate old results immediately. Keep source labels,
-   independent expansion, scrolling, pinning, resizing and Back. Optional per-profile
+   independent expansion, scrolling, pinning, resizing and Back. Per-profile
    Snap scrolling moves wheel/arrow steps immediately through dictionary blocks, retains trackpad
    momentum, and settles between sections with overlapping pages for long blocks. A sticky
-   headword retains Japanese ruby; the scrollbar hides only in this opt-in mode.
+   headword retains Japanese ruby; Snap scrolling defaults on and can be disabled.
+   Shared document margins are zero so the first section aligns with subsequent sections.
+   Normal scrolling separates headword groups with rules. Appearance has General, Preview
+   and Pinned sections, with independent frequency, pitch and grammar switches for the
+   latter two. Grammar controls cover dictionary tags and inflection labels;
+   tags occupy their own line. Compact previews show only
+   the visible headword's inflections; other interpretations retain their own full pages.
    A noninteractive vertical rail tracks equal section progress, interpolating within long
    sections. Japanese previews have a text budget; semantic forms stay outside numbered
    senses, and extra reading groups fold when there are more than three. Shared section
@@ -66,7 +72,7 @@ clients remain explicit compatibility entrypoints.
    display labels each dictionary inline. Kanji summaries use up to three columns; clicking
    a character reveals complete details from every enabled kanji pack. Themes are Dark,
    Green, Light and Custom; Dark defaults to 90% opacity. Custom retains its own palette.
-   Japanese pitch colors default on and can be disabled in Appearance → Customize.
+   Japanese pitch colors default on and can be disabled in Appearance → General.
    Unchanged render identities preserve documents and selections; fitting is coalesced.
    Selection lookup inside results is independently opt-in for each profile.
    The Turkish compatibility
@@ -219,7 +225,9 @@ clients remain explicit compatibility entrypoints.
   publisher signing and Apple notarization still require release credentials.
   Windows and macOS first launch asks for a language before offering dictionaries
   and supported models. Suggestions start checked, can be unticked individually,
-  and download only after Install; Later skips downloads. New profiles use the
+  and download only after Install; Later skips downloads. Partial setup marks completed
+  items and Retry runs only unfinished choices, including translation in the same batch.
+  Failed or stopped batches retain their actual progress. New profiles use the
   chosen language without adding Japanese or Turkish. Obsolete preference migrations
   and fallback keys are removed; dictionary packs use the current schema, with explicit
   reimport rebuilding older packs from their ZIP. Existing configured profiles remain.
