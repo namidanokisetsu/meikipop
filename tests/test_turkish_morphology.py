@@ -152,6 +152,13 @@ class TurkishLookupTests(unittest.TestCase):
             self.assertIn(text, html)
         self.assertNotIn('-imiz (our)', render_result(result, grammar=False))
 
+    def test_detected_turkish_miss_keeps_suggestions_in_turkish(self):
+        self.analyzer.candidates.return_value = (TrAnalysis('cevir', 'NOUN'),)
+        with patch.object(self.engine.library, 'suggest', return_value=()) as suggest:
+            result = self.engine.search('cevrimizi', foreign='tr', pair=('tr', 'en'), morphology=True)
+        self.assertEqual(result.source, 'tr')
+        suggest.assert_called_once_with('cevrimizi', 'tr')
+
     def test_missing_first_lemma_does_not_hide_attested_alternative(self):
         self.analyzer.candidates.return_value = (TrAnalysis('missing', 'NOUN'), TrAnalysis('pervane', 'NOUN'),
                                                  TrAnalysis('pervane', 'ADJ'))

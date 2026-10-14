@@ -143,7 +143,7 @@ class SearchEngine:
                         source, target = foreign, source
                         matched_length = len(text)
                 if not entries:
-                    suggestions = self.library.suggest(text, target)
+                    suggestions = self.library.suggest(text, dictionary_language)
             else:
                 if source == "ja":
                     entries = self._japanese(text)
