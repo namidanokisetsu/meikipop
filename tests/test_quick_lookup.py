@@ -2182,6 +2182,22 @@ class DictionaryManagerTests(unittest.TestCase):
             self.dialog.sync_profile("ja")
             self.assertTrue(self.dialog.resources.base_install.isHidden())
 
+    def test_turkish_engine_status_remains_visible_after_installation(self):
+        with patch("meikipop.language.turkish_analyzer.available", return_value=True), \
+                patch("meikipop.language.stanza_analyzer.model_status", return_value="Installed") as status:
+            self.dialog.sync_profile("tr")
+            resources = self.dialog.resources
+            self.assertEqual(resources.base_status.text(), "Word forms: Zeyrek + Stanza")
+            self.assertFalse(resources.base_status.isHidden())
+            self.assertTrue(resources.base_install.isHidden())
+            status.return_value = "Model needed"
+            resources.refresh()
+            self.assertEqual(resources.base_status.text(), "Word forms: Zeyrek")
+            self.assertEqual(resources.base_install.text(), "Download Stanza fallback")
+            self.assertFalse(resources.base_install.isHidden())
+            self.dialog.sync_profile("ja")
+            self.assertTrue(resources.base_status.isHidden())
+
     def test_legacy_import_requires_a_language_in_automatic_mode(self):
         self.dialog.begin_operation([self.archive("Legacy")])
         self.wait_for_operation()

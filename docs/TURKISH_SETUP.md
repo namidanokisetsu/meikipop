@@ -1,4 +1,4 @@
-Updated: 2026-10-08
+Updated: 2026-10-14
 
 # Shared popup setup
 
@@ -18,7 +18,10 @@ Settings has six tabs: **Lookup**, **Dictionaries**, **Appearance**, **Audio**,
 **Translation**, and **Anki**. Dictionaries offers one download action for missing
 recommendations; Japanese includes Jitendex (JMdict-based definitions), KANJIDIC,
 BCCWJ frequency, and Kanjium pitch. Other Yomitan ZIPs can be imported.
-Word-form support appears only when an optional model is missing; OCR downloads
+Turkish word forms use bundled Zeyrek morphology, with installed Stanza as a fallback.
+Dictionaries shows the installed engines and offers **Download Stanza fallback** when
+missing. No model download is needed for Zeyrek. Other languages offer word-form
+support when their optional model is missing; OCR downloads
 are under Lookup → Screen recognition. Downloads stay explicit, and installed translation/OCR models are shared
 across languages. Base-form models are used automatically once installed.
 Appearance groups theme and typography under General, with separate Preview and Pinned
@@ -478,7 +481,9 @@ the table describes available features whether or not their resources are alread
   These alternatives are selectable in Settings. Paddle's separate
   [v5 models cover 106 languages](https://www.paddleocr.ai/latest/en/version3.x/algorithm/PP-OCRv5/PP-OCRv5_multi_languages.html);
   Meikipop's installer currently supplies the v6 model pair.
-- **Morphology:** Japanese uses bundled deconjugation rules; **Stanza** enables optional lemma
+- **Morphology:** Japanese uses bundled Nazeka deconjugation rules. Turkish uses
+  Zeyrek 0.1.3 with Anki Miner's fixes and dictionary-supported alternatives;
+  installed Stanza remains a miss-only fallback. **Stanza** enables optional lemma
   fallback after installing its [language model](https://stanfordnlp.github.io/stanza/available_models.html).
   Imported forms work in every profile. Turkish also supports accent recovery.
 - **Audio:** every profile offers online Wikimedia pronunciations, system TTS, and compatible
@@ -626,7 +631,7 @@ Sources and model versions: PaddleOCR 3.7 / PP-OCRv6 Small, Hy-MT2, and
 | Telugu | `te` | Wiktionary | Yes | - | - |
 | Thai | `th` | Wiktionary | Yes | - | - |
 | Tibetan | `bo` | Wiktionary | Yes | - | - |
-| Türkçe | `tr` | Wiktionary | Yes | Yes | Stanza |
+| Türkçe | `tr` | Wiktionary | Yes | Yes | Zeyrek; optional Stanza |
 | Urdu | `ur` | Wiktionary | Yes | - | Stanza |
 | Uyghur | `ug` | Wiktionary | Yes | - | Stanza |
 | Uzbek | `uz` | Wiktionary | - | Yes | - |

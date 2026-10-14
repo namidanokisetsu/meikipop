@@ -225,7 +225,7 @@ class FirstRunTests(unittest.TestCase):
         self.assertEqual(japanese[-1].value, "lightweight")
         with patch("meikipop.ocr.macos_vision.supported_languages", return_value={"tr"}):
             turkish = language_plan("tr", platform="darwin")
-        self.assertEqual([task.kind for task in turkish], ["dictionary", "morphology", "translation"])
+        self.assertEqual([task.kind for task in turkish], ["dictionary", "translation"])
 
     def test_cancelled_language_setup_does_not_start_downloads(self):
         from meikipop.gui.language_setup import LanguageSetup, language_plan

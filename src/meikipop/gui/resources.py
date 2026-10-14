@@ -64,6 +64,8 @@ class ResourcesPanel(QWidget):
         self.dictionary_install.setFlat(True)
         self.dictionary_install.clicked.connect(self.install_dictionaries)
         layout.addWidget(self.dictionary_install, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.base_status = QLabel()
+        layout.addWidget(self.base_status)
         self.base_install = QPushButton("Download word-form support")
         self.base_install.setFlat(True)
         self.base_install.setToolTip("Recognize inflected words using an optional offline model")
@@ -142,8 +144,16 @@ class ResourcesPanel(QWidget):
         from meikipop.language.support import STANZA_LANGUAGES
         supported = code in STANZA_LANGUAGES and code != "ja"
         ready = supported and model_status(code) == "Installed"
+        from meikipop.language.turkish_analyzer import available
+        turkish = code == "tr" and available()
+        engines = [name for name, installed in (("Zeyrek", turkish), ("Stanza", ready)) if installed]
+        self.base_status.setText("Word forms: " + " + ".join(engines))
+        self.base_status.setVisible(bool(engines))
+        self.base_status.setToolTip("Offline Turkish morphology; Stanza is used after a miss" if turkish else
+                                   "Offline base-form lookup")
+        self.base_install.setText("Download Stanza fallback" if turkish else "Download word-form support")
         self.base_install.setVisible(supported and not ready)
-        self.dictionary_section.setVisible(bool(self.missing_dictionaries) or supported and not ready)
+        self.dictionary_section.setVisible(bool(self.missing_dictionaries) or supported or turkish)
         self.base_install.setEnabled(not busy)
         source = owner.translation_source.currentData()
         target = owner.translation_target.currentData()

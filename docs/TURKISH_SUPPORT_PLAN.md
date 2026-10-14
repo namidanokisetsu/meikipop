@@ -1,4 +1,4 @@
-Updated: 2026-10-06
+Updated: 2026-10-14
 
 # Shared Japanese, Turkish and Yomitan popup
 
@@ -101,7 +101,23 @@ clients remain explicit compatibility entrypoints.
    sentence context through dictionary analysis, translation, audio, copying and Back.
 
 3. **Language policies.** Japanese deconjugation and Turkish accent recovery
-   remain specialized. Other installed languages use indexed entries/readings
+   remain specialized. The bundled Japanese rule data matches
+   [Nazeka's public-domain rules](https://github.com/wareya/nazeka/blob/master/dict/deconjugator.json)
+   and was inherited unchanged from upstream Meikipop. Our Python interpreter
+   checks dictionary part-of-speech compatibility; parity with other interpreters
+   and comparative accuracy have not been established.
+   Turkish additionally uses Zeyrek 0.1.3 with the analyzer fixes and context
+   preferences adapted from [Anki Miner](https://github.com/0xzerolight/anki_miner/tree/808b5208bf93d919b3f18ea3aba66db5fd7fd0ea/anki_miner/languages/tr).
+   Its bundled lexicon loads lazily on the lookup worker. Unlike Anki Miner's
+   single card-front choice, shared lookup retains dictionary-supported alternatives
+   in analyzer order, deduplicates entries and falls back to installed Stanza on a miss.
+   Dictionary frequency packs do not select the analysis. Existing exact entries,
+   imported forms and accent recovery retain precedence; source spans stay unchanged.
+   Stanza is optional for Turkish; Settings shows installed engines and offers its
+   fallback download separately. Unknown or missing vocabulary still produces a miss.
+   Attribution and licenses ship in `resources/licenses`. The legacy Turkish client
+   retains its existing Stanza adapter.
+   Other installed languages use indexed entries/readings
    and imported forms. Russian additionally tries bounded е/ё variants after
    an exact/form miss, reusing indexed packs without neural analysis.
    Persian miss-only Kaf/Yeh and ZWNJ spelling variants reuse imported forms,
