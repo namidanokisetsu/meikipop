@@ -105,6 +105,54 @@ class ResourceTests(unittest.TestCase):
                     dialog.deleteLater()
                     self.app.processEvents()
 
+    def test_unsupported_resources_never_offer_downloads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profile", "gem-pro")
+            settings.setValue("profiles/gem-pro/target", "en")
+            settings.setValue("profiles/yi/ocr_provider", "paddle")
+            with patch("meikipop.gui.resources.ocr_ready", return_value=False), \
+                    patch("meikipop.gui.resources.translation_ready", return_value=False):
+                dialog = SetupDialog(Path(directory) / "library", settings, Mock())
+                try:
+                    for code in ("gem-pro", "yi"):
+                        with self.subTest(code=code), patch.object(dialog, "begin_operation") as install:
+                            dialog.sync_profile(code)
+                            resources = dialog.resources
+                            self.assertTrue(resources.ocr_section.isHidden())
+                            self.assertFalse(resources.ocr_install.isEnabled())
+                            self.assertNotIn("Unavailable", resources.ocr_install.text())
+                            self.assertTrue(resources.translation_section.isHidden())
+                            self.assertTrue(all(row.isHidden() for row in resources.model_rows.values()))
+                            resources.ocr_install.click()
+                            for download in resources.downloads.values():
+                                self.assertFalse(download.isEnabled())
+                                download.click()
+                            install.assert_not_called()
+                    self.assertEqual(settings.value("profiles/yi/ocr_provider"), "paddle")
+                finally:
+                    dialog.deleteLater()
+                    self.app.processEvents()
+
+    def test_translation_downloads_refresh_after_unsupported_pair_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profile", "ja")
+            settings.setValue("profiles/ja/target", "yi")
+            with patch("meikipop.gui.resources.ocr_ready", return_value=True), \
+                    patch("meikipop.gui.resources.translation_ready", return_value=False):
+                dialog = SetupDialog(Path(directory) / "library", settings, Mock())
+                try:
+                    self.assertTrue(dialog.resources.translation_section.isHidden())
+                    self.assertFalse(dialog.resources.downloads["quality"].isEnabled())
+                    self.assertEqual(settings.value("profiles/ja/target"), "yi")
+                    dialog.translation_partner.setCurrentIndex(dialog.translation_partner.findData("ru"))
+                    self.assertFalse(dialog.resources.model_rows["quality"].isHidden())
+                    self.assertTrue(dialog.resources.downloads["quality"].isEnabled())
+                finally:
+                    dialog.deleteLater()
+                    self.app.processEvents()
+
     def test_empty_japanese_settings_only_offer_actionable_downloads(self):
         with tempfile.TemporaryDirectory() as directory:
             settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)

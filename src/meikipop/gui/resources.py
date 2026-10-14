@@ -93,6 +93,8 @@ class ResourcesPanel(QWidget):
             row.addWidget(download)
             row.addStretch()
             layout.addWidget(widget)
+        for control in (owner.translation_partner, owner.translation_source, owner.translation_target):
+            control.currentIndexChanged.connect(self.refresh)
         self.refresh()
 
     def install_dictionaries(self):
@@ -126,11 +128,16 @@ class ResourcesPanel(QWidget):
         for control in (owner.up, owner.down, owner.remove_button):
             control.setVisible(has_packs)
         provider = owner.current_ocr_control()
-        ready = ocr_ready(provider.currentData(), owner.screenai_directory.text())
-        self.ocr_install.setText("Download " + provider.currentText().split(" (")[0])
-        self.ocr_section.setVisible(not ready and provider.currentData() != "screenai")
-        self.ocr_install.setVisible(not ready)
-        self.ocr_install.setEnabled(not busy and provider.currentData() != "vision")
+        from meikipop.language.support import ocr_supported, translation_supported
+        item = provider.model().item(provider.currentIndex())
+        available = bool(provider.currentData() and item is not None and item.isEnabled()
+                         and ocr_supported(code, provider.currentData()))
+        ready = available and ocr_ready(provider.currentData(), owner.screenai_directory.text())
+        downloadable = available and not ready and provider.currentData() not in {"screenai", "vision"}
+        self.ocr_install.setText("Download " + provider.currentText().split(" (")[0] if available else "Download OCR")
+        self.ocr_section.setVisible(downloadable)
+        self.ocr_install.setVisible(downloadable)
+        self.ocr_install.setEnabled(downloadable and not busy)
         from meikipop.language.stanza_analyzer import model_status
         from meikipop.language.support import STANZA_LANGUAGES
         supported = code in STANZA_LANGUAGES and code != "ja"
@@ -138,9 +145,16 @@ class ResourcesPanel(QWidget):
         self.base_install.setVisible(supported and not ready)
         self.dictionary_section.setVisible(bool(self.missing_dictionaries) or supported and not ready)
         self.base_install.setEnabled(not busy)
+        source = owner.translation_source.currentData()
+        target = owner.translation_target.currentData()
+        source = code if source == "auto" else source
+        target = owner.translation_partner.currentData() if target == "auto" else target
+        supported = (owner.translation_mode.currentData() != "custom"
+                     and translation_supported(source) and translation_supported(target))
         for name in self.downloads:
-            ready = translation_ready(name)
+            ready = supported and translation_ready(name)
             selected = owner.translation_mode.currentData() == name
-            self.model_rows[name].setVisible(selected and not ready)
-            self.downloads[name].setVisible(not ready)
-            self.downloads[name].setEnabled(not ready and not busy)
+            self.model_rows[name].setVisible(supported and selected and not ready)
+            self.downloads[name].setVisible(supported and not ready)
+            self.downloads[name].setEnabled(supported and not ready and not busy)
+        self.translation_section.setVisible(any(not row.isHidden() for row in self.model_rows.values()))
