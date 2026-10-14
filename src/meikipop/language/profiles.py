@@ -12,6 +12,7 @@ import unicodedata
 
 
 _APOSTROPHES = frozenset("'’ʼ")
+_WORD_JOINERS = _APOSTROPHES | frozenset("\u200c\u200d")
 _CLOSERS = frozenset("'\"’”»›」』）)]}｣】〉》")
 _TERMINATORS = frozenset(".!?。！？｡．؟।։")
 _ABBREVIATIONS = frozenset({"dr", "prof", "mr", "mrs", "ms", "e.g", "i.e"})
@@ -60,7 +61,7 @@ class LanguageProfile:
 
         Unspaced scripts expose one base character plus its combining marks;
         their dictionary lookup can test longer prefixes from that position.
-        Spaced scripts retain internal apostrophes and decimal separators.
+        Spaced scripts retain internal apostrophes, joiners and decimal separators.
         """
         result = []
         index = 0
@@ -80,7 +81,7 @@ class LanguageProfile:
                 if _letter_or_number(char):
                     index += 1
                     continue
-                if char in _APOSTROPHES and index + 1 < len(text) and _letter_or_number(text[index+1]):
+                if char in _WORD_JOINERS and index + 1 < len(text) and _letter_or_number(text[index+1]):
                     index += 1
                     continue
                 if char in ".," and text[index-1].isdigit() and index + 1 < len(text) and text[index+1].isdigit():
@@ -142,5 +143,5 @@ def get_profile(code: str = "ja") -> LanguageProfile:
         abbreviations |= frozenset({"doç", "sn", "örn", "vb", "vs"})
     terminators = _TERMINATORS | frozenset(";;") if base == "el" else _TERMINATORS
     return LanguageProfile(code, _NAMES.get(base, code.upper()),
-                           "unspaced" if base in {"ja", "zh", "yue"} else "spaced",
+                           "unspaced" if base in {"ja", "zh", "cmn", "yue", "th"} else "spaced",
                            abbreviations, terminators)

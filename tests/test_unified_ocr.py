@@ -12,7 +12,7 @@ from PyQt6.QtCore import QPoint, QRect, pyqtSignal
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication, QCheckBox, QLineEdit, QToolButton, QWidget
 
-from meikipop.gui.unified_ocr import ScanWorker, UnifiedOCR
+from meikipop.gui.unified_ocr import PaddleScan, ScanWorker, UnifiedOCR
 from meikipop.ocr.context import ContextHit
 from meikipop.ocr.interface import BoundingBox, Paragraph, Word
 
@@ -88,6 +88,7 @@ class ScanWorkerTests(unittest.TestCase):
                 engine.search.return_value = SimpleNamespace(entries=())
                 with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
                         patch("meikipop.language.support.default_ocr_provider", return_value=default), \
+                        patch("meikipop.language.support.ocr_supported", return_value=True), \
                         patch.object(worker, "provider", return_value=provider) as factory:
                     worker.run()
                 self.assertEqual(factory.call_args_list[0].args, ("ja", "meikiocr", ""))
@@ -213,6 +214,64 @@ class ScanWorkerTests(unittest.TestCase):
             factory.assert_called_once_with(None, language="ru")
             with self.assertRaisesRegex(RuntimeError, "does not support this language"):
                 ScanWorker.provider("ru", "paddle")
+
+    def test_yiddish_uses_verified_screenai_without_japanese_route(self):
+        provider = Mock()
+        with patch("meikipop.gui.unified_ocr.sys.platform", "win32"), \
+                patch("meikipop.ocr.providers.screenai.provider.ScreenAiOcr", return_value=provider) as factory:
+            self.assertEqual(ScanWorker.provider("yi"), provider.scan)
+        factory.assert_called_once_with(None, language="yi")
+
+    def test_unverified_language_does_not_load_native_component(self):
+        with patch("meikipop.gui.unified_ocr.sys.platform", "win32"), \
+                patch("meikipop.ocr.providers.screenai.provider.ScreenAiOcr") as factory:
+            with self.assertRaisesRegex(RuntimeError, "unverified"):
+                ScanWorker.provider("ang")
+            with self.assertRaisesRegex(RuntimeError, "does not support"):
+                ScanWorker.provider("ang", "screenai")
+        factory.assert_not_called()
+
+    def test_invalid_selection_on_mac_cannot_fall_through_to_vision(self):
+        with patch("meikipop.gui.unified_ocr.sys.platform", "darwin"), \
+                patch("meikipop.ocr.macos_vision.recognize") as recognize:
+            with self.assertRaisesRegex(RuntimeError, "does not support"):
+                ScanWorker.provider("tr", "meikiocr")
+        recognize.assert_not_called()
+
+    def test_reusing_paddle_model_does_not_bypass_language_coverage(self):
+        image = image_bytes()
+        worker, sink = self.make_worker([
+            (1, image, (.2, .5), "tr", ("paddle", "")),
+            (2, image, (.2, .5), "ru", ("paddle", "")), None])
+        provider = Mock(return_value=recognized())
+        with patch("meikipop.dictionary.search.SearchEngine", return_value=Mock()), \
+                patch.object(worker, "provider", return_value=provider):
+            worker.run()
+        provider.assert_called_once()
+        self.assertIn("does not support", sink.emit.call_args_list[1].args[-1])
+
+    def test_shared_paddle_uses_current_profile_character_geometry(self):
+        result = {"rec_texts": ["中文"], "text_word": [["中", "文"]],
+                  "text_word_boxes": [[(10, 10, 30, 30), (40, 10, 60, 30)]]}
+        model = Mock()
+        model.recognize.return_value = [result]
+        scanner = PaddleScan(model, "tr")
+        image = image_bytes()
+        worker, sink = self.make_worker([
+            (1, image, (.5, .4), "tr", ("paddle", "")),
+            (2, image, (.5, .4), "cmn", ("paddle", "")), None])
+        with patch("meikipop.dictionary.search.SearchEngine", return_value=Mock()), \
+                patch.object(worker, "provider", return_value=scanner) as factory:
+            worker.run()
+        factory.assert_called_once_with("tr", "paddle", "")
+        self.assertEqual(model.recognize.call_count, 2)
+        self.assertEqual([call.args[2].query for call in sink.emit.call_args_list], ["中文", "文"])
+
+    def test_arabic_paddle_rejected_before_loading_latin_model(self):
+        with patch("meikipop.ocr.turkish_paddle.LocalOCR") as factory:
+            with self.assertRaisesRegex(RuntimeError, "does not support"):
+                ScanWorker.provider("ar", "paddle")
+        factory.assert_not_called()
 
 
 class FakeWindow(QWidget):

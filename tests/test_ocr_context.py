@@ -40,6 +40,17 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(hit.query, '読む。')
         self.assertEqual(hit.start, 2)
 
+    def test_overlapping_native_thai_boxes_keep_each_character_center(self):
+        boxes = [BoundingBox(.0934375, .49, .013125, .16),
+                 BoundingBox(.098125, .5025, .01, .135),
+                 BoundingBox(.1096875, .515, .013125, .16)]
+        paragraph = Paragraph('เรา', [Word(char, '', box, index)
+                              for index, (char, box) in enumerate(zip('เรา', boxes))],
+                              BoundingBox(.1, .5, .1, .3), False)
+        for index, box in enumerate(boxes):
+            hit = hit_paragraphs([paragraph], (box.center_x, box.center_y), 'th')
+            self.assertEqual((hit.query, hit.start, hit.end), ('เรา'[index:], index, index + 1))
+
     def test_japanese_small_character_gaps_select_nearest_without_cursor_nudge(self):
         for vertical in (False, True):
             boxes = [BoundingBox(.5, center, .2, .18) if vertical else

@@ -17,6 +17,19 @@ from meikipop.utils.timing import mark
 from meikipop.gui.lookup_session import LookupSession
 
 
+class PaddleScan:
+    def __init__(self, provider, language):
+        self.provider, self.language = provider, language
+
+    def __call__(self, image):
+        return self.scan(image, self.language)
+
+    def scan(self, image, language):
+        import numpy as np
+        results = self.provider.recognize(np.asarray(image)[:, :, ::-1].copy())
+        return paddle_paragraphs(results, *image.size, language=language)
+
+
 class ScanWorker(threading.Thread):
     def __init__(self, completed, directory=None, frames=None):
         super().__init__(daemon=True, name="UnifiedOCR")
@@ -78,8 +91,10 @@ class ScanWorker(threading.Thread):
                     if engine is None and self.frames is None:
                         engine = SearchEngine(self.directory)
                     selection = tuple(options[0]) if options else ()
-                    from meikipop.language.support import default_ocr_provider
+                    from meikipop.language.support import default_ocr_provider, ocr_supported
                     selected = (selection[0] if selection else None) or default_ocr_provider(language)
+                    if selected is None or not ocr_supported(language, selected):
+                        raise RuntimeError("This OCR provider does not support this language.")
                     component = selection[1] if selected == "screenai" and len(selection) > 1 else ""
                     provider_key = (language, selected, component)
                     # Paddle's installed multilingual model is identical across profiles.
@@ -130,7 +145,10 @@ class ScanWorker(threading.Thread):
                     if pixels is None:
                         paragraphs = cache.result
                     else:
-                        paragraphs = cache.scan(image, providers[model_key])
+                        scanner = providers[model_key]
+                        if isinstance(scanner, PaddleScan):
+                            scanner = lambda image, shared=scanner: shared.scan(image, language)
+                        paragraphs = cache.scan(image, scanner)
                         mark("ocr_done", generation)
                     if self._stopped.is_set():
                         return
@@ -178,27 +196,22 @@ class ScanWorker(threading.Thread):
 
     @staticmethod
     def provider(language, selected=None, component_directory=""):
-        from meikipop.language.support import PADDLE_LANGUAGES, default_ocr_provider
+        from meikipop.language.support import default_ocr_provider, ocr_supported
         selected = selected or default_ocr_provider(language)
+        if selected is None:
+            raise RuntimeError("Screen recognition support is unverified for this language.")
+        if not ocr_supported(language, selected):
+            raise RuntimeError("This OCR provider does not support this language.")
         if selected == "screenai":
             from meikipop.ocr.providers.screenai.provider import ScreenAiOcr
             return ScreenAiOcr(component_directory or None, language=language).scan
         if selected == "paddle":
-            if language not in PADDLE_LANGUAGES:
-                raise RuntimeError("This Paddle model does not support this language. Choose Chrome Screen AI in Settings → OCR.")
             from meikipop.ocr.turkish_paddle import LocalOCR
-            import numpy as np
-            provider = LocalOCR()
-            return lambda image: paddle_paragraphs(provider.recognize(np.asarray(image)[:, :, ::-1].copy()), *image.size)
-        if language == "ja":
-            selected = selected or ("vision" if sys.platform == "darwin" else "meikiocr")
-            if selected == "vision":
-                if sys.platform != "darwin":
-                    raise RuntimeError("Apple Vision is available only on macOS.")
-                from meikipop.ocr.macos_vision import recognize
-                return lambda image: recognize(image, language)
-            if selected != "meikiocr":
-                raise RuntimeError("Choose a Japanese OCR provider in Settings → Screen lookup.")
+            return PaddleScan(LocalOCR(), language)
+        if selected == "vision":
+            from meikipop.ocr.macos_vision import recognize
+            return lambda image: recognize(image, language)
+        if selected == "meikiocr":
             try:
                 from meikipop.ocr.providers.meikiocr.provider import MeikiOcrProvider
             except ImportError as error:
@@ -207,15 +220,7 @@ class ScanWorker(threading.Thread):
             if provider.ocr_client is None:
                 raise RuntimeError("Japanese OCR could not start. Check its local model installation.")
             return provider.scan
-        if sys.platform == "darwin" and selected != "paddle":
-            from meikipop.ocr.macos_vision import recognize
-            return lambda image: recognize(image, language)
-        if language == "tr":
-            from meikipop.ocr.turkish_paddle import LocalOCR
-            import numpy as np
-            provider = LocalOCR()
-            return lambda image: paddle_paragraphs(provider.recognize(np.asarray(image)[:, :, ::-1].copy()), *image.size)
-        raise RuntimeError("Screen OCR is available for Japanese and Turkish here. Other languages support text lookup.")
+        raise RuntimeError("Choose a supported OCR provider in Settings.")
 
 
 class HitWorker(threading.Thread):
@@ -408,7 +413,7 @@ class UnifiedOCR(QObject):
             self.invalidate()
         self.morphology = morphology
         previous_profile_provider = getattr(self, "profile_ocr_provider", None)
-        from meikipop.language.support import default_ocr_provider
+        from meikipop.language.support import default_ocr_provider, ocr_supported
         default = default_ocr_provider(profile)
         self.profile_ocr_provider = settings.value(f"profiles/{profile}/ocr_provider", default) if settings else default
         if previous_profile_provider != self.profile_ocr_provider:
@@ -427,14 +432,15 @@ class UnifiedOCR(QObject):
 
         if settings is not None:
             from meikipop.config.config import config
-            bindings = settings.value(f"profiles/{profile}/scan_bindings", "shift")
+            bindings = settings.value(f"profiles/{profile}/scan_bindings", "shift,middle")
             previous_bindings = getattr(self, "activation_bindings", None)
             self.activation_bindings = bindings
             if self.input and bindings and bindings != previous_bindings:
                 self.input.activation.set_bindings(bindings)
                 self.holding = False
-            if bool(bindings) != self.enabled:
-                self.set_enabled(bool(bindings))
+            enabled = bool(bindings) and ocr_supported(profile, self.profile_ocr_provider)
+            if enabled != self.enabled:
+                self.set_enabled(enabled)
 
     def _sync_pin_ready(self):
         if self.input and hasattr(self.input, "pin_ready"):
@@ -504,6 +510,12 @@ class UnifiedOCR(QObject):
         return QRect(self.capture_region)
 
     def set_enabled(self, enabled, *, request_access=True):
+        if enabled:
+            from meikipop.language.support import ocr_supported
+            if not ocr_supported(self.window.preferred_foreign, self.profile_ocr_provider):
+                enabled = False
+                self.window.scan_toggle.setChecked(False)
+                self.window.show_message("Screen recognition is unavailable for this language.")
         self.session.enable(enabled)
         self.invalidate()
         if not enabled:

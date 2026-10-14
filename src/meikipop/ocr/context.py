@@ -1,6 +1,7 @@
 """Keep recognized context and lookup offsets together through the OCR pipeline."""
 from dataclasses import dataclass
 import math
+import unicodedata
 from meikipop.language.profiles import get_profile
 
 
@@ -48,6 +49,7 @@ def hit_paragraphs(paragraphs, point, language="ja"):
     unspaced = get_profile(language).word_mode == "unspaced"
     for paragraph in paragraphs or ():
         offset = 0
+        nearest = None
         for index, word in enumerate(paragraph.words):
             # OCR engines can normalize spaces; align against their actual full text.
             start = word.source_start if word.source_start is not None else paragraph.full_text.find(word.text, offset)
@@ -68,15 +70,27 @@ def hit_paragraphs(paragraphs, point, language="ja"):
             if unspaced:
                 fraction = ((y - top) / box.height if paragraph.is_vertical and box.height else
                             (x - left) / box.width if box.width else 0)
-                start += min(len(word.text) - 1, max(0, int(fraction * len(word.text))))
+                positions = [index for index, char in enumerate(word.text)
+                             if index == 0 or not unicodedata.category(char).startswith("M")]
+                index = min(len(positions) - 1, max(0, int(fraction * len(positions))))
+                start += positions[index]
                 query = paragraph.full_text[start:]
-                end = start + 1
+                end = start + ((positions[index + 1] if index + 1 < len(positions) else len(word.text))
+                               - positions[index])
             else:
                 query = word.text.strip(".,!?;:()[]{}\"“”")
                 start += word.text.find(query)
                 end = start + len(query)
             if query:
-                return ContextHit(query, paragraph.full_text, start, end, language)
+                hit = ContextHit(query, paragraph.full_text, start, end, language)
+                if not unspaced:
+                    return hit
+                # Native glyph boxes can overlap, especially with preposed vowels.
+                distance = ((x - box.center_x) / (box.width or 1)) ** 2 + ((y - box.center_y) / (box.height or 1)) ** 2
+                if nearest is None or distance < nearest[0]:
+                    nearest = (distance, hit)
+        if nearest is not None:
+            return nearest[1]
     return None
 
 
@@ -163,7 +177,7 @@ def _paddle_groups(lines):
     return groups
 
 
-def paddle_paragraphs(results, width, height):
+def paddle_paragraphs(results, width, height, language="tr"):
     """Adapt pixel-space fragments into normalized words and visible paragraphs."""
     if width <= 0 or height <= 0:
         raise ValueError("OCR image dimensions must be positive.")
@@ -171,7 +185,7 @@ def paddle_paragraphs(results, width, height):
     for result in results or ():
         lines = ((text, zip(fragments, boxes)) for text, fragments, boxes in
                  zip(result.get("rec_texts", ()), result.get("text_word", ()), result.get("text_word_boxes", ())))
-        paragraphs.extend(fragment_paragraphs(lines, width, height))
+        paragraphs.extend(fragment_paragraphs(lines, width, height, language))
     return paragraphs
 
 

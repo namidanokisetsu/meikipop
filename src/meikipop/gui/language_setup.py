@@ -19,7 +19,7 @@ def language_plan(language, translation="lightweight", platform=None):
     from meikipop.language.support import STANZA_LANGUAGES, TRANSLATION_LANGUAGES, default_ocr_provider
     tasks = [SetupTask("dictionary", item.title, item) for item in recommendations(language)]
     provider = default_ocr_provider(language, platform)
-    if provider != "vision":
+    if provider and provider != "vision":
         tasks.append(SetupTask("ocr", "Screen recognition", provider))
     if language != "ja" and language in STANZA_LANGUAGES:
         tasks.append(SetupTask("morphology", "Word-form support", language))

@@ -35,12 +35,65 @@ class LanguageProfileTests(unittest.TestCase):
                          ["İstanbul’da", "oğlumʼun", "cafe\u0301'si", "3.5", "5'te"])
         self.assertTrue(all(text[start:end] for start, end in spans))
 
+    def test_persian_joiners_keep_complete_words_and_original_source_offsets(self):
+        text = "کتاب\u200cها می\u200cروم می\u200cنویسم"
+        spans = get_profile("fa").word_spans(text)
+        self.assertEqual(spans, ((0, 7), (8, 14), (15, 23)))
+        self.assertEqual([text[start:end] for start, end in spans],
+                         ["کتاب\u200cها", "می\u200cروم", "می\u200cنویسم"])
+        sentence, start, end = get_profile("fa").sentence_span(text, 8, 14)
+        self.assertEqual((sentence, start, end), (text, 8, 14))
+        self.assertEqual(get_profile("fa").lookup_key(text[8:14]), "می\u200cروم")
+        self.assertEqual(get_profile("fa").word_spans("\u200cکتاب\u200c"), ((1, 5),))
+
+    def test_internal_joiners_preserve_indic_letter_clusters(self):
+        for language, text in (("hi", "क्\u200dष"), ("bn", "ক্\u200cষ")):
+            with self.subTest(language=language):
+                self.assertEqual(get_profile(language).word_spans(text), ((0, len(text)),))
+
     def test_unspaced_profiles_retain_character_positions(self):
         text = "か\u3099本を読む。"
         spans = get_profile("ja").word_spans(text)
         self.assertEqual([text[start:end] for start, end in spans], ["か\u3099", "本", "を", "読", "む"])
         self.assertEqual(get_profile("zh-tw").word_mode, "unspaced")
+        self.assertEqual(get_profile("cmn").word_mode, "unspaced")
         self.assertEqual(get_profile("ko").word_mode, "spaced")
+
+    def test_mandarin_retains_native_character_positions_for_prefix_lookup(self):
+        from meikipop.ocr.context import fragment_paragraphs, hit_paragraphs
+
+        text = "学习中文。"
+        fragments = [(char, (index * 20, 0, (index + 1) * 20, 20))
+                     for index, char in enumerate(text)]
+        paragraphs = fragment_paragraphs([(text, fragments)], 100, 20, "cmn")
+        self.assertEqual([word.text for word in paragraphs[0].words], list("学习中文"))
+        hit = hit_paragraphs(paragraphs, (.5, .5), "cmn")
+        self.assertEqual((hit.query, hit.start, hit.end), ("中文。", 2, 3))
+        self.assertEqual(hit.text[hit.start:hit.end], "中")
+
+    def test_thai_cursor_prefix_keeps_combining_marks_at_the_source_position(self):
+        from meikipop.ocr.context import fragment_paragraphs, hit_paragraphs
+
+        text = "อ่านหนังสือ"
+        spans = get_profile("th").word_spans(text)
+        fragments = [(text[start:end], (index * 20, 0, (index + 1) * 20, 20))
+                     for index, (start, end) in enumerate(spans)]
+        paragraphs = fragment_paragraphs([(text, fragments)], len(spans) * 20, 20, "th")
+        target = next(word for word in paragraphs[0].words if word.text == "นั")
+        hit = hit_paragraphs(paragraphs, (target.box.center_x, target.box.center_y), "th")
+        start = text.index("นั")
+        self.assertEqual((hit.query, hit.start, hit.end), (text[start:], start, start + 2))
+        self.assertEqual(hit.text[hit.start:hit.end], "นั")
+
+    def test_japanese_combining_dakuten_stays_with_its_character_during_interpolation(self):
+        from meikipop.ocr.context import hit_paragraphs
+        from meikipop.ocr.interface import BoundingBox, Paragraph, Word
+
+        text = "か\u3099本"
+        word = Word(text, "", BoundingBox(.5, .5, 1, 1))
+        paragraph = Paragraph(text, [word], word.box, False)
+        hit = hit_paragraphs([paragraph], (.49, .5), "ja")
+        self.assertEqual((hit.query, hit.start, hit.end), (text, 0, 2))
 
     def assert_sentence(self, language, text, word, expected):
         start = text.index(word)
