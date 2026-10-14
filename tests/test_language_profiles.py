@@ -28,6 +28,37 @@ class LanguageProfileTests(unittest.TestCase):
         self.assertEqual(get_profile("de").lookup_key("Straße"), "straße")
         self.assertNotEqual(get_profile("tr").lookup_key("sık"), get_profile("tr").lookup_key("sik"))
 
+    def test_arabic_native_ocr_variants_find_imported_canonical_headwords_without_changing_context(self):
+        import json
+        from pathlib import Path
+        import tempfile
+        import zipfile
+        from meikipop.dictionary.library import Library, import_yomitan
+        from meikipop.ocr.context import fragment_paragraphs, hit_paragraphs
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            archive = root / "arabic.zip"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("index.json", json.dumps({"title": "Arabic", "format": 3, "sourceLanguage": "ar"}))
+                bundle.writestr("term_bank_1.json", json.dumps([
+                    ["كتاب", "", "", "", 0, ["book"], -1, ""],
+                    ["كبير", "", "", "", 0, ["large"], -1, ""],
+                ]))
+            import_yomitan(archive, root / "library")
+            library = Library(root / "library")
+            try:
+                self.assertEqual(library.lookup("کتاب", "ar", tolerant=False)[0].term, "كتاب")
+                self.assertEqual(library.lookup("کبیر", "ar", tolerant=False)[0].term, "كبير")
+            finally:
+                library.close()
+        text = "هذا کتاب."
+        paragraphs = fragment_paragraphs([(text, [("هذا", (0, 0, 30, 20)), ("کتاب", (40, 0, 80, 20))])], 80, 20, "ar")
+        hit = hit_paragraphs(paragraphs, (.75, .5), "ar")
+        self.assertEqual((hit.query, hit.text, hit.start, hit.end), ("کتاب", text, 4, 8))
+        self.assertEqual(hit.sentence, (text, 4, 8))
+        self.assertEqual(get_profile("fa").lookup_key("کتاب"), "کتاب")
+
     def test_source_spans_keep_combining_marks_and_apostrophes(self):
         text = "İstanbul’da oğlumʼun caf\u0065\u0301'si 3.5 5'te."
         spans = get_profile("tr").word_spans(text)

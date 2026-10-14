@@ -54,6 +54,8 @@ class LanguageProfile:
         text = unicodedata.normalize("NFKC", text).strip()
         if self.code == "tr":
             text = text.translate(str.maketrans("Iİ’ʼ", "ıi''"))
+        elif self.code == "ar":
+            text = text.translate(str.maketrans("کی", "كي"))
         return text.lower()
 
     def word_spans(self, text: str) -> tuple[tuple[int, int], ...]:
