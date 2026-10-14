@@ -33,3 +33,26 @@ class DictionaryCatalogTests(unittest.TestCase):
                 self.assertEqual(library.lookup("cat", "en")[0].term, "cat")
             finally:
                 library.close()
+
+    def test_mandarin_uses_broad_chinese_archive_in_its_own_profile(self):
+        from meikipop.dictionary.search import SearchEngine
+        resource = recommendations("cmn")[0]
+        self.assertIn("/dict/zh/en/wty-zh-en.zip", resource.url)
+        self.assertEqual(resource.language, "cmn")
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr("index.json", json.dumps({"title": "wty-zh-en", "format": 3, "sourceLanguage": "zh"}))
+            archive.writestr("term_bank_1.json", json.dumps([["你好", "nǐ hǎo", "", "", 1, ["hello"], 0, ""]]))
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.dictionary.catalog.urlopen", return_value=io.BytesIO(payload.getvalue())):
+            install_recommended(resource, folder, lambda _: None, threading.Event())
+            engine = SearchEngine(folder)
+            try:
+                self.assertTrue(resource.matches(engine.library.packs[0][1]))
+                result = engine.search("你好", source="cmn", foreign="cmn")
+                self.assertEqual(result.source, "cmn")
+                self.assertEqual(result.entries[0].language, "cmn")
+                self.assertEqual(result.entries[0].term, "你好")
+                self.assertEqual(result.text[:result.matched_length], "你好")
+                self.assertEqual(engine.library.lookup("你好", "zh"), ())
+            finally:
+                engine.close()

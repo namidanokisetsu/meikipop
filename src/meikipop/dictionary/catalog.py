@@ -38,9 +38,11 @@ def recommendations(language):
                 RecommendedDictionary("Pitch · Kanjium", "ja",
                 "https://raw.githubusercontent.com/FooSoft/yomichan/dictionaries/kanjium_pitch_accents.zip",
                 "https://github.com/toasted-nutbread/yomichan-pitch-accent-dictionary", "Kanjium Pitch Accents"))
+    # Mandarin headwords are published under Chinese; the cmn pack is a small supplement.
+    archive_language = "zh" if language == "cmn" else language
     return (RecommendedDictionary("Wiktionary · English definitions", language,
-            f"https://huggingface.co/datasets/daxida/wty-release/resolve/main/latest/dict/{language}/en/wty-{language}-en.zip?download=true",
-            "https://yomidevs.github.io/wiktionary-to-yomitan/download/", f"wty-{language}-en"),)
+            f"https://huggingface.co/datasets/daxida/wty-release/resolve/main/latest/dict/{archive_language}/en/wty-{archive_language}-en.zip?download=true",
+            "https://yomidevs.github.io/wiktionary-to-yomitan/download/", f"wty-{archive_language}-en"),)
 
 
 def install_recommended(dictionary, directory, progress, cancelled):
