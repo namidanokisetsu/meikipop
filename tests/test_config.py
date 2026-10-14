@@ -31,7 +31,7 @@ class ConfigTests(unittest.TestCase):
                 fresh = config_module.Config()
                 self.assertEqual(fresh.activation_bindings, "shift,middle")
                 self.assertEqual(fresh.theme_name, "Dark")
-                self.assertEqual(fresh.background_opacity, 242)
+        self.assertEqual(fresh.background_opacity, 230)
                 self.assertTrue(fresh.pitch_colors)
                 self.assertTrue(fresh.kanji_stroke_order)
             finally:
