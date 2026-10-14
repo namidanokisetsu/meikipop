@@ -7,6 +7,14 @@ from meikipop.audio.sources import database_path, source_order
 from meikipop.config.config import config
 
 
+def speech_locale(language):
+    language = {"cmn": "zh", "fil": "tl", "zh-hant": "zh_TW", "zh-hans": "zh_CN",
+                "zh-tw": "zh_TW", "zh-hk": "zh_HK"}.get(language, language)
+    locale = QLocale(language)
+    expected = QLocale.codeToLanguage(language.replace("_", "-").split("-", 1)[0])
+    return None if expected in {QLocale.Language.C, QLocale.Language.AnyLanguage} or locale.language() != expected else locale
+
+
 class LookupAudio(QObject):
     clip_ready = pyqtSignal(object)
     failed = pyqtSignal(str)
@@ -97,7 +105,8 @@ class LookupAudio(QObject):
             elif source == "online":
                 language = {"zh-hant": "zh", "zh-hans": "zh", "zh-tw": "zh", "zh-hk": "zh",
                             "cmn": "zh", "fil": "tl"}.get(entry.language, entry.language)
-                iso3 = QLocale.languageToCode(QLocale(language).language(), QLocale.LanguageCodeType.ISO639Part3)
+                iso3 = QLocale.languageToCode(QLocale.codeToLanguage(language.split("-", 1)[0]),
+                                              QLocale.LanguageCodeType.ISO639Part3)
                 self.worker.submit(AudioRequest(self.latest[0], self.latest[1], "", (),
                                                 language=language, iso3=iso3, online=True))
                 return
@@ -139,15 +148,18 @@ class LookupAudio(QObject):
 
     def _speak(self, text, language, volume):
         from PyQt6.QtTextToSpeech import QTextToSpeech
+        locale = speech_locale(language)
+        if locale is None:
+            self._speech_error = f"No {language} system voice installed."
+            return False
         if self.speech is None:
             self.speech = QTextToSpeech(self)
             self.speech.errorOccurred.connect(self._speech_failed)
-        locale = QLocale(language)
         self.speech.setLocale(locale)
         voices = [v for v in self.speech.availableVoices() if v.locale().language() == locale.language()]
         if not voices:
             self._speech_error = f"No {locale.nativeLanguageName()} system voice installed."
-            return
+            return False
         self.speech.setVoice(voices[0])
         self.speech.setVolume(volume / 100)
         self.speech.say(text)

@@ -888,7 +888,7 @@ class QuickLookupWindow(QDialog):
         self.update_languages(())
         initial_profile = self.settings.value("profile", "")
         self.source.setCurrentIndex(max(0, self.source.findData(initial_profile)))
-        self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{initial_profile}/target", default_partner(initial_profile)))))
+        self.update_translation_languages(self.settings.value(f"profiles/{initial_profile}/target", default_partner(initial_profile)))
         self.translate = self._action("translate", "Translate")
         self.translate.setEnabled(False)
         self.translate.clicked.connect(self._translate_clicked)
@@ -1080,21 +1080,58 @@ class QuickLookupWindow(QDialog):
     def compact_preview(self):
         return self.settings.value(f"profiles/{self.preferred_foreign}/compact_preview", True, type=bool)
 
-    def update_languages(self, languages):
+    def update_languages(self, languages=None):
+        if languages is not None:
+            self._imported_languages = tuple(languages)
+        languages = getattr(self, "_imported_languages", ())
         if "en" in languages and not self.settings.contains("profiles/en/target"):
             self.settings.setValue("profiles/en/target", "ja")
         current_source = self.source.currentData() or self.settings.value("profile", "")
-        current_target = self.foreign.currentData() or "en"
         codes = list(dict.fromkeys([*configured_profiles(self.settings), *languages]))
-        with QSignalBlocker(self.source), QSignalBlocker(self.foreign):
+        with QSignalBlocker(self.source):
             self.source.clear()
-            self.foreign.clear()
             for code in codes:
                 self.source.addItem(language_name(code), code)
-            for code in dict.fromkeys([*LANGUAGE_NAMES, *codes]):
-                self.foreign.addItem(language_name(code), code)
             self.source.setCurrentIndex(max(0, self.source.findData(current_source)))
-            self.foreign.setCurrentIndex(max(0, self.foreign.findData(current_target)))
+        self.update_translation_languages()
+
+    def update_translation_languages(self, target=None):
+        from meikipop.dictionary.translation import load_profile_settings, translation_language
+        from meikipop.language.support import translation_languages
+        profile = self.source.currentData() or self.settings.value("profile", "")
+        try:
+            provider = load_profile_settings(self.settings, profile).provider
+        except ValueError:
+            provider = "server"
+        target = target or self.foreign.currentData() or self.settings.value(f"profiles/{profile}/target", default_partner(profile))
+        if provider == "server":
+            target = translation_language(target)
+        codes = sorted(translation_languages(provider, getattr(self, "_imported_languages", ()),
+                                             (*configured_profiles(self.settings), profile, target)) - {"", None})
+        tooltip = "Language support depends on your server model" if provider == "custom" else ""
+        with QSignalBlocker(self.foreign):
+            self.foreign.clear()
+            for code in dict.fromkeys([*codes, target]):
+                self.foreign.addItem(language_name(code), code)
+                item = self.foreign.model().item(self.foreign.count() - 1)
+                item.setEnabled(code in codes)
+                item.setToolTip(tooltip if code in codes else "The selected model does not support this language")
+            self.foreign.setCurrentIndex(self.foreign.findData(target))
+        self.foreign.setToolTip(tooltip or ("Translate in either direction within this pair" if target in codes
+                                           else "The selected model does not support this language"))
+
+    def translation_available(self):
+        from meikipop.dictionary.translation import load_profile_settings
+        from meikipop.language.support import translation_supported
+        try:
+            provider = load_profile_settings(self.settings, self.preferred_foreign).provider
+            source = self.settings.value(f"profiles/{self.preferred_foreign}/translation_source", "auto")
+            target = self.settings.value(f"profiles/{self.preferred_foreign}/translation_target", "auto")
+            source = self.preferred_foreign if source == "auto" else source
+            target = self.foreign.currentData() if target == "auto" else target
+            return translation_supported(source, provider) and translation_supported(target, provider)
+        except ValueError:
+            return False
 
     def set_mode(self, source):
         index = self.source.findData(source)
@@ -1112,8 +1149,7 @@ class QuickLookupWindow(QDialog):
         if not mode:
             return
         if self.sender() is self.source:
-            with QSignalBlocker(self.foreign):
-                self.foreign.setCurrentIndex(max(0, self.foreign.findData(self.settings.value(f"profiles/{mode}/target", default_partner(mode)))))
+            self.update_translation_languages(self.settings.value(f"profiles/{mode}/target", default_partner(mode)))
             self.settings.setValue("profile", mode)
         self._update_target_visibility()
         if self.foreign.currentData() == self.preferred_foreign:
@@ -1186,11 +1222,13 @@ class QuickLookupWindow(QDialog):
 
     def _set_translation_busy(self, busy):
         self._translation_busy = busy
-        self.translate.setEnabled(bool(self.search.text().strip() or self._context))
+        available = self.translation_available()
+        self.translate.setEnabled(bool(busy or available and (self.search.text().strip() or self._context)))
         self.translate.setIcon(action_icon("translate", config.color_foreground))
         name = "Cancel translation" if busy else "Translate sentence" if self._peek and self._context else "Translate"
         model = self._result.translation_model if not busy and self._result is not None and self._display_revision == self.revision else ""
-        self.translate.setToolTip(name + ("\n" + model if model else ""))
+        self.translate.setToolTip(name + ("\n" + model if model else "") if busy or available
+                                  else "The selected model does not support this language pair")
         self.translate.setAccessibleName(name)
 
     def _edited(self):
@@ -1198,7 +1236,7 @@ class QuickLookupWindow(QDialog):
         self._display_revision = None
         self._clear_actions()
         text = self.search.text().strip()
-        self.translate.setEnabled(bool(text))
+        self.translate.setEnabled(bool(text) and self.translation_available())
         self.status.setText("Searching…" if text else "")
         self.status.hide()
         if text:
@@ -1648,7 +1686,7 @@ class QuickLookupWindow(QDialog):
         self.set_context(context)
         self._result_screenshot = previous[8] if len(previous) > 8 else None
         self.browser.verticalScrollBar().setValue(scroll)
-        self.translate.setEnabled(bool(result.text))
+        self.translate.setEnabled(bool(result.text) and self.translation_available())
         self.status.setText(f"{language_name(result.source)} → {language_name(result.target)}")
 
     def _update_trail(self):
@@ -1958,7 +1996,7 @@ class QuickLookupWindow(QDialog):
         result = SearchResult(text, source, target, entries, kanji=tuple(kanji))
         with QSignalBlocker(self.search):
             self.search.setText(text)
-        self.translate.setEnabled(bool(text))
+        self.translate.setEnabled(bool(text) and self.translation_available())
         self._set_peek(peek)
         self._display(result)
         self.set_context("")

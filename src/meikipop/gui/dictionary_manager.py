@@ -131,6 +131,7 @@ class SetupDialog(QDialog):
         self.operation = None
         self._close_pending = False
         self._loading = True
+        self._imported_languages = ()
         self.setWindowTitle("Meikipop Settings")
         self.setWindowModality(Qt.WindowModality.NonModal)
         self.resize(700, 520)
@@ -200,12 +201,10 @@ class SetupDialog(QDialog):
         advanced_form = self.translation_advanced_form = QFormLayout(self.translation_advanced_widget)
         self.translation_pair_label = QLabel()
         self.translation_partner = QComboBox()
-        for code, name in LANGUAGE_NAMES.items():
-            self.translation_partner.addItem(name, code)
         translation_form.addRow(self.translation_pair_label, self.translation_partner)
         from meikipop.gui.language_strip import LanguageStrip
-        self.translation_source = LanguageStrip(LANGUAGE_NAMES)
-        self.translation_target = LanguageStrip(LANGUAGE_NAMES)
+        self.translation_source = LanguageStrip({})
+        self.translation_target = LanguageStrip({})
         for label, control in (("From", self.translation_source), ("To", self.translation_target)):
             advanced_form.addRow(label, control)
         self.translation_mode = QComboBox()
@@ -350,7 +349,8 @@ class SetupDialog(QDialog):
         scan_layout.addRow(self.screenai_controls)
         def show_component_controls():
             provider = self.current_ocr_control()
-            self.screenai_controls.setVisible(provider.currentData() == "screenai")
+            item = provider.model().item(provider.currentIndex())
+            self.screenai_controls.setVisible(provider.currentData() == "screenai" and item is not None and item.isEnabled())
         self.show_component_controls = show_component_controls
         self.ja_ocr_provider.currentIndexChanged.connect(show_component_controls)
         self.tr_ocr_provider.currentIndexChanged.connect(show_component_controls)
@@ -481,6 +481,8 @@ class SetupDialog(QDialog):
             with QSignalBlocker(self.start_with_windows):
                 self.start_with_windows.setChecked(not enabled)
             self.status.setText("Could not change Windows startup.")
+            return
+        self.settings.setValue("start_with_windows", bool(enabled))
 
     def show_audio(self):
         self.tabs.setCurrentWidget(self.audio_tab)
@@ -499,6 +501,7 @@ class SetupDialog(QDialog):
             self.packs.clear()
             packs = sorted(library.packs, key=lambda pack:
                            order.index(pack[0].name) if pack[0].name in order else len(order))
+            self._imported_languages = tuple(dict.fromkeys(metadata["language"] for _, metadata, _ in packs))
             for path, metadata, _ in packs:
                 if self.profile.findData(metadata["language"]) < 0:
                     self.profile.addItem(language_name(metadata["language"]), metadata["language"])
@@ -521,6 +524,7 @@ class SetupDialog(QDialog):
             del blocker
             library.close()
         self.update_dictionary_display()
+        self.update_translation_languages()
 
     def update_dictionary_display(self, *_):
         item = self.packs.currentItem()
@@ -557,8 +561,9 @@ class SetupDialog(QDialog):
             parent.set_dictionary_display(source, mode)
 
     def choose_profile(self):
-        from meikipop.language.support import support_summary
-        choices = {f"{name} ({code}) · {support_summary(code)}": code for code, name in LANGUAGE_NAMES.items()
+        from meikipop.language.support import profile_languages
+        choices = {f"{language_name(code)} ({code})": code
+                   for code in profile_languages(self._imported_languages, configured_profiles(self.settings))
                    if self.profile.findData(code) < 0}
         name, accepted = QInputDialog.getItem(self, "Add language", "Language or code", sorted(choices), editable=True)
         if accepted:
@@ -570,18 +575,18 @@ class SetupDialog(QDialog):
                 self.status.setText(str(error))
 
     def add_profile(self, code):
-        from meikipop.language.support import AVAILABLE_LANGUAGES
-        if code not in AVAILABLE_LANGUAGES and self.profile.findData(code) < 0:
+        from meikipop.language.support import profile_languages
+        if code not in profile_languages(self._imported_languages, configured_profiles(self.settings)) and self.profile.findData(code) < 0:
             raise ValueError("Import a dictionary for this language first.")
         added = self.profile.findData(code) < 0
         prefix = f"profiles/{code}/"
         if not self.settings.contains(prefix + "target"):
             self.settings.setValue(prefix + "target", default_partner(code))
         if not self.settings.contains(prefix + "scan_bindings"):
-            bindings = self.settings.value(f"profiles/{self.profile.currentData()}/scan_bindings", "shift")
+            bindings = self.settings.value(f"profiles/{self.profile.currentData()}/scan_bindings", "shift,middle")
             self.settings.setValue(prefix + "scan_bindings", bindings)
         if self.parent() is not None:
-            self.parent().update_languages(())
+            self.parent().update_languages()
         self.sync_profile(code)
         if added and self.parent() is not None:
             from meikipop.gui.first_run import offer_resources
@@ -657,7 +662,8 @@ class SetupDialog(QDialog):
         prefix = f"profiles/{self.profile.currentData()}/"
         self.settings.setValue(prefix + "pin_gesture", self.pin_gesture.currentData())
         self.settings.setValue(prefix + "freeze_while_held", self.freeze_while_held.isChecked())
-        self.settings.setValue(prefix + "ocr_provider", provider.currentData())
+        if provider.currentData() is not None:
+            self.settings.setValue(prefix + "ocr_provider", provider.currentData())
         self.settings.setValue("screenai_directory", component_directory)
         window = self.parent()
         if window is not None:
@@ -686,7 +692,7 @@ class SetupDialog(QDialog):
         self.status.clear()
         with QSignalBlocker(self.combine_frequencies):
             self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
-        bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift").split(",")
+        bindings = self.settings.value(f"profiles/{code}/scan_bindings", "shift,middle").split(",")
         self.pin_shortcut.set_value(self.settings.value(f"profiles/{code}/pin_shortcut", "c"),
                                     self.settings.value(f"profiles/{code}/pin_shortcut_preset", "C"))
         with QSignalBlocker(self.selected_text):
@@ -699,32 +705,15 @@ class SetupDialog(QDialog):
         self.scan_layout.setRowVisible(self.ja_ocr_provider, code == "ja")
         self.scan_layout.setRowVisible(self.tr_ocr_provider, code == "tr")
         self.scan_layout.setRowVisible(self.other_ocr_provider, code not in ("ja", "tr"))
-        provider = self.current_ocr_control()
-        from meikipop.language.support import PADDLE_LANGUAGES, default_ocr_provider
-        paddle = provider.model().item(provider.findData("paddle"))
-        bundled_mac = sys.platform == "darwin" and getattr(sys, "frozen", False)
-        paddle.setEnabled(code in PADDLE_LANGUAGES and not bundled_mac)
-        if bundled_mac and provider.findData("meikiocr") >= 0:
-            provider.model().item(provider.findData("meikiocr")).setEnabled(False)
-        paddle.setToolTip("" if code in PADDLE_LANGUAGES else "The installed Paddle model does not support this language")
-        default = default_ocr_provider(code)
-        provider.setCurrentIndex(max(0, provider.findData(self.settings.value(f"profiles/{code}/ocr_provider", default))))
+        self.update_ocr_controls()
         try:
             translation = load_profile_settings(self.settings, code)
         except ValueError as error:
             translation = TranslationSettings()
             self.status.setText(str(error))
-        partner = self.settings.value(f"profiles/{code}/target", default_partner(code))
-        if self.translation_partner.findData(partner) < 0:
-            self.translation_partner.addItem(language_name(partner), partner)
-        self.translation_partner.setCurrentIndex(self.translation_partner.findData(partner))
-        for key, control in (("source", self.translation_source), ("target", self.translation_target)):
-            control.set_pair(code, self.translation_partner.currentData())
-            selected = self.settings.value(f"profiles/{code}/translation_{key}", "auto")
-            if control.findData(selected) < 0:
-                control.addItem(language_name(selected), selected)
-            control.setCurrentIndex(control.findData(selected))
-        self.translation_mode.setCurrentIndex(self.translation_mode.findData(translation.profile if translation.provider == "server" else "custom"))
+        with QSignalBlocker(self.translation_mode):
+            self.translation_mode.setCurrentIndex(self.translation_mode.findData(translation.profile if translation.provider == "server" else "custom"))
+        self.update_translation_controls(load=True)
         self.translation_endpoint.setText(translation.endpoint)
         self.translation_model.setText(translation.model)
         self.translation_pair_label.setText(language_name(code) + " \u2194")
@@ -751,6 +740,40 @@ class SetupDialog(QDialog):
 
     def current_ocr_control(self):
         return {"ja": self.ja_ocr_provider, "tr": self.tr_ocr_provider}.get(self.profile.currentData(), self.other_ocr_provider)
+
+    def update_ocr_controls(self):
+        from meikipop.language.support import default_ocr_provider, ocr_supported
+        code = self.profile.currentData()
+        provider = self.current_ocr_control()
+        bundled_mac = sys.platform == "darwin" and getattr(sys, "frozen", False)
+        supported = []
+        for index in range(provider.count()):
+            value = provider.itemData(index)
+            enabled = bool(value and ocr_supported(code, value)
+                           and not (bundled_mac and value in {"meikiocr", "paddle"}))
+            item = provider.model().item(index)
+            item.setEnabled(enabled)
+            item.setToolTip("" if enabled else "This OCR provider does not support this language on this computer")
+            if enabled:
+                supported.append(value)
+        default = default_ocr_provider(code)
+        default = default if default in supported else next(iter(supported), None)
+        selected = self.settings.value(f"profiles/{code}/ocr_provider", default)
+        index = provider.findData(selected)
+        if index < 0:
+            provider.addItem("Unavailable", selected)
+            index = provider.count() - 1
+            provider.model().item(index).setEnabled(False)
+        with QSignalBlocker(provider):
+            provider.setCurrentIndex(index)
+        provider.setEnabled(bool(supported))
+        provider.setToolTip("" if selected in supported
+                            else "No OCR provider supports this language on this computer" if not supported
+                            else "The saved OCR provider does not support this language")
+        for control in (self.scan_key, self.scan_mouse):
+            control.setEnabled(bool(supported))
+            control.setToolTip("" if supported else "No OCR provider supports this language on this computer")
+        self.show_component_controls()
 
     def save_selection_policy(self):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/selection_lookup", self.selection_lookup.isChecked())
@@ -822,8 +845,9 @@ class SetupDialog(QDialog):
             language = self.language.currentText().strip().lower() or None
         self.begin_operation(paths, language=language)
 
-    def update_translation_controls(self):
+    def update_translation_controls(self, *_args, load=False):
         custom = self.translation_mode.currentData() == "custom"
+        self.update_translation_languages(load=load)
         self.translation_advanced_form.setRowVisible(self.translation_endpoint, custom)
         self.translation_advanced_form.setRowVisible(self.translation_model, custom)
         if custom:
@@ -831,6 +855,43 @@ class SetupDialog(QDialog):
         self.translation_advanced_form.setRowVisible(self.translation_warm, not custom)
         if hasattr(self, "resources"):
             self.resources.refresh()
+
+    def update_translation_languages(self, *, load=False):
+        from meikipop.dictionary.translation import translation_language
+        from meikipop.language.support import translation_languages
+        code = self.profile.currentData()
+        if not code:
+            return
+        custom = self.translation_mode.currentData() == "custom"
+        normalize = lambda value: value if custom or value == "auto" else translation_language(value)
+        partner = normalize(self.settings.value(f"profiles/{code}/target", default_partner(code))
+                            if load else self.translation_partner.currentData()
+                            or self.settings.value(f"profiles/{code}/target", default_partner(code)))
+        selected = {key: normalize(self.settings.value(f"profiles/{code}/translation_{key}", "auto")
+                                   if load else control.currentData())
+                    for key, control in (("source", self.translation_source), ("target", self.translation_target))}
+        codes = translation_languages("custom" if custom else "server", self._imported_languages,
+                                      (*configured_profiles(self.settings), code, partner, *selected.values()))
+        codes = sorted(codes - {"auto", None, ""})
+        tooltip = "Language support depends on your server model" if custom else ""
+        with QSignalBlocker(self.translation_partner):
+            self.translation_partner.clear()
+            for language in dict.fromkeys([*codes, partner]):
+                self.translation_partner.addItem(language_name(language), language)
+                item = self.translation_partner.model().item(self.translation_partner.count() - 1)
+                supported = language in codes
+                item.setEnabled(supported)
+                item.setToolTip(tooltip if supported else "The selected model does not support this language")
+            self.translation_partner.setCurrentIndex(self.translation_partner.findData(partner))
+        self.translation_partner.setToolTip(tooltip if partner in codes
+                                            else "The selected model does not support this language")
+        languages = {language: language_name(language) for language in codes}
+        for key, control in (("source", self.translation_source), ("target", self.translation_target)):
+            with QSignalBlocker(control):
+                for language in (normalize(code), partner, selected[key]):
+                    control.addItem("Automatic" if language == "auto" else language_name(language), language)
+                control.set_pair(normalize(code), partner)
+                control.set_languages(languages, selected=selected[key], tooltip=tooltip)
 
     def save_translation(self, *, cancel=True):
         mode = self.translation_mode.currentData()
@@ -855,7 +916,7 @@ class SetupDialog(QDialog):
                 window = self.parent()
                 with QSignalBlocker(window.source), QSignalBlocker(window.foreign):
                     window.set_mode(code)
-                    window.foreign.setCurrentIndex(window.foreign.findData(self.translation_partner.currentData()))
+                    window.update_translation_languages(self.translation_partner.currentData())
                 if cancel:
                     window._edited()
             self.status.clear()
@@ -902,6 +963,7 @@ class SetupDialog(QDialog):
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target):
             control.setEnabled(True)
         self.update_translation_controls()
+        self.update_ocr_controls()
         self.reload(preserve=True)
         self.resources.refresh()
         self.status.setText(status)

@@ -17,6 +17,77 @@ class SentenceAudioTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_unknown_locale_cannot_use_a_fallback_system_voice(self):
+        with patch("meikipop.gui.lookup_audio.AudioWorker"):
+            audio = LookupAudio()
+            audio.speech = Mock()
+            voice = Mock()
+            voice.locale.return_value = QLocale.c()
+            audio.speech.availableVoices.return_value = [voice]
+            try:
+                self.assertFalse(audio._speak("hello", "gem-pro", 80))
+                audio.speech.say.assert_not_called()
+                self.assertIn("gem-pro", audio._speech_error)
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
+    def test_historical_locale_never_falls_back_to_english(self):
+        from meikipop.gui.lookup_audio import speech_locale
+        for language in ("egy", "got", "grc", "non", "sga", "gem-pro"):
+            with self.subTest(language=language):
+                self.assertIsNone(speech_locale(language))
+
+    def test_historical_online_recordings_cannot_use_english_locale_fallback(self):
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/egy/audio_priority", ["online"])
+            audio = LookupAudio()
+            try:
+                audio.play(Entry("word", "word", "", "Fixture", "egy", ("word",)), 1, settings)
+                request = audio.worker.submit.call_args.args[0]
+                self.assertEqual(request.language, "egy")
+                self.assertNotEqual(request.iso3, "eng")
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
+    def test_supported_alias_uses_matching_installed_voice(self):
+        with patch("meikipop.gui.lookup_audio.AudioWorker"):
+            audio = LookupAudio()
+            audio.speech = Mock()
+            voice = Mock()
+            voice.locale.return_value = QLocale("zh")
+            audio.speech.availableVoices.return_value = [voice]
+            try:
+                self.assertTrue(audio._speak("中文", "cmn", 80))
+                audio.speech.setLocale.assert_called_once_with(QLocale("zh"))
+                audio.speech.say.assert_called_once_with("中文")
+                voice.locale.return_value = QLocale("en")
+                self.assertFalse(audio._speak("ייִדיש", "yi", 80))
+                self.assertEqual(audio.speech.say.call_count, 1)
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
+    def test_arabic_and_traditional_chinese_require_matching_installed_voices(self):
+        with patch("meikipop.gui.lookup_audio.AudioWorker"):
+            audio = LookupAudio()
+            audio.speech = Mock()
+            voice = Mock()
+            audio.speech.availableVoices.return_value = [voice]
+            try:
+                for language, native in (("ar", "ar"), ("zh-hant", "zh_TW"), ("zh-hk", "zh_HK")):
+                    with self.subTest(language=language):
+                        voice.locale.return_value = QLocale(native)
+                        self.assertTrue(audio._speak("word", language, 80))
+                        self.assertEqual(audio.speech.setLocale.call_args.args[0], QLocale(native))
+                voice.locale.return_value = QLocale("en")
+                self.assertFalse(audio._speak("word", "ar", 80))
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
     def test_saved_priority_overrides_legacy_mode_and_can_disable_sources(self):
         from meikipop.audio.sources import source_order
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):

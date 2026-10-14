@@ -296,6 +296,46 @@ class TranslationSetupTests(unittest.TestCase):
         changed.assert_not_called()
         self.assertTrue(self.dialog.translation_endpoint.isHidden())
 
+    def test_managed_choosers_use_canonical_model_languages(self):
+        from meikipop.language.support import translation_languages
+        choices = {self.dialog.translation_partner.itemData(index)
+                   for index in range(self.dialog.translation_partner.count())}
+        self.assertEqual(choices, set(translation_languages()))
+        self.assertNotIn("yi", choices)
+        self.assertNotIn("cmn", choices)
+        self.assertNotIn("fil", choices)
+        self.assertIn("zh-hant", choices)
+
+    def test_unsupported_saved_choices_remain_visible_and_disabled(self):
+        settings = self.dialog.settings
+        settings.setValue("profiles/ja/target", "yi")
+        settings.setValue("profiles/ja/translation_source", "yi")
+        self.dialog.profile_changed()
+        partner = self.dialog.translation_partner
+        self.assertEqual(partner.currentData(), "yi")
+        self.assertFalse(partner.model().item(partner.findData("yi")).isEnabled())
+        source = self.dialog.translation_source
+        self.assertEqual(source.currentData(), "yi")
+        button = source.group.button(source.findData("yi"))
+        self.assertFalse(button.isEnabled())
+        self.assertIn("does not support", button.toolTip())
+        self.assertEqual(settings.value("profiles/ja/translation_source"), "yi")
+        self.assertEqual(settings.value("profiles/ja/target"), "yi")
+
+    def test_custom_languages_refresh_with_model_and_keep_saved_choices(self):
+        self.dialog.settings.setValue("profiles/yi/target", "en")
+        self.dialog.translation_mode.setCurrentIndex(self.dialog.translation_mode.findData("custom"))
+        partner = self.dialog.translation_partner
+        self.assertGreaterEqual(partner.findData("yi"), 0)
+        self.assertEqual(partner.findData("ru"), -1)
+        self.assertIn("depends on", partner.toolTip())
+        partner.setCurrentIndex(partner.findData("yi"))
+        self.dialog.translation_mode.setCurrentIndex(self.dialog.translation_mode.findData("quality"))
+        self.assertEqual(partner.currentData(), "yi")
+        self.assertFalse(partner.model().item(partner.findData("yi")).isEnabled())
+        self.assertGreaterEqual(partner.findData("ru"), 0)
+        self.assertEqual(self.dialog.settings.value("profiles/ja/target"), "yi")
+
     def test_custom_address_is_validated_before_saving_and_has_no_download_action(self):
         self.dialog.translation_mode.setCurrentIndex(2)
         self.assertFalse(self.dialog.translation_endpoint.isHidden())

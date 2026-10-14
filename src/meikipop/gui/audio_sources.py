@@ -61,6 +61,9 @@ class AudioSources(QWidget):
     def add(self, source, index=None, *, enabled=True):
         item = QListWidgetItem(source_label(source))
         item.setData(Qt.ItemDataRole.UserRole, source)
+        item.setToolTip("Pronunciations vary by word and language" if source == "online"
+                        else "Requires an installed voice for this language" if source == "tts"
+                        else "Recordings from your selected database")
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
         item.setCheckState(Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked)
         self.items.insertItem(self.items.count() if index is None else index, item)

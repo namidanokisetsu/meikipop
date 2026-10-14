@@ -590,6 +590,33 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_mode("de")
         self.assertEqual(self.window.preferred_foreign, "de")
 
+    def test_dictionary_only_profiles_do_not_enable_managed_translation(self):
+        self.window.update_languages(("de", "yi"))
+        self.assertGreaterEqual(self.window.source.findData("yi"), 0)
+        self.assertEqual(self.window.foreign.findData("yi"), -1)
+        self.window.set_mode("yi")
+        self.window.search.setText("ייִדיש")
+        self.assertFalse(self.window.translate.isEnabled())
+        self.assertIn("does not support", self.window.translate.toolTip())
+        self.window.update_languages()
+        self.assertGreaterEqual(self.window.source.findData("yi"), 0)
+
+    def test_saved_unsupported_translation_partner_is_preserved(self):
+        self.settings.setValue("profiles/ja/target", "yi")
+        self.window.update_translation_languages("yi")
+        self.assertEqual(self.window.foreign.currentData(), "yi")
+        item = self.window.foreign.model().item(self.window.foreign.findData("yi"))
+        self.assertFalse(item.isEnabled())
+        self.assertEqual(self.settings.value("profiles/ja/target"), "yi")
+
+    def test_custom_translation_targets_follow_configured_and_imported_profiles(self):
+        from meikipop.dictionary.translation import TranslationSettings, save_profile_settings
+        save_profile_settings(self.settings, "ja", TranslationSettings(provider="custom"))
+        self.window.update_languages(("yi", "de"))
+        self.assertGreaterEqual(self.window.foreign.findData("yi"), 0)
+        self.assertEqual(self.window.foreign.findData("ru"), -1)
+        self.assertIn("depends on", self.window.foreign.toolTip())
+
     def test_pin_preserves_ocr_result_and_enables_resizing(self):
         self.window.show_entries((entry("猫"),), "猫", peek=True)
         self.window.set_context("猫がいる。")
@@ -915,7 +942,7 @@ class QuickLookupTests(unittest.TestCase):
             self.assertEqual(self.window.preferred_foreign, "de")
             self.window.update_languages(("ja", "tr"))
             self.assertGreaterEqual(self.window.source.findData("de"), 0)
-            self.assertEqual(self.settings.value("profiles/de/scan_bindings"), "shift")
+            self.assertEqual(self.settings.value("profiles/de/scan_bindings"), "shift,middle")
             dialog.add_profile("en")
             self.assertEqual(self.window.preferred_foreign, "en")
             self.assertEqual(self.window.foreign.currentData(), "ja")
@@ -1955,6 +1982,41 @@ class DictionaryManagerTests(unittest.TestCase):
             self.dialog.sync_profile("de")
             self.assertEqual(provider.currentData(), "paddle")
             self.assertTrue(provider.model().item(provider.findData("paddle")).isEnabled())
+
+    def test_unsupported_ocr_profile_keeps_dictionary_and_saved_provider(self):
+        self.settings.setValue("profiles/gem-pro/ocr_provider", "screenai")
+        self.dialog.sync_profile("gem-pro")
+        provider = self.dialog.other_ocr_provider
+        self.assertEqual(self.dialog.profile.currentData(), "gem-pro")
+        self.assertEqual(provider.currentData(), "screenai")
+        self.assertFalse(provider.isEnabled())
+        self.assertFalse(provider.model().item(provider.findData("screenai")).isEnabled())
+        self.assertFalse(self.dialog.scan_key.isEnabled())
+        self.assertFalse(self.dialog.scan_mouse.isEnabled())
+        self.assertEqual(self.settings.value("profiles/gem-pro/ocr_provider"), "screenai")
+        self.dialog.sync_profile("ar")
+        self.assertEqual(provider.currentData(), "screenai")
+        self.assertTrue(provider.isEnabled())
+        self.assertTrue(provider.model().item(provider.findData("screenai")).isEnabled())
+        self.assertFalse(provider.model().item(provider.findData("paddle")).isEnabled())
+
+    def test_mandarin_ocr_alias_uses_supported_provider(self):
+        self.dialog.sync_profile("cmn")
+        provider = self.dialog.other_ocr_provider
+        self.assertEqual(provider.currentData(), "paddle")
+        self.assertTrue(provider.model().item(provider.findData("paddle")).isEnabled())
+
+    def test_startup_preference_is_saved_only_after_registry_success(self):
+        from PyQt6.QtWidgets import QCheckBox
+        self.dialog.settings.remove("start_with_windows")
+        self.dialog.start_with_windows = QCheckBox(self.dialog)
+        with patch("meikipop.utils.startup.set_startup_enabled") as startup:
+            self.dialog.save_startup(False)
+            startup.assert_called_once_with(False)
+        self.assertFalse(self.dialog.settings.value("start_with_windows", True, bool))
+        with patch("meikipop.utils.startup.set_startup_enabled", side_effect=OSError("blocked")):
+            self.dialog.save_startup(True)
+        self.assertFalse(self.dialog.settings.value("start_with_windows", True, bool))
 
     def test_frozen_scan_setting_saves_independently_per_profile(self):
         self.dialog.sync_profile("ja")

@@ -9,6 +9,8 @@ class LanguageStrip(QWidget):
     def __init__(self, languages, parent=None):
         super().__init__(parent)
         self.languages = {"auto": "Automatic", **languages}
+        self.available = set(self.languages)
+        self.support_tooltip = ""
         self.codes = list(self.languages)
         self.selected = "auto"
         self.pair = ("ja", "en")
@@ -29,6 +31,18 @@ class LanguageStrip(QWidget):
         if code not in self.codes:
             self.codes.append(code)
         self.languages[code] = label
+
+    def set_languages(self, languages, *, selected=None, preserved=(), tooltip=""):
+        selected = self.selected if selected is None else selected
+        previous = self.languages
+        self.languages = {"auto": "Automatic", **languages}
+        self.available = set(self.languages)
+        self.support_tooltip = tooltip
+        for code in dict.fromkeys((*preserved, *self.pair, selected)):
+            self.languages.setdefault(code, previous.get(code, code))
+        self.codes = list(self.languages)
+        self.selected = selected
+        self.refresh()
 
     def setCurrentIndex(self, index):
         if 0 <= index < len(self.codes) and self.selected != self.codes[index]:
@@ -52,6 +66,9 @@ class LanguageStrip(QWidget):
             button.setText(self.languages[code])
             button.setCheckable(True)
             button.setChecked(code == self.selected)
+            button.setEnabled(code in self.available)
+            button.setToolTip(self.support_tooltip if code in self.available
+                              else "The selected model does not support this language")
             self.group.addButton(button, self.findData(code))
             self.row.addWidget(button)
         more = QToolButton()
@@ -61,8 +78,9 @@ class LanguageStrip(QWidget):
         self.row.addStretch()
 
     def choose(self):
-        labels = [self.languages[code] for code in self.codes]
+        codes = [code for code in self.codes if code in self.available]
+        labels = [self.languages[code] for code in codes]
         label, accepted = QInputDialog.getItem(self, "Translation language", "Language", labels,
-                                             self.findData(self.selected), editable=False)
+                                             codes.index(self.selected) if self.selected in codes else 0, editable=False)
         if accepted:
-            self.setCurrentIndex(labels.index(label))
+            self.setCurrentIndex(self.findData(codes[labels.index(label)]))
