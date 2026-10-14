@@ -53,15 +53,15 @@ class DictionaryCollapseTests(unittest.TestCase):
 
         expanded_text = self.window.browser.toPlainText()
         self.assertIn("Meaning 3", expanded_text)
-        self.assertIn('href="collapse:0"', self.window.browser.toHtml())
+        self.assertIn('href="collapse:0:0"', self.window.browser.toHtml())
 
-        self.window._link(QUrl("collapse:0"))
+        self.window._link(QUrl("collapse:0:0"))
         self.app.processEvents()
         collapsed_text = self.window.browser.toPlainText()
         self.assertNotIn("Meaning 3", collapsed_text)
         self.assertLess(len(collapsed_text), len(expanded_text))
-        self.assertIn('href="collapse:0"', self.window.browser.toHtml())
-        self.window._link(QUrl("collapse:0"))
+        self.assertIn('href="collapse:0:0"', self.window.browser.toHtml())
+        self.window._link(QUrl("collapse:0:0"))
         self.assertIn("Meaning 3", self.window.browser.toPlainText())
 
 

@@ -538,6 +538,10 @@ def _compact_context(text, font, width):
     return first + "\n" + QFontMetricsF(font).elidedText(rest, Qt.TextElideMode.ElideRight, max(1, width))
 
 
+def _dictionary_section_key(term, reading, source):
+    return "section:" + repr((term, reading, source))
+
+
 def render_result(result, expanded=(), preview=False, overlay_actions=False, show_source=True,
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
                   definition_furigana=False, collapsed=(), kanji_details=(),
@@ -613,8 +617,10 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             if source not in dictionaries:
                 continue
             index, entries = sources.index(source), dictionaries[source]
-            full, more = source in expanded and not preview, len(entries) > 2
-            hidden = source in collapsed and not preview
+            section_key = _dictionary_section_key(term, reading, source)
+            full = (source in expanded or section_key in expanded) and not preview
+            more = len(entries) > 2
+            hidden = (source in collapsed or section_key in collapsed) and not preview
             generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
             normalized = [normalize_definitions(entry.definitions, source) for entry in entries]
             limit = 240 if result.source == "ja" else (None if preview else 360)
@@ -639,7 +645,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                 label = converter.first_source or _source_name(source)
                 section = (f'<a name="scroll-section-{group_index}-{index}"></a>'
                            if source != first_source else "")
-                parts.append(f'<p class="source">{section}<a href="collapse:{index}" '
+                parts.append(f'<p class="source">{section}<a href="collapse:{group_index}:{index}" '
                              f'title="{"Expand" if hidden else "Collapse"}" style="color:{muted}">'
                              f'<small>{"▸" if hidden else "▾"}  {escape(label)}</small></a></p>')
             if len(definitions) > 1:
@@ -652,7 +658,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                     parts.append(f'<p class="source"><small>{label}</small></p>')
                 parts.append(supplement)
             if more and not full and not hidden and not preview:
-                parts.append(f'<p class="metadata"><a href="expand:{index}" style="text-decoration:underline">More</a></p>')
+                parts.append(f'<p class="metadata"><a href="expand:{group_index}:{index}" style="text-decoration:underline">More</a></p>')
     if result.suggestions:
         parts.append('<p>Did you mean: ' + " · ".join(
             f'<a href="suggest:{index}">{escape(str(word))}</a>'
@@ -1416,6 +1422,12 @@ class QuickLookupWindow(QDialog):
         return set(self.settings.value(f"profiles/{self.preferred_foreign}/collapsed_dictionaries", [], type=list))
 
     def set_dictionary_display(self, source, mode):
+        if self._result is not None:
+            sources = list(dict.fromkeys(entry.source for entry in self._result.entries))
+            if source in sources:
+                keys = self._section_keys(sources.index(source))
+                self._collapsed.difference_update(keys)
+                self._expanded.difference_update(keys)
         self._collapsed.discard(source)
         self._expanded.discard(source)
         if mode == "collapsed":
@@ -1423,6 +1435,11 @@ class QuickLookupWindow(QDialog):
         elif mode == "expanded":
             self._expanded.add(source)
         self._render()
+
+    def _section_keys(self, source_index):
+        sources = list(dict.fromkeys(entry.source for entry in self._result.entries))
+        return {_dictionary_section_key(entry.term, entry.reading, entry.source)
+                for entry in self._result.entries if entry.source == sources[source_index]}
 
     def _display(self, result, remember=True, expanded=None, details_expanded=None, collapsed=None, kanji_details=None):
         same = self._result is not None and (self._result.text, self._result.source, self._result.target) == (
@@ -1633,6 +1650,36 @@ class QuickLookupWindow(QDialog):
         if url.scheme() == "details" and re.fullmatch(r"\d+:\d+:\d+", url.path()):
             key = url.path()
             self._details_expanded.symmetric_difference_update((key,))
+            self._render(static=True)
+            return
+        if url.scheme() in ("expand", "collapse") and re.fullmatch(r"\d+:\d+", url.path()):
+            group_index, source_index = map(int, url.path().split(":"))
+            sources = list(dict.fromkeys(entry.source for entry in self._result.entries))
+            if not 0 <= source_index < len(sources):
+                return
+            groups = list(dict.fromkeys((entry.term, entry.reading) for entry in self._result.entries))
+            if not 0 <= group_index < len(groups):
+                return
+            key = _dictionary_section_key(*groups[group_index], sources[source_index])
+            keys = self._section_keys(source_index)
+            if key not in keys:
+                return
+            source = sources[source_index]
+            for state in (self._expanded, self._collapsed):
+                if source in state:
+                    state.remove(source)
+                    state.update(keys)
+            if url.scheme() == "collapse":
+                self._collapsed.symmetric_difference_update((key,))
+            elif key in self._collapsed:
+                self._collapsed.remove(key)
+                self._expanded.add(key)
+            elif key in self._expanded:
+                self._expanded.remove(key)
+                if source in self.collapsed_dictionaries():
+                    self._collapsed.add(key)
+            else:
+                self._expanded.add(key)
             self._render(static=True)
             return
         try:

@@ -75,7 +75,7 @@ class DictionaryControlTests(unittest.TestCase):
         for expected in (False, True):
             self.browser.verticalScrollBar().setValue(0)
             point = self.point("Wiktionary")
-            self.assertEqual(self.browser.anchorAt(point), "collapse:0")
+            self.assertEqual(self.browser.anchorAt(point), "collapse:0:0")
             QTest.mouseClick(self.browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
             self.assertEqual("development" in self.browser.toPlainText(), expected)
             self.assertIn("terakki", self.browser.toPlainText())

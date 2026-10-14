@@ -78,7 +78,7 @@ class QuickLookupTests(unittest.TestCase):
         browser.verticalScrollBar().setValue(20)
         cursor.setPosition(cursor.selectionStart() + 1)
         point = browser.cursorRect(cursor).center()
-        self.assertEqual(browser.anchorAt(point), "expand:0")
+        self.assertEqual(browser.anchorAt(point), "expand:0:0")
         self.assertTrue(cursor.charFormat().fontUnderline())
         geometry = self.window.geometry()
         scroll = browser.verticalScrollBar().value()
@@ -241,7 +241,7 @@ class QuickLookupTests(unittest.TestCase):
         result = SearchResult("猫", "ja", "en", (entry(), mono))
         closed = render_result(result, expanded=("Dictionary", "Monolingual"), collapsed=("Monolingual",))
         self.assertIn("Monolingual", closed)
-        self.assertIn('href="collapse:1" title="Expand"', closed)
+        self.assertIn('href="collapse:0:1" title="Expand"', closed)
         self.assertIn("cat", closed)
         self.assertNotIn("Meaning", closed)
         preview = render_result(SearchResult("猫", "ja", "en", (mono,)), preview=True, collapsed=("Monolingual",))
@@ -305,7 +305,7 @@ class QuickLookupTests(unittest.TestCase):
                 self.assertGreater(scroll, 0)
                 for expanded in (False, True, False):
                     before = browser.toHtml()
-                    self.assertIn('href="collapse:1"', before)
+                    self.assertIn('href="collapse:0:1"', before)
                     self.assertEqual("Fourth sense" in browser.toPlainText(), not expanded)
                     self.window._link(QUrl("expand:1"))
                     self.app.processEvents()
@@ -333,6 +333,45 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("sense 5", self.window.browser.toPlainText())
         self.assertNotIn("other meaning", self.window.browser.toPlainText())
         self.assertEqual(self.settings.value("profiles/ja/expanded_dictionaries"), ["First"])
+
+    def test_same_dictionary_sections_collapse_independently_between_readings(self):
+        words = tuple(replace(entry("参", "Jitendex", tuple(f"{reading} sense {i}" for i in range(6))),
+                              reading=reading) for reading in ("さん", "み", "しん"))
+        self.settings.setValue("profiles/ja/expanded_dictionaries", ["Jitendex"])
+        self.window.show_entries(words, "参")
+        self.window._link(QUrl("collapse:1:0"))
+        text = self.window.browser.toPlainText()
+        self.assertIn("さん sense 5", text)
+        self.assertNotIn("み sense 0", text)
+        self.assertIn("しん sense 5", text)
+        self.window._link(QUrl("collapse:1:0"))
+        self.assertIn("み sense 5", self.window.browser.toPlainText())
+        self.assertEqual(self.settings.value("profiles/ja/expanded_dictionaries"), ["Jitendex"])
+        self.window.set_dictionary_display("Jitendex", "collapsed")
+        self.window._link(QUrl("collapse:1:0"))
+        text = self.window.browser.toPlainText()
+        self.assertIn("み sense 0", text)
+        self.assertNotIn("さん sense 0", text)
+        self.assertNotIn("しん sense 0", text)
+        self.window._display(SearchResult("参", "ja", "en", tuple(reversed(words))))
+        text = self.window.browser.toPlainText()
+        self.assertIn("み sense 0", text)
+        self.assertNotIn("さん sense 0", text)
+        self.assertNotIn("しん sense 0", text)
+
+    def test_more_expands_only_its_reading_and_back_restores_section_states(self):
+        words = tuple(replace(entry("参", "Jitendex", tuple(f"{reading} sense {i}" for i in range(6))),
+                              reading=reading) for reading in ("さん", "み"))
+        self.window.show_entries(words, "参")
+        self.window._link(QUrl("expand:1:0"))
+        text = self.window.browser.toPlainText()
+        self.assertNotIn("さん sense 5", text)
+        self.assertIn("み sense 5", text)
+        self.window._display(SearchResult("犬", "ja", "en", (entry("犬"),)))
+        self.window.go_back()
+        text = self.window.browser.toPlainText()
+        self.assertNotIn("さん sense 5", text)
+        self.assertIn("み sense 5", text)
 
     def test_archive_owned_image_only_definition_is_retained(self):
         path = "meikipop-image:/ja-" + "a" * 64 + "/" + "b" * 64 + ".png"
@@ -1415,7 +1454,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("Hidden example", expanded)
         self.assertIn("Third sense", expanded)
         self.assertNotIn("Fourth sense", expanded)
-        self.assertIn('href="expand:1"', expanded)
+        self.assertIn('href="expand:0:1"', expanded)
 
     def test_dictionary_styles_cannot_inject_markup_when_expanded(self):
         definition = {"type": "structured-content", "content": {"tag": "span", "style": {
