@@ -105,8 +105,8 @@ class LookupAudio(QObject):
             elif source == "online":
                 language = {"zh-hant": "zh", "zh-hans": "zh", "zh-tw": "zh", "zh-hk": "zh",
                             "cmn": "zh", "fil": "tl"}.get(entry.language, entry.language)
-                iso3 = QLocale.languageToCode(QLocale.codeToLanguage(language.split("-", 1)[0]),
-                                              QLocale.LanguageCodeType.ISO639Part3)
+                iso3 = "cmn" if language == "zh" else QLocale.languageToCode(
+                    QLocale.codeToLanguage(language.split("-", 1)[0]), QLocale.LanguageCodeType.ISO639Part3)
                 self.worker.submit(AudioRequest(self.latest[0], self.latest[1], "", (),
                                                 language=language, iso3=iso3, online=True))
                 return

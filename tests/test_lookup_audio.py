@@ -88,6 +88,38 @@ class SentenceAudioTests(unittest.TestCase):
                 audio.shutdown()
                 audio.deleteLater()
 
+    def test_mandarin_variants_find_real_lingua_libre_code_without_cantonese(self):
+        from meikipop.audio.online import OnlineAudio
+        with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
+            settings = QSettings(str(Path(folder) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/cmn/audio_priority", ["online"])
+            audio = LookupAudio()
+            info = {"query": {"pages": {
+                "1": {"title": "File:LL-Q9186 (yue)-Jonashtand-你好.wav", "imageinfo": [{
+                    "url": "https://upload.wikimedia.org/cantonese.wav"}]},
+                "2": {"title": "File:LL-Q9192 (cmn)-Luilui6666-你好.wav", "imageinfo": [{
+                    "url": "https://upload.wikimedia.org/mandarin.wav", "user": "Luilui6666",
+                    "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"}}}]}}}}
+            try:
+                for language in ("cmn", "zh", "zh-hans", "zh-hant", "zh-tw", "zh-hk"):
+                    with self.subTest(language=language):
+                        audio.play(Entry("hello", "你好", "", "Fixture", language, ("hello",)),
+                                   1, settings, profile="cmn")
+                        request = audio.worker.submit.call_args.args[0]
+                        client = OnlineAudio()
+                        with patch.object(client, "_fetch", side_effect=[info, b"RIFFfixture"]):
+                            clip = client.lookup(request.key[0], request.language, request.iso3)
+                        self.assertIsNotNone(clip)
+                        self.assertEqual(clip[0], "mandarin.wav")
+                        self.assertEqual(clip[3], "Luilui6666 · CC BY-SA 4.0")
+                audio.play(Entry("hello", "你好", "", "Fixture", "yue", ("hello",)),
+                           1, settings, profile="cmn")
+                request = audio.worker.submit.call_args.args[0]
+                self.assertEqual((request.language, request.iso3), ("yue", "yue"))
+            finally:
+                audio.shutdown()
+                audio.deleteLater()
+
     def test_saved_priority_overrides_legacy_mode_and_can_disable_sources(self):
         from meikipop.audio.sources import source_order
         with tempfile.TemporaryDirectory() as folder, patch("meikipop.gui.lookup_audio.AudioWorker"):
