@@ -1,6 +1,7 @@
 """Inline ruby for Qt's rich-text browser, which has no native ruby layout."""
 from urllib.parse import quote, unquote
 from itertools import count
+from functools import lru_cache
 
 from PyQt6.QtCore import QMimeData, QObject, QPointF, QSizeF, Qt, QUrl
 from PyQt6.QtGui import (QColor, QFont, QFontMetricsF, QTextCharFormat, QTextCursor,
@@ -19,6 +20,16 @@ KANJI = READING + 1
 PREFIX = "meikipop-ruby:"
 TAG_PREFIX = "meikipop-tag:"
 _ruby_ids = count()
+
+
+@lru_cache(maxsize=1024)
+def _reading_text(encoded):
+    text = unquote(encoded)
+    if not ("<" in text or "&" in text or any(char.isspace() for char in text)):
+        return text
+    document = QTextDocument()
+    document.setHtml(text)
+    return document.toPlainText()
 
 
 def ruby_html(base, reading, color=None, *, kanji=()):
@@ -126,15 +137,13 @@ class RubyBrowser(DictionaryBrowser):
                             self._pitch_object = install_pitch_renderer(document, self)
                         cursor.insertText("\ufffc", pitch_format(cursor.charFormat(), payload))
                     continue
-                reading = QTextDocument()
-                reading.setHtml(unquote(href[len(PREFIX):].partition("#")[0]))
                 fmt = QTextCharFormat(cursor.charFormat())
                 fmt.setAnchor(False)
                 fmt.setAnchorHref("")
                 fmt.setFontUnderline(False)
                 fmt.setObjectType(RUBY)
                 fmt.setProperty(BASE, cursor.selectedText())
-                fmt.setProperty(READING, reading.toPlainText())
+                fmt.setProperty(READING, _reading_text(href[len(PREFIX):].partition("#")[0]))
                 fmt.setProperty(KANJI, unquote(href.partition("#")[2].partition("/")[2]))
                 cursor.insertText("\ufffc", fmt)
         finally:
