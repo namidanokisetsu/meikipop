@@ -140,6 +140,12 @@ def main(argv=None):
         complete_first_setup(settings)
     first_run = args.setup or fresh_install
     window = QuickLookupWindow(args.library, settings=settings)
+    def prepare_language(code):
+        if code == "tr":
+            from meikipop.language.turkish_analyzer import warmup
+            warmup()
+    window.mode_changed.connect(prepare_language)
+    prepare_language(window.preferred_foreign)
     def open_requested(text=""):
         if sys.platform == "darwin" and not text:
             window.open_settings()

@@ -1,9 +1,11 @@
 """Offline Turkish candidates adapted from Anki Miner; see resources/licenses."""
 from collections import OrderedDict
+from concurrent.futures import Future
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 import re
 import unicodedata
+import threading
 
 from .analyzer import normalize
 
@@ -19,6 +21,27 @@ _BARE_QUESTION = frozenset({"mi", "mı", "mu", "mü"})
 _POS = {"Noun": "NOUN", "Verb": "VERB", "Adj": "ADJ", "Adv": "ADV", "Pron": "PRON",
         "Postp": "ADP", "Conj": "CCONJ", "Det": "DET", "Num": "NUM", "Interj": "INTJ",
         "Ques": "PART", "Dup": "X", "Punc": "PUNCT"}
+_engine_future = None
+_engine_guard = threading.Lock()
+_parse_guard = threading.Lock()
+
+
+def warmup():
+    """Prepare one shared engine off the UI thread when Turkish becomes active."""
+    global _engine_future
+    with _engine_guard:
+        if _engine_future is None:
+            _engine_future = Future()
+            threading.Thread(target=_load_engine, args=(_engine_future,), name="turkish-setup", daemon=True).start()
+        return _engine_future
+
+
+def _load_engine(future):
+    try:
+        from ._zeyrek import TurkishAnalyzer as Engine
+        future.set_result(Engine())
+    except Exception as error:
+        future.set_exception(error)
 
 
 def available():
@@ -125,9 +148,9 @@ class TurkishAnalyzer:
         head = _APOSTROPHE.split(surface, maxsplit=1)[0]
         if surface not in self._words:
             if self.engine is None:
-                from ._zeyrek import TurkishAnalyzer as Engine
-                self.engine = Engine()
-            readings = tuple(self.engine.analyse(unicodedata.normalize("NFC", surface)))
+                self.engine = warmup().result()
+            with _parse_guard:
+                readings = tuple(self.engine.analyse(unicodedata.normalize("NFC", surface)))
             if head != surface and head[0].isupper():
                 readings = tuple(r for r in readings if r.pos1 == "PROPN" and
                                  tr_casefold(r.lemma) == tr_casefold(head)) or (TrAnalysis(head, "PROPN", "Prop"),)

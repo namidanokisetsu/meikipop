@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 import zipfile
@@ -15,6 +16,34 @@ from meikipop.language.turkish_analyzer import TrAnalysis, TrMorpheme, TurkishAn
 
 
 class TurkishCandidateTests(unittest.TestCase):
+    def test_background_preparation_is_shared_by_lookup_workers(self):
+        from meikipop.language import turkish_analyzer as module
+        entered, release = threading.Event(), threading.Event()
+        engine = Mock()
+        engine.analyse.return_value = ()
+        main_thread = threading.get_ident()
+        threads = []
+        def load(future):
+            threads.append(threading.get_ident())
+            entered.set()
+            release.wait(3)
+            future.set_result(engine)
+        with patch.object(module, '_engine_future', None), patch.object(module, '_load_engine', side_effect=load), \
+                patch.object(module, 'available', return_value=True):
+            try:
+                future = module.warmup()
+                self.assertTrue(entered.wait(3))
+                self.assertFalse(future.done())
+                self.assertIs(module.warmup(), future)
+            finally:
+                release.set()
+            future.result(timeout=3)
+            first, second = TurkishAnalyzer(), TurkishAnalyzer()
+            first.candidates('cevrimizi', 0, 9)
+            second.candidates('cevrimizi', 0, 9)
+            self.assertIs(first.engine, second.engine)
+            self.assertNotEqual(threads, [main_thread])
+
     def setUp(self):
         self.analyzer = TurkishAnalyzer.__new__(TurkishAnalyzer)
         self.analyzer.engine = Mock()
