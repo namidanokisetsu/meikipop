@@ -51,6 +51,22 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_pinned_meaning_limit_applies_to_structured_and_plain_definitions(self):
+        senses = [f"Meaning {i}" for i in range(8)]
+        structured = {"type": "structured-content", "content": {"tag": "ol", "content": [
+            {"tag": "li", "content": text} for text in senses]}}
+        for definitions in (senses, [structured]):
+            result = SearchResult('test', 'tr', 'en', (entry(language='tr', definitions=definitions),))
+            for limit in (2, 5, 0):
+                html = render_result(result, pinned_definitions=limit)
+                for i in range(limit or 8):
+                    self.assertIn(senses[i], html)
+                if limit:
+                    self.assertNotIn(senses[limit], html)
+                    self.assertIn('href="expand:', html)
+                else:
+                    self.assertNotIn('href="expand:', html)
+
     def test_default_preview_and_pin_preferences_preserve_full_context(self):
         from meikipop.gui.quick_lookup import audio_autoplay_mode
         self.settings.remove("profiles/ja/audio_autoplay_mode")
@@ -82,7 +98,10 @@ class QuickLookupTests(unittest.TestCase):
         self.assertTrue(cursor.charFormat().fontUnderline())
         geometry = self.window.geometry()
         scroll = browser.verticalScrollBar().value()
+        scroll_changes = []
+        browser.verticalScrollBar().valueChanged.connect(scroll_changes.append)
         QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+        self.assertNotIn(0, scroll_changes)
         self.wait_until(lambda: not self.window.render_timer.isActive())
         self.app.processEvents()
         self.assertIn("Meaning 0:8", browser.toPlainText())
@@ -1426,13 +1445,14 @@ class QuickLookupTests(unittest.TestCase):
     def test_rendering_previews_every_dictionary_and_expands_structured_glosses(self):
         definitions = ({"type": "structured-content", "content": {
             "tag": "div", "content": [{"tag": "span", "content": "Turkdict example " + "long " * 150},
-                                       {"tag": "p", "content": "Final example"}]}},)
+                                       {"tag": "p", "data": {"content": "example"}, "content": "Final example"}]}},)
         result = SearchResult("arac", "tr", "en", (
             entry("araç", "Turkdict", definitions, "tr"),
             entry("araç", "Other", ("vehicle",), "tr")))
         self.window.show_entries(result.entries, "arac", "tr")
         self.assertIn("Turkdict", self.window.browser.toPlainText())
         self.assertIn("Other", self.window.browser.toPlainText())
+        self.assertIn("long " * 150, self.window.browser.toPlainText())
         self.assertNotIn("Final example", self.window.browser.toPlainText())
         self.window._link(QUrl("expand:0"))
         self.assertIn("Final example", self.window.browser.toPlainText())
@@ -1502,7 +1522,7 @@ class QuickLookupTests(unittest.TestCase):
         result = SearchResult("araç", "tr", "en", (
             entry("araç", "Turkdict", (definition,), "tr"),
             entry("araç", "Other", ("vehicle", "device", "tool", "Fourth sense"), "tr")))
-        preview = render_result(result)
+        preview = render_result(result, pinned_definitions=2)
         self.assertIn("<ol><li>vehicle", preview)
         self.assertNotIn("Hidden example", preview)
         self.assertNotIn("Third sense", preview)
@@ -2196,6 +2216,18 @@ class DictionaryManagerTests(unittest.TestCase):
             self.assertTrue(resources.base_install.isHidden())
             self.dialog.sync_profile("ja")
             self.assertTrue(resources.base_status.isHidden())
+
+    def test_definition_limits_are_saved_per_profile_with_all_option(self):
+        self.dialog.sync_profile('tr')
+        self.dialog.appearance.pinned_definitions.setValue(7)
+        self.dialog.appearance.preview_definitions.setValue(0)
+        self.assertEqual(self.settings.value('profiles/tr/pinned_definitions', type=int), 7)
+        self.assertEqual(self.settings.value('profiles/tr/preview_definitions', type=int), 0)
+        self.dialog.sync_profile('ja')
+        self.assertEqual(self.dialog.appearance.pinned_definitions.value(), 3)
+        self.dialog.sync_profile('tr')
+        self.assertEqual(self.dialog.appearance.pinned_definitions.value(), 7)
+        self.assertEqual(self.dialog.appearance.preview_definitions.text(), 'All')
 
     def test_legacy_import_requires_a_language_in_automatic_mode(self):
         self.dialog.begin_operation([self.archive("Legacy")])

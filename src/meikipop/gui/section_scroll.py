@@ -212,6 +212,7 @@ class SectionScroller(QObject):
         viewport.setMask(QRegion(0, 0, viewport.width(), max(1, height)))
 
     def _refresh_header(self):
+        self._refresh.stop()
         self._index()
         self._align_section_end()
         self._update_clip()

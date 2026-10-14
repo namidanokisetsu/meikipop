@@ -207,9 +207,10 @@ class _GlossConverter(StructuredContentConverter):
 
     def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term="",
                  details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False, preview_definitions=3,
-                 grammar=True):
+                 grammar=True, pinned_definitions=3):
         super().__init__()
         self.preview_definitions = preview_definitions
+        self.pinned_definitions = pinned_definitions
         self.definition_furigana = definition_furigana
         self.grammar = grammar
         self.colors = surface_colors(config.color_background, config.color_foreground)
@@ -378,8 +379,8 @@ class _GlossConverter(StructuredContentConverter):
                     and "meaning" in child["data"] for child in content))
                 if ((tag in ("ol", "ul") and kind != "glossary") or kind == "glosses" or numbered_senses or marked_senses) and isinstance(content, list):
                     senses = [child for child in content if not isinstance(child, str) or child.strip()]
-                    maximum = self.preview_definitions if self.preview else 2
-                    if len(senses) > maximum:
+                    maximum = self.preview_definitions if self.preview else self.pinned_definitions
+                    if maximum and len(senses) > maximum:
                         node["content"] = senses[:maximum]
                         self.clipped = True
             if kind == "glossary":
@@ -550,9 +551,11 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
                   definition_furigana=False, collapsed=(), kanji_details=(),
                   preview_frequency=True, preview_pitch=True, preview_definitions=3,
-                  pinned_frequency=True, pinned_pitch=True, grammar=None, separate_headwords=False):
+                  pinned_frequency=True, pinned_pitch=True, grammar=None, separate_headwords=False, pinned_definitions=3):
     """Share lexical headings while preserving the configured dictionary order."""
-    preview_definitions = max(1, min(10, preview_definitions))
+    preview_definitions = max(0, min(50, preview_definitions))
+    pinned_definitions = max(0, min(50, pinned_definitions))
+    maximum = preview_definitions if preview else pinned_definitions
     grammar_tags = not preview if grammar is None else grammar
     show_inflections = grammar is not False
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
@@ -622,26 +625,28 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                 continue
             index, entries = sources.index(source), dictionaries[source]
             section_key = _dictionary_section_key(term, reading, source)
-            full = (source in expanded or section_key in expanded) and not preview
-            more = len(entries) > 2
+            full = not maximum or (source in expanded or section_key in expanded) and not preview
+            more = bool(maximum and len(entries) > maximum)
             hidden = (source in collapsed or section_key in collapsed) and not preview
             generic_source = source in ("Turkish Bilingual", "Turkish Monolingual", "Turkish Etymology")
             normalized = [normalize_definitions(entry.definitions, source) for entry in entries]
-            limit = 240 if result.source == "ja" else (None if preview else 360)
+            limit = 240 if result.source == "ja" and not full else None
             converter = _GlossConverter(expanded=full, limit=limit,
                                         preview=preview, preview_definitions=preview_definitions,
+                                        pinned_definitions=pinned_definitions,
                                         generic_source=generic_source, term=term,
                                         details_expanded=details_expanded, detail_prefix=f"{group_index}:{index}",
                                         definition_furigana=definition_furigana,
                                         grammar=grammar_tags,
                                         definitions=tuple(definition for definitions in normalized for definition in definitions))
             definitions = []
-            visible_entries = () if hidden else (normalized if full else normalized[:2])
+            visible_entries = () if hidden else (normalized if full else normalized[:maximum])
             for entry_definitions in visible_entries:
-                more = more or len(entry_definitions) > 3
-                definitions.extend(converter.glosses(entry_definitions if full else entry_definitions[:preview_definitions if preview else 3]))
-            if preview:
-                definitions = definitions[:preview_definitions]
+                more = more or bool(maximum and len(entry_definitions) > maximum)
+                definitions.extend(converter.glosses(entry_definitions if full else entry_definitions[:maximum]))
+            if not full:
+                more = more or len(definitions) > maximum
+                definitions = definitions[:maximum]
             more = more or converter.clipped
             if source not in anchored:
                 parts.append(f'<a name="dictionary-{index}"></a>')
@@ -693,6 +698,21 @@ class LocalDictionaryBrowser(RubyBrowser):
         self.section_scroll = SectionScroller(self)
 
     def setHtml(self, html):
+        document = self.document()
+        updates = self.updatesEnabled()
+        self.setUpdatesEnabled(False)
+        try:
+            with QSignalBlocker(document), QSignalBlocker(self.verticalScrollBar()):
+                document.setLayoutEnabled(False)
+                try:
+                    self._set_html(html)
+                finally:
+                    document.setLayoutEnabled(True)
+            self.section_scroll._document_changed()
+        finally:
+            self.setUpdatesEnabled(updates)
+
+    def _set_html(self, html):
         super().setHtml(html)
         def heading_format(fmt):
             fmt.clearProperty(QTextFormat.Property.FontSizeAdjustment)
@@ -1508,6 +1528,7 @@ class QuickLookupWindow(QDialog):
                 preview_frequency=self.settings.value(prefix + "preview_frequency", True, bool),
                 preview_pitch=self.settings.value(prefix + "preview_pitch", True, bool),
                 preview_definitions=self.settings.value(prefix + "preview_definitions", 3, int),
+                pinned_definitions=self.settings.value(prefix + "pinned_definitions", 3, int),
                 pinned_frequency=self.settings.value(prefix + "pinned_frequency", True, bool),
                 pinned_pitch=self.settings.value(prefix + "pinned_pitch", True, bool),
                 grammar=self.settings.value(prefix + "preview_grammar", True, bool)

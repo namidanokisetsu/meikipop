@@ -128,7 +128,7 @@ class DictionaryPresentationTests(unittest.TestCase):
         value = result(({"type": "structured-content", "content": {"tag": "div", "content": [
             {"tag": "div", "data": {"meaning": ""}, "content": f"Sense {i}"}
             for i in range(1, 7)]}},))
-        text = self.render(value)
+        text = self.render(value, pinned_definitions=2)
         self.assertIn("Sense 2", text)
         self.assertNotIn("Sense 3", text)
         self.assertIn("Sense 6", self.render(value, expanded=("Fixture",)))
