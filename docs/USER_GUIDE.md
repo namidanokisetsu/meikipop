@@ -68,7 +68,8 @@ In **Translation**, download **Lightweight** (Hy-MT2 1.8B, about 2 GB) or
 additional memory. Models are shared across languages; new-language setup
 reuses installed models. Each language can choose its model and translation pair.
 **Translate** uses the selected model and sentence context.
-Typed sentences and manual word misses also use translation; hovering does not.
+Typed phrases use exact dictionary entries when available. Sentences without
+an exact entry and manual word misses use translation; hovering does not.
 The first request loads the model. **Keep model warm** avoids later reloads
 but keeps its memory allocated.
 
