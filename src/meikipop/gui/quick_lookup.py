@@ -1899,7 +1899,13 @@ class QuickLookupWindow(QDialog):
         if self._shutting_down:
             return
         self.mode_row.hide()
-        self.header.setVisible(not self._peek or self.is_pinned)
+        container = self.actions_row if self._peek else self.header
+        if self.audio_actions.parentWidget() is not container:
+            if self._peek:
+                container.layout().insertWidget(container.layout().indexOf(self.anki_button), self.audio_actions)
+            else:
+                container.layout().addWidget(self.audio_actions, 0, Qt.AlignmentFlag.AlignRight)
+        self.header.setVisible(not self._peek)
         self.audio_actions.setVisible(not self._peek or self.is_pinned)
 
     def open_search(self, text="", *, at_cursor=False, passive=False, selection=False):
