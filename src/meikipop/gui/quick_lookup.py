@@ -9,7 +9,7 @@ import sys
 import threading
 import unicodedata
 
-from PyQt6.QtCore import QObject, QEvent, QLocale, QPointF, QSettings, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QEvent, QLocale, QPointF, QSettings, QSignalBlocker, QSize, Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeySequence, QShortcut, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
@@ -1015,7 +1015,11 @@ class QuickLookupWindow(QDialog):
         self.browser.setOpenExternalLinks(False)
         self.browser.setAccessibleName("Dictionary results")
         self.browser.document().setIndentWidth(10)
-        self.browser.anchorClicked.connect(self._link)
+        self.link_timer = QTimer(self)
+        self.link_timer.setSingleShot(True)
+        self.link_timer.timeout.connect(self._activate_link)
+        self._pending_link = None
+        self.browser.anchorClicked.connect(self._queue_link)
         self.browser.word_selected.connect(self.lookup_word)
         layout.addWidget(self.browser, 1)
         self.status = QLabel()
@@ -1676,6 +1680,21 @@ class QuickLookupWindow(QDialog):
     def show_message(self, text):
         self.status.setText(str(text))
         self.status.setVisible(bool(text))
+
+    def _queue_link(self, url):
+        if self._pin_anchor_click:
+            self._pin_anchor_click = False
+            return
+        self._pending_link = (QUrl(url), self.revision, self._render_identity)
+        # QTextBrowser must finish mouse release before its document is replaced.
+        self.link_timer.start(0)
+
+    def _activate_link(self):
+        pending, self._pending_link = self._pending_link, None
+        if pending is not None and not self._shutting_down:
+            url, revision, identity = pending
+            if revision == self.revision and identity == self._render_identity:
+                self._link(url)
 
     def _link(self, url):
         if self._result is None:
@@ -2426,7 +2445,7 @@ class QuickLookupWindow(QDialog):
         if self.audio:
             self.audio.shutdown()
         self.debounce.stop()
-        for timer in (self.busy_delay, self.fit_timer, self.render_timer, self.stream_timer):
+        for timer in (self.busy_delay, self.fit_timer, self.render_timer, self.stream_timer, self.link_timer):
             timer.stop()
         self._translation_chunk = None
         self.worker.shutdown()

@@ -1,4 +1,5 @@
 """Provide streams for model libraries in a windowed executable."""
+import faulthandler
 import os
 import sys
 from pathlib import Path
@@ -41,6 +42,7 @@ if sys.stdout is None or sys.stderr is None or sys.platform == "darwin":
     if log_path.exists() and log_path.stat().st_size > 1_000_000:
         log_path.replace(log_path.with_suffix(".log.old"))
     stream = log_path.open("a", encoding="utf-8", buffering=1)
+    faulthandler.enable(file=stream)
     if sys.stdout is None:
         sys.stdout = stream
     sys.stderr = DiagnosticStream(sys.stderr, stream)

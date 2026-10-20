@@ -160,6 +160,37 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.geometry(), geometry)
         self.assertFalse(self.window.fit_timer.isActive())
 
+    def test_disclosure_waits_for_native_mouse_release(self):
+        self.window.show_entries((entry(definitions=tuple(f"Meaning {i}" for i in range(8))),), "cat")
+        self.app.processEvents()
+        browser = self.window.browser
+        cursor = browser.document().find("More")
+        cursor.setPosition(cursor.selectionStart() + 1)
+        point = browser.cursorRect(cursor).center()
+        with patch.object(browser, "setHtml", wraps=browser.setHtml) as render:
+            QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+            render.assert_not_called()
+            self.assertNotIn("Meaning 7", browser.toPlainText())
+            self.wait_until(lambda: not self.window.link_timer.isActive())
+            render.assert_called_once()
+            self.assertIn("Meaning 7", browser.toPlainText())
+
+    def test_queued_disclosure_cannot_change_a_new_document(self):
+        self.window.show_entries((entry(definitions=("first", "second", "third", "fourth")),), "cat")
+        self.window.browser.anchorClicked.emit(QUrl("expand:0:0"))
+        self.window._display(SearchResult("new", "ja", "en", (entry("new"),)))
+        self.app.processEvents()
+        self.assertFalse(self.window._expanded)
+        self.assertFalse(self.window._details_expanded)
+
+    def test_first_preview_click_does_not_queue_a_disclosure(self):
+        self.window.show_entries((entry(),), "cat", peek=True)
+        self.window._pin_anchor_click = True
+        self.window.browser.anchorClicked.emit(QUrl("details:0:0:0"))
+        self.app.processEvents()
+        self.assertFalse(self.window.link_timer.isActive())
+        self.assertFalse(self.window._details_expanded)
+
     def test_preview_options_limit_first_dictionary_without_changing_pinned_results(self):
         from meikipop.dictionary.pitch import Pitch
         first = replace(entry(definitions=("first meaning", "second meaning", "third meaning")),
