@@ -89,6 +89,18 @@ class LanguageSuggestion(QDialog):
         self.translation = QComboBox()
         self.translation.addItem("Lightweight (1.9 GB)", "lightweight")
         self.translation.addItem("Quality (8 GB)", "quality")
+        self.translation.setToolTip("Downloaded models are shared by all languages")
+        from meikipop.gui.resources import translation_ready
+        from meikipop.dictionary.translation import load_profile_settings
+        try:
+            preferred = load_profile_settings(window.settings, self.language).profile
+        except ValueError:
+            preferred = "lightweight"
+        installed = [name for name in ("lightweight", "quality") if translation_ready(name)]
+        selected = preferred if preferred in installed else next(iter(installed), "lightweight")
+        if window.settings.contains(f"profiles/{self.language}/translation"):
+            selected = preferred
+        self.translation.setCurrentIndex(self.translation.findData(selected))
         self.translation.currentIndexChanged.connect(self.refresh_choices)
         form.addRow("Translation model", self.translation)
         form.setRowVisible(self.translation, any(task.kind == "translation" for task, check in self.choices))
@@ -113,26 +125,41 @@ class LanguageSuggestion(QDialog):
         self.install.clicked.connect(self.accept)
         buttons.addWidget(self.install)
         layout.addLayout(buttons)
+        self.refresh_choices()
 
     def selected_tasks(self):
         from dataclasses import replace
+        from meikipop.gui.resources import translation_ready
         tasks = [replace(task, value=self.translation.currentData()) if task.kind == "translation" else task
                  for task, check in self.choices if check.isChecked()]
-        return [task for task in tasks if task not in self.completed_tasks]
+        return [task for task in tasks if task not in self.completed_tasks
+                and not (task.kind == "translation" and translation_ready(task.value))]
 
     def refresh_choices(self):
         from dataclasses import replace
+        from meikipop.gui.resources import translation_ready
         for task, check in self.choices:
             selected = replace(task, value=self.translation.currentData()) if task.kind == "translation" else task
-            installed = selected in self.completed_tasks
+            installed = selected in self.completed_tasks or (task.kind == "translation" and translation_ready(selected.value))
             check.setText(task.label + (" ✓" if installed else ""))
             check.setEnabled(self.operation is None and not installed)
+
+    def use_translation(self, profile):
+        from dataclasses import replace
+        from meikipop.dictionary.translation import load_profile_settings, save_profile_settings
+        settings = load_profile_settings(self.window.settings, self.language)
+        save_profile_settings(self.window.settings, self.language, replace(settings, provider="server", profile=profile))
 
     def accept(self):
         if self.operation is not None:
             return
         from meikipop.dictionary.library import default_library_path
         from meikipop.gui.language_setup import LanguageSetup
+        from meikipop.gui.resources import translation_ready
+        if any(task.kind == "translation" and check.isChecked() for task, check in self.choices):
+            if translation_ready(self.translation.currentData()):
+                self.use_translation(self.translation.currentData())
+                self.window.refresh_library()
         tasks = self.selected_tasks()
         if not tasks:
             super().accept()
@@ -156,8 +183,6 @@ class LanguageSuggestion(QDialog):
         self.status.setText(label)
 
     def download_finished(self, completed, errors):
-        from dataclasses import replace
-        from meikipop.dictionary.translation import load_profile_settings, save_profile_settings
         code = self.language
         for task, value in completed:
             if task.kind == "ocr":
@@ -165,8 +190,7 @@ class LanguageSuggestion(QDialog):
                 if value:
                     self.window.settings.setValue("screenai_directory", value)
             elif task.kind == "translation":
-                settings = load_profile_settings(self.window.settings, code)
-                save_profile_settings(self.window.settings, code, replace(settings, provider="server", profile=task.value))
+                self.use_translation(task.value)
         self.window.refresh_library()
         self.window.scan_settings_changed.emit()
         if self.window._setup is not None:

@@ -30,6 +30,9 @@ class FirstRunTests(unittest.TestCase):
         self.window._setup = None
         self.window.refresh_library = Mock()
         self.window.scan_settings_changed = Mock()
+        readiness = patch("meikipop.dictionary.translation.model_installed", return_value=False)
+        self.model_installed = readiness.start()
+        self.addCleanup(readiness.stop)
         self.wizard = LanguageSuggestion(self.window)
         self.addCleanup(self.window.deleteLater)
 
@@ -39,6 +42,42 @@ class FirstRunTests(unittest.TestCase):
         self.assertTrue(needs_setup(self.settings))
         self.settings.setValue("profiles/ja/target", "en")
         self.assertFalse(needs_setup(self.settings))
+
+    def test_installed_translation_is_shared_and_selected_without_another_download(self):
+        from meikipop.dictionary.translation import load_profile_settings, save_profile_settings, TranslationSettings
+        from meikipop.gui.language_setup import install_task, SetupTask
+        self.model_installed.side_effect = lambda name: name == "lightweight"
+        for language in ("ja", "tr"):
+            self.assertEqual(load_profile_settings(self.settings, language).profile, "lightweight")
+            wizard = LanguageSuggestion(self.window, language)
+            self.addCleanup(wizard.deleteLater)
+            self.assertEqual(wizard.translation.currentData(), "lightweight")
+            for task, check in wizard.choices:
+                if task.kind != "translation":
+                    check.setChecked(False)
+                else:
+                    self.assertFalse(check.isEnabled())
+                    self.assertIn("✓", check.text())
+            self.assertEqual(wizard.selected_tasks(), [])
+            with patch("meikipop.gui.language_setup.LanguageSetup") as setup:
+                wizard.accept()
+            setup.assert_not_called()
+            self.assertEqual(load_profile_settings(self.settings, language).profile, "lightweight")
+        with patch("meikipop.scripts.translation_server.install_model") as install:
+            install_task(SetupTask("translation", "Local translation", "lightweight"),
+                         self.directory.name, Mock(), threading.Event())
+        install.assert_not_called()
+        save_profile_settings(self.settings, "ja", TranslationSettings(profile="quality"))
+        self.assertEqual(load_profile_settings(self.settings, "ja").profile, "quality")
+
+    def test_selecting_an_uninstalled_model_still_offers_download(self):
+        self.model_installed.side_effect = lambda name: name == "lightweight"
+        wizard = LanguageSuggestion(self.window, "tr")
+        self.addCleanup(wizard.deleteLater)
+        wizard.translation.setCurrentIndex(wizard.translation.findData("quality"))
+        task, check = next((task, check) for task, check in wizard.choices if task.kind == "translation")
+        self.assertTrue(check.isEnabled())
+        self.assertEqual([task.value for task in wizard.selected_tasks() if task.kind == "translation"], ["quality"])
 
     def test_first_language_keeps_dictionary_languages_and_existing_profiles(self):
         from meikipop.gui.quick_lookup import LANGUAGE_NAMES

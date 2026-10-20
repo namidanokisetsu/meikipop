@@ -50,7 +50,9 @@ def install_task(task, directory, progress, cancelled):
             install(task.value, progress, cancelled)
         return ""
     from meikipop.scripts.translation_server import install_model
-    install_model(profile=task.value, progress=progress, cancelled=cancelled)
+    from meikipop.gui.resources import translation_ready
+    if not translation_ready(task.value):
+        install_model(profile=task.value, progress=progress, cancelled=cancelled)
     return ""
 
 

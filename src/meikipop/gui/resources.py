@@ -40,12 +40,8 @@ def ocr_ready(provider, component_directory=""):
 
 
 def translation_ready(profile):
-    try:
-        from meikipop.scripts.translation_server import _installed_paths
-        _installed_paths(profile, None)
-        return True
-    except (ImportError, OSError, RuntimeError, ValueError):
-        return False
+    from meikipop.dictionary.translation import model_installed
+    return model_installed(profile)
 
 
 class ResourcesPanel(QWidget):

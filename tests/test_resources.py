@@ -139,6 +139,7 @@ class ResourceTests(unittest.TestCase):
             settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
             settings.setValue("profile", "ja")
             settings.setValue("profiles/ja/target", "yi")
+            save_profile_settings(settings, "ja", TranslationSettings(profile="quality"))
             with patch("meikipop.gui.resources.ocr_ready", return_value=True), \
                     patch("meikipop.gui.resources.translation_ready", return_value=False):
                 dialog = SetupDialog(Path(directory) / "library", settings, Mock())

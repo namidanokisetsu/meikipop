@@ -65,7 +65,9 @@ and translation run locally after setup.
 
 In **Translation**, download **Lightweight** (Hy-MT2 1.8B, about 2 GB) or
 **Quality** (7B, about 8 GB). These are download sizes; running a model needs
-additional memory. **Translate** uses the selected model and sentence context.
+additional memory. Models are shared across languages; new-language setup
+reuses installed models. Each language can choose its model and translation pair.
+**Translate** uses the selected model and sentence context.
 Typed sentences and manual word misses also use translation; hovering does not.
 The first request loads the model. **Keep model warm** avoids later reloads
 but keeps its memory allocated.

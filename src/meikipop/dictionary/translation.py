@@ -138,11 +138,25 @@ def save_settings(settings, directory=None):
     return settings
 
 
+def model_installed(profile):
+    try:
+        from meikipop.scripts.translation_server import _installed_paths
+        _installed_paths(profile, None)
+        return True
+    except (ImportError, OSError, RuntimeError, ValueError):
+        return False
+
+
 def load_profile_settings(preferences, profile):
     value = preferences.value(f"profiles/{profile}/translation", "")
     if not value:
         options = load_settings()
-        return replace(options, auto_start=True) if options.provider == "server" else options
+        if options.provider == "server":
+            model = options.profile
+            if not model_installed(model):
+                model = next((name for name in MODEL_NAMES if name != model and model_installed(name)), model)
+            return replace(options, auto_start=True, profile=model)
+        return options
     try:
         options = TranslationSettings(**json.loads(value)).validated()
         return replace(options, auto_start=True) if options.provider == "server" else options
