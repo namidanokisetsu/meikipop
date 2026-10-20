@@ -845,6 +845,7 @@ class QuickLookupWindow(QDialog):
         self._render_identity = None
         self._fit_identity = None
         self._static_disclosure = False
+        self._preserve_scroll = False
         self._needs_place = False
         self._context = ""
         self._peek = False
@@ -895,6 +896,8 @@ class QuickLookupWindow(QDialog):
         self.resize(480, 340)
         self._normal_size = QSize(480, 340)
         self._reading_size_custom = False
+        self._auto_fit_size = None
+        self._preview_viewport_height = 0
         self._lookup_anchor = None
         self._result_screenshot = None
         outer = QVBoxLayout(self)
@@ -1540,13 +1543,15 @@ class QuickLookupWindow(QDialog):
         if (self._peek or self._selection_lookup) and (result.entries or result.translation) and autoplay == "lookup":
             self._autoplay()
 
-    def _render(self, static=False):
+    def _render(self, static=False, *, preserve_scroll=False):
         if self._result is not None:
             self._static_disclosure = self._static_disclosure or static
+            self._preserve_scroll = self._preserve_scroll or preserve_scroll
             if self.browser.selecting:
                 self.render_timer.start(50)
                 return
             static, self._static_disclosure = self._static_disclosure, False
+            preserve_scroll, self._preserve_scroll = self._preserve_scroll, False
             compact = self.compact_preview()
             prefix = f"profiles/{self.preferred_foreign}/"
             preview_options = dict(
@@ -1607,7 +1612,7 @@ class QuickLookupWindow(QDialog):
             # Restore snap-page padding before restoring a position near the end.
             self.browser.section_scroll._refresh_header()
             if position is not None:
-                position.restore(self.browser)
+                position.restore(self.browser, preserve_scroll=preserve_scroll)
             self.browser.setToolTip("")
             if static:
                 self.fit_timer.stop()
@@ -1637,6 +1642,8 @@ class QuickLookupWindow(QDialog):
             natural_height = min(natural_height, scroller.boundaries()[1][0])
         desired = math.ceil(natural_height) + chrome + 2
         maximum = max(190, self.settings.value("preview_max_height", 340, type=int)) if preview else self._normal_size.height()
+        if reading and self._peek:
+            maximum = max(maximum, self._preview_viewport_height + chrome + 2)
         if desired > maximum:
             limit = maximum - chrome - 2
             bottoms = []
@@ -1652,7 +1659,8 @@ class QuickLookupWindow(QDialog):
                 block = block.next()
             if bottoms:
                 desired = max(bottoms) + chrome
-        height = min(maximum, max(self.minimumSizeHint().height(), desired))
+        minimum = self._preview_viewport_height + chrome if reading and self._peek else 0
+        height = min(maximum, max(self.minimumSizeHint().height(), desired, minimum))
         if self.height() != height:
             mark("geometry", self.revision)
             if self.isVisible() and not self._needs_place:
@@ -1662,6 +1670,7 @@ class QuickLookupWindow(QDialog):
         if self.isVisible() and self._needs_place:
             self._place()
             self._needs_place = False
+        self._auto_fit_size = self.size()
 
     def set_compact_preview(self, enabled):
         self.settings.setValue(f"profiles/{self.preferred_foreign}/compact_preview", bool(enabled))
@@ -1711,16 +1720,16 @@ class QuickLookupWindow(QDialog):
                     or character not in {entry.character for entry in self._result.kanji}):
                 return
             self._kanji_details.symmetric_difference_update((f"head:{group}:{character}",))
-            self._render(static=True)
+            self._render(static=True, preserve_scroll=True)
             return
         if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
             self._kanji_details.symmetric_difference_update((url.path(),))
-            self._render(static=True)
+            self._render(static=True, preserve_scroll=True)
             return
         if url.scheme() == "details" and re.fullmatch(r"\d+:\d+:\d+", url.path()):
             key = url.path()
             self._details_expanded.symmetric_difference_update((key,))
-            self._render(static=True)
+            self._render(static=True, preserve_scroll=True)
             return
         if url.scheme() in ("expand", "collapse") and re.fullmatch(r"\d+:\d+", url.path()):
             group_index, source_index = map(int, url.path().split(":"))
@@ -1750,7 +1759,7 @@ class QuickLookupWindow(QDialog):
                     self._collapsed.add(key)
             else:
                 self._expanded.add(key)
-            self._render(static=True)
+            self._render(static=True, preserve_scroll=True)
             return
         try:
             index = int(url.path())
@@ -1772,7 +1781,7 @@ class QuickLookupWindow(QDialog):
                     self._collapsed.add(source)
             else:
                 self._expanded.add(source)
-            self._render(static=True)
+            self._render(static=True, preserve_scroll=True)
         elif url.scheme() == "suggest" and 0 <= index < len(self._result.suggestions):
             self.lookup_word(str(self._result.suggestions[index]))
 
@@ -1871,7 +1880,7 @@ class QuickLookupWindow(QDialog):
                 self.move(*popup_position(point.x(), point.y(), self.size(), area, config.popup_position_mode))
 
     def _set_peek(self, peek):
-        if peek and not self._peek:
+        if peek and not self._peek and (self._reading_size_custom or self.size() != self._auto_fit_size):
             self._normal_size = self.size()
         elif not peek and self._peek and not self.is_pinned:
             self.setMinimumHeight(190)
@@ -2194,6 +2203,9 @@ class QuickLookupWindow(QDialog):
     def _pin_changed(self, checked):
         if checked:
             self.remember_foreground()
+            if self._peek:
+                self._preview_viewport_height = min(self.browser.viewport().height(),
+                                                    math.ceil(self.browser.document().size().height()))
         self.pin.setToolTip("Unpin" if checked else "Pin")
         self.setSizeGripEnabled(checked or not self._peek)
         for grip in self.findChildren(QWidget):
@@ -2203,7 +2215,7 @@ class QuickLookupWindow(QDialog):
             if checked:
                 self.setMinimumHeight(190)
                 self._resize_expanded()
-            else:
+            elif self._reading_size_custom or self.size() != self._auto_fit_size:
                 self._normal_size = self.size()
         if checked:
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)

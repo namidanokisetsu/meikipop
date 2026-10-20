@@ -51,7 +51,7 @@ class ReadingPosition:
             key, index, _ = next(item for item in blocks if item[2] == block)
             self.positions.append((key, index, position - block.position()))
 
-    def restore(self, browser):
+    def restore(self, browser, *, preserve_scroll=False):
         blocks = list(self._blocks(browser.document()))
         by_key = {key: block for key, _, block in blocks}
         by_index = {(key[0], index): block for key, index, block in blocks}
@@ -77,7 +77,7 @@ class ReadingPosition:
                 with QSignalBlocker(bar):
                     browser.setTextCursor(cursor)
         scroll = self.scroll
-        if top is not None:
+        if top is not None and not preserve_scroll:
             cursor = QTextCursor(browser.document())
             cursor.setPosition(top)
             scroll = bar.value() + browser.cursorRect(cursor).top() - self.top_offset

@@ -44,6 +44,8 @@ Activating Turkish prepares a shared analyzer in the background; parsing is
 serialized on lookup workers. Missing definitions retain analyses separately
 from dictionary entries. Disclosure edits batch layout updates, and Paddle
 keeps stable per-language scan callbacks so unchanged pixels reuse OCR.
+Disclosure preserves the scroll offset; streaming text retains its text anchor.
+Automatic popup fitting stays separate from the user's chosen reading size.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;

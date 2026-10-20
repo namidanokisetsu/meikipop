@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
-from PyQt6.QtCore import QEvent, QPoint, QRect, QSettings, Qt, QUrl
+from PyQt6.QtCore import QEvent, QPoint, QRect, QSettings, QSize, Qt, QUrl
 from PyQt6.QtGui import QKeyEvent, QTextCursor, QTextFormat
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QMessageBox
@@ -174,6 +174,32 @@ class QuickLookupTests(unittest.TestCase):
             self.wait_until(lambda: not self.window.link_timer.isActive())
             render.assert_called_once()
             self.assertIn("Meaning 7", browser.toPlainText())
+
+    def test_more_does_not_follow_text_displaced_by_expanding_earlier_entries(self):
+        self.settings.setValue("profiles/ja/pinned_definitions", 5)
+        words = tuple(entry(language="en", definitions=({"type": "structured-content", "content": {
+            "tag": "ol", "content": [{"tag": "li", "content": f"Entry {index} meaning {sense}"}
+                                      for sense in range(12)]}},)) for index in range(5))
+        self.window._reading_size_custom = True
+        self.window.resize(480, 240)
+        self.window.show_entries(words, "cat", source="en", peek=True)
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        browser = self.window.browser
+        bar = browser.verticalScrollBar()
+        cursor = browser.document().find("More")
+        cursor.setPosition(cursor.selectionStart() + 1)
+        bar.setValue(bar.value() + browser.cursorRect(cursor).center().y() - browser.viewport().height() // 2)
+        point = browser.cursorRect(cursor).center()
+        self.assertTrue(browser.viewport().rect().contains(point))
+        self.assertGreater(bar.value(), 0)
+        scroll, geometry = bar.value(), self.window.geometry()
+        QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+        self.wait_until(lambda: not self.window.link_timer.isActive())
+        self.app.processEvents()
+        self.assertIn("Entry 0 meaning 11", browser.toPlainText())
+        self.assertEqual(bar.value(), scroll)
+        self.assertEqual(self.window.geometry(), geometry)
 
     def test_queued_disclosure_cannot_change_a_new_document(self):
         self.window.show_entries((entry(definitions=("first", "second", "third", "fourth")),), "cat")
@@ -851,6 +877,25 @@ class QuickLookupTests(unittest.TestCase):
         self.window._display(SearchResult("dog", "ja", "en", (entry("犬", definitions=("dog",)),)))
         self.app.processEvents()
         self.assertEqual(self.window.height(), 420)
+
+    def test_short_auto_fitted_result_does_not_shrink_later_pinned_content(self):
+        self.window.show_entries((entry(),), "cat", peek=True)
+        self.app.processEvents()
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        self.assertLess(self.window.height(), self.window._normal_size.height())
+        self.window.hide()
+        self.assertEqual(self.window._normal_size, QSize(480, 340))
+        word = entry("long", language="en", definitions=("A longer definition line.\n" * 30,))
+        self.window.show_entries((word,), "long", source="en", peek=True)
+        self.app.processEvents()
+        preview_height = self.window.browser.viewport().height()
+        self.assertGreater(preview_height, 190)
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        self.assertGreaterEqual(self.window.browser.viewport().height(), preview_height)
+        self.window.hide()
+        self.assertEqual(self.window._normal_size, QSize(480, 340))
 
     def test_bounded_preview_does_not_expose_a_partial_bottom_line(self):
         self.settings.setValue("preview_max_height", 190)
