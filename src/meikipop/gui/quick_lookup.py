@@ -22,7 +22,7 @@ from meikipop.gui.popup_style import expanded_geometry, frame_stylesheet, popup_
 from meikipop.gui.action_icons import action_icon
 from meikipop.gui.ruby import RubyBrowser, TAG_PREFIX, ruby_html
 from meikipop.gui.gloss_content import normalize_definitions
-from meikipop.language.profiles import configured_profiles, default_partner
+from meikipop.language.profiles import configured_profiles, default_partner, visible_profiles
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
 from meikipop.utils.timing import mark
 
@@ -1142,10 +1142,10 @@ class QuickLookupWindow(QDialog):
         if languages is not None:
             self._imported_languages = tuple(languages)
         languages = getattr(self, "_imported_languages", ())
-        if "en" in languages and not self.settings.contains("profiles/en/target"):
+        codes = visible_profiles(self.settings, languages)
+        if "en" in codes and not self.settings.contains("profiles/en/target"):
             self.settings.setValue("profiles/en/target", "ja")
         current_source = self.source.currentData() or self.settings.value("profile", "")
-        codes = list(dict.fromkeys([*configured_profiles(self.settings), *languages]))
         with QSignalBlocker(self.source):
             self.source.clear()
             for code in codes:

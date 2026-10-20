@@ -14,7 +14,7 @@ from meikipop.dictionary.translation import TranslationSettings, load_settings, 
 from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
 from meikipop.gui.settings_section import SettingsSection, StatusLabel
-from meikipop.language.profiles import configured_profiles, default_partner
+from meikipop.language.profiles import configured_profiles, default_partner, visible_profiles
 
 
 class SetupOperation(QObject):
@@ -146,6 +146,9 @@ class SetupDialog(QDialog):
         self.add_profile_button = QPushButton("Add language…")
         self.add_profile_button.clicked.connect(self.choose_profile)
         profile_row.addWidget(self.add_profile_button)
+        self.remove_profile_button = QPushButton("Remove language")
+        self.remove_profile_button.clicked.connect(self.remove_profile)
+        profile_row.addWidget(self.remove_profile_button)
         layout.addLayout(profile_row)
         tabs = QTabWidget()
         self.tabs = tabs
@@ -502,8 +505,9 @@ class SetupDialog(QDialog):
             packs = sorted(library.packs, key=lambda pack:
                            order.index(pack[0].name) if pack[0].name in order else len(order))
             self._imported_languages = tuple(dict.fromkeys(metadata["language"] for _, metadata, _ in packs))
+            visible = visible_profiles(self.settings, self._imported_languages)
             for path, metadata, _ in packs:
-                if self.profile.findData(metadata["language"]) < 0:
+                if metadata["language"] in visible and self.profile.findData(metadata["language"]) < 0:
                     self.profile.addItem(language_name(metadata["language"]), metadata["language"])
                 item = QListWidgetItem(metadata["title"])
                 item.setToolTip(f'{int(metadata.get("entries", 0)):,} entries')
@@ -525,6 +529,7 @@ class SetupDialog(QDialog):
             library.close()
         self.update_dictionary_display()
         self.update_translation_languages()
+        self.remove_profile_button.setEnabled(self.operation is None and self.profile.count() > 1)
 
     def update_dictionary_display(self, *_):
         item = self.packs.currentItem()
@@ -579,6 +584,9 @@ class SetupDialog(QDialog):
         if code not in profile_languages(self._imported_languages, configured_profiles(self.settings)) and self.profile.findData(code) < 0:
             raise ValueError("Import a dictionary for this language first.")
         added = self.profile.findData(code) < 0
+        removed = set(self.settings.value("removed_profiles", [], type=list))
+        removed.discard(code)
+        self.settings.setValue("removed_profiles", sorted(removed))
         prefix = f"profiles/{code}/"
         if not self.settings.contains(prefix + "target"):
             self.settings.setValue(prefix + "target", default_partner(code))
@@ -591,6 +599,38 @@ class SetupDialog(QDialog):
         if added and self.parent() is not None:
             from meikipop.gui.first_run import offer_resources
             offer_resources(self.parent(), code)
+
+    def remove_profile(self):
+        code = self.profile.currentData()
+        if self.operation is not None or not code or self.profile.count() < 2:
+            return
+        if QMessageBox.question(self, "Remove language",
+                                f"Remove {language_name(code)} and its settings?\nDictionaries and models will be kept.",
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        removed = set(self.settings.value("removed_profiles", [], type=list))
+        removed.add(code)
+        self.settings.setValue("removed_profiles", sorted(removed))
+        self.settings.remove(f"profiles/{code}")
+        with QSignalBlocker(self.profile):
+            self.profile.removeItem(self.profile.currentIndex())
+        replacement = self.profile.currentData()
+        self.settings.setValue("profile", replacement)
+        window = self.parent()
+        if window is not None:
+            window._invalidate()
+            window.search.clear()
+            window._edited()
+            window._history = [item for item in window._history if item[2] != code]
+            window.back.setEnabled(bool(window._history))
+            window.back.setVisible(bool(window._history))
+            window._update_trail()
+            window.update_languages()
+            window.set_mode(replacement)
+            window.update_translation_languages(self.settings.value(f"profiles/{replacement}/target", default_partner(replacement)))
+            window._mode_changed()
+        self.profile_changed()
 
     def move_pack(self, offset):
         row = self.packs.currentRow()
@@ -678,6 +718,8 @@ class SetupDialog(QDialog):
         from meikipop.config.config import config
         previous_loading, self._loading = self._loading, True
         code = self.profile.currentData()
+        self.remove_profile_button.setEnabled(self.operation is None and self.profile.count() > 1)
+        self.remove_profile_button.setToolTip("" if self.profile.count() > 1 else "Keep at least one language")
         if code is None:
             self._loading = previous_loading
             return
@@ -934,7 +976,7 @@ class SetupDialog(QDialog):
         self.operation.finished.connect(self._finished)
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
-        for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button,
+        for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button, self.remove_profile_button,
                         self.packs, self.up, self.down, self.language,
                         self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
                         self.translation_partner, self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,

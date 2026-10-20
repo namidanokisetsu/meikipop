@@ -37,6 +37,8 @@ recommended packs or use **Import ZIPs** for Yomitan dictionaries. Enable and
 reorder them there. For a bundle containing several dictionary ZIPs, extract
 the outer archive first. Japanese recommendations include definitions, kanji,
 frequency and pitch accent; available features depend on the installed packs.
+**Remove language** deletes its settings while keeping downloaded dictionaries
+and models. Keep at least one language; **Add language** restores access to its packs.
 
 Japanese word forms work through bundled rules; Turkish uses bundled Zeyrek.
 Other supported languages offer an optional **Download word-form support**

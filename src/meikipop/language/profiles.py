@@ -29,6 +29,12 @@ def configured_profiles(settings):
         settings.endGroup()
 
 
+def visible_profiles(settings, imported=()):
+    removed = set(settings.value("removed_profiles", [], type=list))
+    return tuple(code for code in dict.fromkeys((*configured_profiles(settings), *imported))
+                 if code not in removed)
+
+
 def default_partner(code):
     return "ja" if code == "en" else "en"
 

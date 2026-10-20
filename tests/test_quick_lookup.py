@@ -15,7 +15,7 @@ import zipfile
 from PyQt6.QtCore import QEvent, QPoint, QRect, QSettings, Qt, QUrl
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from meikipop.dictionary.library import Entry, Library
 from meikipop.dictionary.kanji import KanjiEntry
@@ -51,6 +51,56 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_profile_removal_keeps_downloads_and_survives_library_refresh(self):
+        self.settings.setValue("profiles/tr/target", "en")
+        self.window.update_languages(("ja", "tr"))
+        self.window.set_mode("tr")
+        self.window._display(SearchResult("old", "tr", "en", (entry("old", language="tr"),)))
+        self.window._display(SearchResult("new", "tr", "en", (entry("new", language="tr"),)))
+        download = Path(self.temp.name) / "kept-model"
+        download.write_bytes(b"download")
+        dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+        try:
+            dialog.sync_profile("tr")
+            with patch("meikipop.gui.dictionary_manager.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                dialog.remove_profile()
+            self.assertEqual(self.window.preferred_foreign, "ja")
+            self.assertEqual(self.settings.value("profile"), "ja")
+            self.assertFalse(self.settings.contains("profiles/tr/target"))
+            self.assertFalse(self.window._history)
+            self.assertIsNone(self.window._result)
+            self.assertEqual(download.read_bytes(), b"download")
+            self.window.update_languages(("ja", "tr"))
+            pack = (Path("tr-pack"), {"language": "tr", "title": "Turkish", "entries": 1, "enabled": True}, None)
+            with patch("meikipop.gui.dictionary_manager.Library", return_value=SimpleNamespace(
+                    packs=[pack], errors=[], close=Mock())):
+                dialog.reload()
+            self.assertEqual(self.window.source.findData("tr"), -1)
+            self.assertEqual(dialog.profile.findData("tr"), -1)
+            with patch("meikipop.gui.first_run.offer_resources"):
+                dialog.add_profile("tr")
+            self.assertGreaterEqual(self.window.source.findData("tr"), 0)
+            self.assertEqual(self.settings.value("removed_profiles", [], type=list), [])
+        finally:
+            dialog.deleteLater()
+
+    def test_profile_removal_can_be_cancelled_and_keeps_one_language(self):
+        dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
+        try:
+            with patch("meikipop.gui.dictionary_manager.QMessageBox.question",
+                       return_value=QMessageBox.StandardButton.No) as confirm:
+                dialog.remove_profile()
+                self.assertTrue(self.settings.contains("profiles/ja/target"))
+                while dialog.profile.count() > 1:
+                    dialog.profile.removeItem(dialog.profile.count() - 1)
+                remaining = dialog.profile.currentData()
+                confirm.reset_mock()
+                dialog.remove_profile()
+                confirm.assert_not_called()
+                self.assertEqual(dialog.profile.currentData(), remaining)
+        finally:
+            dialog.deleteLater()
+
     def test_pinned_meaning_limit_applies_to_structured_and_plain_definitions(self):
         senses = [f"Meaning {i}" for i in range(8)]
         structured = {"type": "structured-content", "content": {"tag": "ol", "content": [
