@@ -73,6 +73,23 @@ def _entry_html(entry, reading_color, *, full=False, show_source=False):
     return "".join(parts)
 
 
+def render_kanji_export(entries, term):
+    """Card HTML shares full dictionary content, without popup links or fonts."""
+    parts = []
+    for character in dict.fromkeys(term):
+        group = tuple(entry for entry in entries if entry.character == character)
+        if not group:
+            continue
+        parts.append('<div class="kanji-detail" style="display:flex;gap:1em;'
+                     'text-align:left;border-left:2px solid currentColor;padding-left:1em;margin:1em 0">'
+                     f'<div class="kanji-character" style="font-size:2.5em">{_text(character)}</div>'
+                     '<div class="kanji-content">')
+        for entry in group:
+            parts.append(_entry_html(entry, "inherit", full=True, show_source=True))
+        parts.append('</div></div>')
+    return '<div class="kanji-details">' + ''.join(parts) + '</div>' if parts else ''
+
+
 def _character_link(character, accent, expanded, scheme="kanji"):
     href = quote(character, safe="")
     title = "Collapse" if expanded else "Expand"

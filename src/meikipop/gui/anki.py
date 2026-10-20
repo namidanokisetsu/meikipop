@@ -298,7 +298,7 @@ class AnkiSettingsPanel(QWidget):
 
 
 def export_note(entries, sentence, selection, options, *, translation="", screenshot=None,
-                directory=None, audio_clip=None):
+                directory=None, audio_clip=None, kanji=()):
     """Prepare and save a captured lookup on an AnkiTask worker."""
     mapped = set(options.fields.values())
     furigana = None
@@ -311,6 +311,10 @@ def export_note(entries, sentence, selection, options, *, translation="", screen
             engine.close()
     values = note_values(entries, sentence, selection, translation, furigana,
                          converter=_AnkiGlossConverter())
+    values["kanji-details"] = ""
+    if "kanji-details" in mapped and entries[0].language == "ja":
+        from meikipop.gui.kanji_panel import render_kanji_export
+        values["kanji-details"] = render_kanji_export(kanji, entries[0].term)
     media = {}
     if screenshot is not None and "picture" in mapped:
         from io import BytesIO

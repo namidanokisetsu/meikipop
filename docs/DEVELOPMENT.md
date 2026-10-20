@@ -54,6 +54,8 @@ Anki's popup action snapshots the lookup and saves once on a worker, including
 glossary conversion and mapped media preparation. `glossary-first` uses the first
 entry, `glossary` uses every returned entry, and `popup-selection-text` remains
 separate. Completion only marks the submitted lookup as saved.
+`kanji-details` uses the captured Japanese lookup data in headword order and shares
+the full kanji content renderer, with card HTML independent of popup links and fonts.
 
 **Do not add LLM explanation, rewriting, aggregation or reranking to dictionary
 lookup.** The [experiment record](LLM_EXPERIMENTS.md) documents the measured

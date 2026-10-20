@@ -82,6 +82,10 @@ immediately; a checkmark confirms the save. Map **glossary-first** to the first
 entry's full definitions, **glossary** to all entries from the lookup, or
 **popup-selection-text** to selected popup text (blank when nothing is selected).
 Glossaries include definitions hidden by popup cutoffs or collapsed sections.
+Map **Kanji details** to a note field and place that field below the definitions
+in your Anki card template (for example, `{{Kanji}}` for a field named Kanji).
+It includes the word's kanji readings, meanings, examples and components available
+in your dictionaries, even when collapsed in the popup; missing data stays blank.
 Sentence, screenshot and available word recordings are included when mapped.
 Existing notes are not overwritten. If saving times out, check Anki before retrying.
 

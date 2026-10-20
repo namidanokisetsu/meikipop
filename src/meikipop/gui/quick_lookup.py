@@ -2076,12 +2076,13 @@ class QuickLookupWindow(QDialog):
             self._setup.show_anki()
             return
         entries, sentence = tuple(self._result.entries), self._result_context
+        kanji = tuple(self._result.kanji)
         selection, translation = self.browser.selected_text(), self._result.translation
         screenshot, directory = self._result_screenshot, self.directory
         audio_clip = getattr(self.audio, "current_clip", None)
         self._anki_task = AnkiTask(
             lambda: export_note(entries, sentence, selection, options, translation=translation,
-                                screenshot=screenshot, directory=directory, audio_clip=audio_clip),
+                                screenshot=screenshot, directory=directory, audio_clip=audio_clip, kanji=kanji),
             (self.revision, entries[0].term), self)
         self._anki_task.finished.connect(self._anki_finished)
         self.show_message("")

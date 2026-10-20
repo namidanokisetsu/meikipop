@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import QApplication
 
 from meikipop.anki import AnkiSettings, load_settings
 from meikipop.dictionary.library import Entry
+from meikipop.dictionary.kanji import KanjiEntry
 from meikipop.gui.anki import AnkiSettingsPanel, export_note
 from meikipop.gui.quick_lookup import QuickLookupWindow
 from test_quick_lookup import FakeEngine
@@ -250,6 +251,46 @@ class AnkiGuiTests(unittest.TestCase):
         with patch("meikipop.gui.anki.AnkiClient") as client:
             export_note([entry], "", "", AnkiSettings(True), screenshot=snapshot, audio_clip=clip)
         self.assertEqual(client.return_value.add.call_args.args[0]["_media"], {})
+
+    def test_popup_exports_collapsed_kanji(self):
+        window = self.anki_window({"Front": "expression", "Kanji": "kanji-details"})
+        window.show_entries([Entry("1", "猫", "ねこ", "Words", "ja", ("cat",))], "猫",
+                            kanji=(KanjiEntry("猫", meanings=("feline",)),))
+        self.assertFalse(window._kanji_details)
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.return_value = 123
+            window.anki_button.click()
+            self.wait_until(lambda: window._anki_task is None)
+        self.assertIn("feline", client.return_value.add.call_args.args[0]["kanji-details"])
+
+    def test_export_kanji_uses_full_captured_data_in_word_order(self):
+        from meikipop.anki import suggest_fields
+        self.assertEqual(suggest_fields(["Kanji"]), {"Kanji": "kanji-details"})
+        entry = Entry("1", "自転車", "じてんしゃ", "Words", "ja", ("bicycle",))
+        kanji = (KanjiEntry("車", "Pack", meanings=("car",)),
+                 KanjiEntry("自", "Pack", onyomi=("ジ",), kunyomi=("みずから",),
+                            meanings=("self", "one", "two", "unabridged <meaning>"),
+                            examples=({"w": "自分", "r": "じぶん", "m": "oneself"},)),
+                 KanjiEntry("転", "Pack", meanings=("turn",),
+                            components=({"c": "車", "m": "car <part>"},)),
+                 KanjiEntry("自", "Second pack", meanings=("oneself",)),
+                 KanjiEntry("猫", "Pack", meanings=("cat",)))
+        options = AnkiSettings(True, fields={"Front": "expression", "Kanji": "kanji-details"})
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            export_note([entry], "", "", options, kanji=kanji)
+            html = client.return_value.add.call_args.args[0]["kanji-details"]
+            self.assertLess(html.index('>自</div>'), html.index('>転</div>'))
+            self.assertLess(html.index('>転</div>'), html.index('>車</div>'))
+            for content in ("ジ", "みずから", "unabridged &lt;meaning&gt;", "自分",
+                            "じぶん", "car &lt;part&gt;", "Second pack"):
+                self.assertIn(content, html)
+            self.assertEqual(html.count('>自</div>'), 1)
+            for content in ("猫", "href=", "font-family", "<meaning>"):
+                self.assertNotIn(content, html)
+            export_note([entry], "", "", options)
+            self.assertEqual(client.return_value.add.call_args.args[0]["kanji-details"], "")
+            export_note([entry], "", "", AnkiSettings(True), kanji=kanji)
+            self.assertEqual(client.return_value.add.call_args.args[0]["kanji-details"], "")
 
     def test_export_glossary_compacts_semantic_tags_without_losing_card_content(self):
         def tag(text):
