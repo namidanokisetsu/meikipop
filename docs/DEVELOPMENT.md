@@ -50,6 +50,11 @@ independently configurable. Reuse shared rendering and input components;
 preserve Japanese behavior when adding another language. Model weights,
 dictionary packs, generated assets and environments stay outside Git.
 
+Anki's popup action snapshots the lookup and saves once on a worker, including
+glossary conversion and mapped media preparation. `glossary-first` uses the first
+entry, `glossary` uses every returned entry, and `popup-selection-text` remains
+separate. Completion only marks the submitted lookup as saved.
+
 **Do not add LLM explanation, rewriting, aggregation or reranking to dictionary
 lookup.** The [experiment record](LLM_EXPERIMENTS.md) documents the measured
 benefits, failures and decision that integration is unjustified. Explicit

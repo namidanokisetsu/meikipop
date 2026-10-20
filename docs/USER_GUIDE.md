@@ -77,10 +77,13 @@ but keeps its memory allocated.
 
 Install [AnkiConnect](https://ankiweb.net/shared/info/2055492159) and keep Anki
 open. Enable **Settings → Anki**, reload decks and fields, choose a deck and
-note type, and map the first field to **Word**. Use **+** in the popup to review
-and add a card. Sentence, screenshot and available word recordings can be
-included. Existing notes are not overwritten. If saving times out, check Anki
-before retrying.
+note type, and map the first field to **Word**. Click **+** in the popup to save
+immediately; a checkmark confirms the save. Map **glossary-first** to the first
+entry's full definitions, **glossary** to all entries from the lookup, or
+**popup-selection-text** to selected popup text (blank when nothing is selected).
+Glossaries include definitions hidden by popup cutoffs or collapsed sections.
+Sentence, screenshot and available word recordings are included when mapped.
+Existing notes are not overwritten. If saving times out, check Anki before retrying.
 
 For source installation, custom OCR and release procedures, see
 [development notes](DEVELOPMENT.md).

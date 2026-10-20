@@ -8,8 +8,8 @@ from urllib.parse import unquote
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QTextDocument
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLineEdit,
+    QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from meikipop.anki import (AnkiClient, FIELD_SOURCES, load_settings, media_value, note_values,
@@ -297,129 +297,31 @@ class AnkiSettingsPanel(QWidget):
             self._request_fields()
 
 
-class AnkiExportDialog(QDialog):
-    def __init__(self, entries, sentence, selection, options, parent=None, *,
-                 translation="", screenshot=None, directory=None, audio_clip=None):
-        super().__init__(parent)
-        self.setWindowTitle("Add to Anki")
-        self.setWindowModality(Qt.WindowModality.WindowModal)
-        self.resize(480, 400)
-        self.options, self._task, self._saved = options, None, False
-        self.screenshot, self.directory, self.audio_clip = screenshot, directory, audio_clip
-        self.groups = {}
-        for entry in entries:
-            self.groups.setdefault((entry.term, entry.reading, entry.source), []).append(entry)
-        self.groups = list(self.groups.values())
-        layout = QVBoxLayout(self)
-        self.entry = QComboBox()
-        for group in self.groups:
-            word = group[0]
-            reading = f" [{word.reading}]" if word.reading and word.reading != word.term else ""
-            self.entry.addItem(f"{word.term}{reading} · {word.source}")
-        layout.addWidget(self.entry)
-        self.definition = QTextEdit()
-        self.definition.setAccessibleName("Card definition")
-        layout.addWidget(self.definition, 1)
-        self.sentence = QTextEdit()
-        self.sentence.setAcceptRichText(False)
-        self.sentence.setAccessibleName("Card sentence")
-        self.sentence.setPlaceholderText("Sentence")
-        self.sentence.setMaximumHeight(80)
-        self.sentence.setPlainText(sentence)
-        layout.addWidget(self.sentence)
-        self.translation = QTextEdit()
-        self.translation.setAcceptRichText(False)
-        self.translation.setAccessibleName("Sentence translation")
-        self.translation.setPlaceholderText("Sentence translation")
-        self.translation.setMaximumHeight(65)
-        self.translation.setPlainText(translation)
-        self.translation.setVisible("sentence_translation" in options.fields.values())
-        layout.addWidget(self.translation)
-        self.include_picture = QCheckBox("Include screenshot")
-        self.include_picture.setChecked(screenshot is not None)
-        self.include_picture.setEnabled(screenshot is not None)
-        self.include_picture.setVisible("picture" in options.fields.values())
-        layout.addWidget(self.include_picture)
-        self.status = QLabel(f"{options.deck} · {options.model}")
-        self.status.setTextFormat(Qt.TextFormat.PlainText)
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        self.add = QPushButton("Add")
-        self.add.clicked.connect(self.submit)
-        self.close_button = QPushButton("Close")
-        self.close_button.clicked.connect(self.reject)
-        buttons.addWidget(self.add)
-        buttons.addWidget(self.close_button)
-        layout.addLayout(buttons)
-        self.entry.currentIndexChanged.connect(self._entry_changed)
-        self._entry_changed()
-        if selection:
-            self.definition.setPlainText(selection)
-            self._definition_tags = {}
-
-    def _entry_changed(self):
-        converter = _AnkiGlossConverter()
-        glosses = (gloss for entry in self.groups[self.entry.currentIndex()]
-                   for gloss in converter.extract_glosses(list(entry.definitions)))
-        self.definition.setHtml("".join(f"<div>{gloss}</div>" for gloss in glosses))
-        self._definition_tags = converter.tag_descriptions
-
-    def submit(self):
-        if self._task is not None or self._saved:
-            return
-        entries = tuple(self.groups[self.entry.currentIndex()])
-        sentence, translation, definition = self.sentence.toPlainText(), self.translation.toPlainText(), self.definition.toHtml()
-        # QTextEdit's HTML export drops tooltips; retain the original POS descriptions.
-        for label, descriptions in self._definition_tags.items():
-            text = escape(label)
-            title = escape(" · ".join(descriptions), quote=True)
-            definition = definition.replace(text, f'<span title="{title}">{text}</span>')
-        screenshot = self.screenshot if self.include_picture.isChecked() else None
-        def export():
-            furigana = None
-            if entries[0].language == "ja" and sentence and "sentence_furigana" in self.options.fields.values():
-                from meikipop.dictionary.search import SearchEngine
-                engine = SearchEngine(self.directory)
-                try:
-                    furigana = sentence_readings(sentence, entries, engine)
-                finally:
-                    engine.close()
-            values = note_values(entries, sentence, translation=translation, furigana=furigana)
-            values["glossary"] = definition
-            media = {}
-            if screenshot is not None and "picture" in self.options.fields.values():
-                from io import BytesIO
-                buffer = BytesIO()
-                screenshot.image().save(buffer, format="PNG")
-                media["picture"] = media_value(buffer.getvalue(), "png")
-            clip = self.audio_clip
-            if clip is not None and clip.key == (entries[0].term, entries[0].reading or ""):
-                from pathlib import Path
-                suffix = Path(clip.filename).suffix.lstrip(".").lower()
-                if suffix in ("mp3", "ogg", "wav", "m4a", "flac", "opus"):
-                    media["word_audio"] = media_value(clip.data, suffix)
-            values["_media"] = media
-            return AnkiClient(self.options).add(values)
-        self._task = AnkiTask(export, None, self)
-        self._task.finished.connect(self._finished)
-        for widget in (self.add, self.entry, self.definition, self.sentence, self.translation, self.include_picture, self.close_button):
-            widget.setEnabled(False)
-        self.status.setText("Adding…")
-        self._task.thread.start()
-
-    def _finished(self, response):
-        task, self._task = self._task, None
-        task.deleteLater()
-        _, note_id, error = response
-        for widget in (self.entry, self.definition, self.sentence, self.translation, self.close_button):
-            widget.setEnabled(True)
-        self.include_picture.setEnabled(self.screenshot is not None)
-        self.add.setEnabled(bool(error))
-        self._saved = not error
-        self.status.setText(error or "Added to Anki.")
-
-    def reject(self):
-        if self._task is None:
-            super().reject()
+def export_note(entries, sentence, selection, options, *, translation="", screenshot=None,
+                directory=None, audio_clip=None):
+    """Prepare and save a captured lookup on an AnkiTask worker."""
+    mapped = set(options.fields.values())
+    furigana = None
+    if entries[0].language == "ja" and sentence and "sentence_furigana" in mapped:
+        from meikipop.dictionary.search import SearchEngine
+        engine = SearchEngine(directory)
+        try:
+            furigana = sentence_readings(sentence, entries, engine)
+        finally:
+            engine.close()
+    values = note_values(entries, sentence, selection, translation, furigana,
+                         converter=_AnkiGlossConverter())
+    media = {}
+    if screenshot is not None and "picture" in mapped:
+        from io import BytesIO
+        buffer = BytesIO()
+        screenshot.image().save(buffer, format="PNG")
+        media["picture"] = media_value(buffer.getvalue(), "png")
+    if ("word_audio" in mapped and audio_clip is not None
+            and audio_clip.key == (entries[0].term, entries[0].reading or "")):
+        from pathlib import Path
+        suffix = Path(audio_clip.filename).suffix.lstrip(".").lower()
+        if suffix in ("mp3", "ogg", "wav", "m4a", "flac", "opus"):
+            media["word_audio"] = media_value(audio_clip.data, suffix)
+    values["_media"] = media
+    return AnkiClient(options).add(values)

@@ -1,4 +1,5 @@
 import os
+import json
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from pathlib import Path
@@ -13,7 +14,7 @@ from PyQt6.QtWidgets import QApplication
 
 from meikipop.anki import AnkiSettings, load_settings
 from meikipop.dictionary.library import Entry
-from meikipop.gui.anki import AnkiSettingsPanel, AnkiExportDialog
+from meikipop.gui.anki import AnkiSettingsPanel, export_note
 from meikipop.gui.quick_lookup import QuickLookupWindow
 from test_quick_lookup import FakeEngine
 
@@ -33,7 +34,7 @@ class AnkiGuiTests(unittest.TestCase):
             if isinstance(widget, QuickLookupWindow):
                 widget.shutdown()
                 widget.worker._thread.join(2)
-            task = getattr(widget, "_task", None)
+            task = getattr(widget, "_task", None) or getattr(widget, "_anki_task", None)
             if task:
                 task.thread.join(2)
             widget.hide()
@@ -142,47 +143,113 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertEqual(panel.deck.count(), 0)
         self.assertEqual(load_settings(self.settings, "tr").deck, "")
 
-    def test_export_snapshots_context_and_selection_and_prevents_double_submission(self):
-        entry = Entry("1", "猫", "ねこ", "Words", "ja", ("cat",))
-        options = AnkiSettings(True, deck="Japanese", model="Basic", fields={"Front": "expression", "Back": "glossary"})
-        dialog = AnkiExportDialog([entry], "猫がいる。", "chosen sense", options)
-        self.widgets.append(dialog)
-        self.assertEqual(dialog.definition.toPlainText(), "chosen sense")
-        calls, threads = [], []
-        with patch("meikipop.gui.anki.AnkiClient") as client:
-            def add(values):
-                calls.append(values)
-                threads.append(threading.get_ident())
-                return 123
-            client.return_value.add.side_effect = add
-            dialog.submit()
-            dialog.submit()
-            self.wait_until(lambda: dialog._saved)
-            dialog.submit()
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0]["sentence"], "猫がいる。")
-        self.assertIn("chosen sense", calls[0]["glossary"])
-        self.assertNotEqual(threads[0], threading.get_ident())
+    def anki_window(self, fields=None):
+        self.settings.setValue("profile", "ja")
+        self.settings.setValue("profiles/ja/target", "en")
+        for key, value in dict(enabled=True, deck="Japanese", model="Basic",
+                               fields=json.dumps(fields or {"Front": "expression", "Back": "glossary"})).items():
+            self.settings.setValue(f"profiles/ja/anki/{key}", value)
+        window = QuickLookupWindow(self.temp.name, FakeEngine, self.settings)
+        self.widgets.append(window)
+        return window
 
-    def test_export_includes_captured_pixels_and_editable_translation(self):
+    def test_one_click_snapshots_all_entries_context_and_selection_without_a_dialog(self):
+        from PyQt6.QtGui import QTextCursor
+        window = self.anki_window()
+        entries = [Entry("1", "cat", "", "Words", "ja", ("first sense", "second sense")),
+                   Entry("2", "cat", "", "Other words", "ja", ("another dictionary",))]
+        window.show_entries(entries, "cat")
+        window.set_context("A cat <here>.")
+        window.browser.setHtml("chosen &lt;sense&gt;")
+        cursor = window.browser.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        window.browser.setTextCursor(cursor)
+        gate = threading.Event()
+        threads = []
+        def add(values):
+            threads.append(threading.get_ident())
+            gate.wait(2)
+            return 123
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.side_effect = add
+            window.anki_button.click()
+            self.assertIsNotNone(window._anki_task)
+            self.assertFalse(window.anki_button.isEnabled())
+            self.assertFalse(any(widget.isModal() for widget in self.app.topLevelWidgets()))
+            window.add_to_anki()
+            window.set_context("changed context")
+            window.browser.setHtml("changed selection")
+            gate.set()
+            self.wait_until(lambda: window._anki_task is None)
+            window.add_to_anki()
+        client.return_value.add.assert_called_once()
+        values = client.return_value.add.call_args.args[0]
+        self.assertEqual(values["sentence"], "A cat &lt;here&gt;.")
+        self.assertEqual(values["popup-selection-text"], "chosen &lt;sense&gt;")
+        self.assertIn("first sense", values["glossary-first"])
+        self.assertIn("second sense", values["glossary-first"])
+        self.assertNotIn("another dictionary", values["glossary-first"])
+        for content in ("first sense", "second sense", "another dictionary", "Words", "Other words"):
+            self.assertIn(content, values["glossary"])
+        self.assertNotIn("chosen", values["glossary"])
+        self.assertNotEqual(threads[0], threading.get_ident())
+        self.assertEqual(window.anki_button.toolTip(), "Added to Anki")
+        self.assertFalse(window.anki_button.isEnabled())
+
+    def test_export_completion_does_not_mark_a_new_lookup_saved(self):
+        window = self.anki_window()
+        window.show_entries([Entry("1", "cat", "", "Words", "ja", ("cat",))], "cat")
+        gate = threading.Event()
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.side_effect = lambda _: (gate.wait(2), 123)[1]
+            window.add_to_anki()
+            window.show_entries([Entry("2", "dog", "", "Words", "ja", ("dog",))], "dog")
+            gate.set()
+            self.wait_until(lambda: window._anki_task is None)
+        self.assertTrue(window.anki_button.isEnabled())
+        self.assertEqual(window.anki_button.toolTip(), "Add to Anki")
+        self.assertEqual(client.return_value.add.call_args.args[0]["expression"], "cat")
+
+    def test_save_error_is_visible_and_can_be_retried_explicitly(self):
+        window = self.anki_window()
+        window.show_entries([Entry("1", "cat", "", "Words", "ja", ("cat",))], "cat")
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.side_effect = ValueError("Open Anki.")
+            window.anki_button.click()
+            self.wait_until(lambda: window._anki_task is None)
+            self.assertEqual(window.status.text(), "Open Anki.")
+            self.assertTrue(window.anki_button.isEnabled())
+            client.return_value.add.assert_called_once()
+            client.return_value.add.side_effect = None
+            client.return_value.add.return_value = 123
+            window.anki_button.click()
+            self.wait_until(lambda: window._anki_task is None)
+        self.assertEqual(window.anki_button.toolTip(), "Added to Anki")
+        self.assertEqual(client.return_value.add.call_count, 2)
+
+    def test_export_includes_captured_pixels_translation_and_only_mapped_audio(self):
         from io import BytesIO
+        from types import SimpleNamespace
         from PIL import Image
         from meikipop.utils.capture import CaptureRequest, PixelFrame
         request = CaptureRequest(1, "screen", (0, 0, 2, 2), (0, 0, 2, 2), 1, 1)
         snapshot = PixelFrame(request, (2, 2), bytes([255, 0, 0]) * 4, 10)
         entry = Entry("1", "cat", "", "Words", "en", ("cat",))
-        options = AnkiSettings(True, fields={"Front": "expression", "Image": "picture", "Translation": "sentence_translation"})
-        dialog = AnkiExportDialog([entry], "cat here", "", options, screenshot=snapshot, translation="initial")
-        self.widgets.append(dialog)
-        dialog.translation.setPlainText("edited <translation>")
+        clip = SimpleNamespace(key=("cat", ""), filename="cat.mp3", data=b"audio")
+        options = AnkiSettings(True, fields={"Front": "expression", "Image": "picture",
+                                            "Translation": "sentence_translation", "Audio": "word_audio"})
         with patch("meikipop.gui.anki.AnkiClient") as client:
-            client.return_value.add.return_value = 123
-            dialog.submit()
-            self.wait_until(lambda: dialog._saved)
+            export_note([entry], "cat here", "", options, screenshot=snapshot,
+                        translation="A <cat>", audio_clip=clip)
         values = client.return_value.add.call_args.args[0]
-        self.assertEqual(values["sentence_translation"], "edited &lt;translation&gt;")
-        media = values["_media"]["picture"]
-        self.assertEqual(Image.open(BytesIO(media["data"])).getpixel((0, 0)), (255, 0, 0))
+        self.assertEqual(values["sentence_translation"], "A &lt;cat&gt;")
+        self.assertEqual(values["popup-selection-text"], "")
+        media = values["_media"]
+        self.assertEqual(Image.open(BytesIO(media["picture"]["data"])).getpixel((0, 0)), (255, 0, 0))
+        self.assertEqual(media["word_audio"]["data"], b"audio")
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            export_note([entry], "", "", AnkiSettings(True), screenshot=snapshot, audio_clip=clip)
+        self.assertEqual(client.return_value.add.call_args.args[0]["_media"], {})
 
     def test_export_glossary_compacts_semantic_tags_without_losing_card_content(self):
         def tag(text):
@@ -194,27 +261,18 @@ class AnkiGuiTests(unittest.TestCase):
             {"tag": "div", "data": {"content": "extra-info"}, "content": "Usage explanation"},
             {"tag": "div", "data": {"content": "forms"}, "content": "Alternate form"},
             {"tag": "div", "data": {"content": "attribution"}, "content": "Dictionary credit"}]}
-        entry = Entry("1", "猫", "ねこ", "JMdict", "ja", (definition,))
+        entry = Entry("1", "cat", "", "JMdict", "ja", (definition,))
         options = AnkiSettings(True, fields={"Front": "expression", "Back": "glossary"})
-        dialog = AnkiExportDialog([entry], "", "", options)
-        self.widgets.append(dialog)
-        text = dialog.definition.toPlainText()
-        self.assertIn("[noun · adverb]", text)
-        self.assertNotIn("JMdict Sense", text)
-        self.assertNotIn("futsuumeishi", text)
-        for content in ("cat <animal>", "shamisen", "Usage explanation", "Alternate form", "Dictionary credit"):
-            self.assertIn(content, text)
-        self.assertNotIn("meikipop-tag:", dialog.definition.toHtml())
         with patch("meikipop.gui.anki.AnkiClient") as client:
-            client.return_value.add.return_value = 123
-            dialog.submit()
-            self.wait_until(lambda: dialog._saved)
-        glossary = client.return_value.add.call_args.args[0]["glossary"]
-        self.assertIn("cat &lt;animal&gt;", glossary)
-        self.assertIn("shamisen", glossary)
-        self.assertIn('title="noun (common) (futsuumeishi) · adverb (fukushi)"', glossary)
-        self.assertNotIn("JMdict Sense", glossary)
-        self.assertNotIn("meikipop-tag:", glossary)
+            export_note([entry], "", "", options)
+        values = client.return_value.add.call_args.args[0]
+        for field in ("glossary", "glossary-first"):
+            glossary = values[field]
+            for content in ("cat &lt;animal&gt;", "shamisen", "Usage explanation", "Alternate form", "Dictionary credit"):
+                self.assertIn(content, glossary)
+            self.assertIn('title="noun (common) (futsuumeishi)', glossary)
+            self.assertNotIn("JMdict Sense", glossary)
+            self.assertNotIn("meikipop-tag:", glossary)
 
     def test_field_suggestions_preserve_manual_skips_until_match_is_requested(self):
         panel = AnkiSettingsPanel(self.settings)
@@ -260,4 +318,4 @@ class AnkiGuiTests(unittest.TestCase):
         window.debounce.stop()
         self.assertFalse(window.anki_button.isEnabled())
         window.add_to_anki()
-        self.assertIsNone(window._anki_dialog)
+        self.assertIsNone(window._anki_task)

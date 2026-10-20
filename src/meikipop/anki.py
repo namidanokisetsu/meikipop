@@ -16,7 +16,9 @@ from meikipop.dictionary.pitch import morae, render_pitches
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:8765"
 FIELD_SOURCES = {
-    "": "Skip", "expression": "Word", "reading": "Reading", "glossary": "Definition",
+    "": "Skip", "expression": "Word", "reading": "Reading",
+    "glossary-first": "glossary-first", "glossary": "glossary",
+    "popup-selection-text": "popup-selection-text",
     "sentence": "Sentence", "source": "Dictionary", "frequency": "Frequency",
     "pitch": "Pitch accent", "language": "Language",
     "sentence_furigana": "Sentence furigana", "sentence_translation": "Sentence translation",
@@ -27,7 +29,9 @@ FIELD_SOURCES = {
 FIELD_ALIASES = {
     "expression": ("word", "expression", "term", "vocabulary", "headword", "front"),
     "reading": ("reading", "kana", "pronunciation", "wordreading"),
-    "glossary": ("definition", "glossary", "meaning", "chosendefinition", "back"),
+    "glossary-first": ("glossaryfirst", "firstdefinition"),
+    "glossary": ("definition", "glossary", "meaning", "back"),
+    "popup-selection-text": ("popupselectiontext", "chosendefinition"),
     "sentence": ("sentence", "examplesentence", "context"),
     "sentence_furigana": ("sentencefurigana", "furiganasentence", "contextfurigana"),
     "sentence_translation": ("sentencetranslation", "translation", "translatedsentence"),
@@ -179,16 +183,21 @@ class AnkiClient:
         return note_id
 
 
-def note_values(entries, sentence="", selection="", translation="", furigana=None):
+def note_values(entries, sentence="", selection="", translation="", furigana=None, *, converter=None):
     entry = entries[0]
-    glossary = (escape(selection).replace("\n", "<br>") if selection else
-                "".join(f"<div>{gloss}</div>" for item in entries for gloss in item.glosses()))
+    glossaries = ["".join(f"<div>{gloss}</div>" for gloss in
+                         (converter.extract_glosses(list(item.definitions)) if converter else item.glosses()))
+                 for item in entries]
+    glossary = "".join(f"<div><b>{escape(item.source)}</b>{gloss}</div>"
+                       for item, gloss in zip(entries, glossaries))
     rank = harmonic_rank(f for item in entries for f in item.frequencies)
     pitches = tuple(dict.fromkeys(p for item in entries for p in item.pitches if p.reading == entry.reading))
     positions = tuple(dict.fromkeys(p.position for p in pitches if type(p.position) is int))
     categories = tuple(dict.fromkeys("heiban" if p == 0 else "atamadaka" if p == 1 else
                                     "odaka" if p == len(morae(entry.reading)) else "nakadaka" for p in positions))
-    return dict(expression=escape(entry.term), reading=escape(entry.reading), glossary=glossary,
+    return dict({"glossary-first": glossaries[0],
+                 "popup-selection-text": escape(selection).replace("\n", "<br>")},
+                expression=escape(entry.term), reading=escape(entry.reading), glossary=glossary,
                 sentence=escape(sentence).replace("\n", "<br>"), source=escape(entry.source),
                 sentence_furigana=furigana if furigana is not None else sentence_readings(sentence, entries),
                 sentence_translation=escape(translation).replace("\n", "<br>"),

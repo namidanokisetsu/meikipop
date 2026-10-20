@@ -71,7 +71,9 @@ class AnkiTests(unittest.TestCase):
         self.assertEqual(mapping["sentenceTranslation"], "sentence_translation")
         self.assertEqual(mapping["wordAudio"], "word_audio")
         self.assertEqual(mapping["picture"], "picture")
-        self.assertEqual(mapping["chosenDefinition"], "glossary")
+        self.assertEqual(mapping["chosenDefinition"], "popup-selection-text")
+        self.assertEqual(suggest_fields(["glossary-first", "glossary", "popup-selection-text"]),
+                         {name: name for name in ("glossary-first", "glossary", "popup-selection-text")})
         for field in ("sentenceAudio", "supplement", "miscInfo"):
             self.assertEqual(mapping[field], "")
         self.assertEqual(suggest_fields(["Sentence-Furigana", "Word Reading"]),
@@ -132,5 +134,8 @@ class AnkiTests(unittest.TestCase):
         self.assertEqual(endpoint_address("http://localhost:8765"), ("127.0.0.1", 8765))
         entry = Entry("1", "ışık", "", "Türkçe", "tr", ("light",))
         values = note_values([entry], "Işık <parlak>.", "chosen <sense>\nexample")
-        self.assertEqual(values["glossary"], "chosen &lt;sense&gt;<br>example")
+        self.assertEqual(values["popup-selection-text"], "chosen &lt;sense&gt;<br>example")
+        self.assertEqual(values["glossary-first"], "<div>light</div>")
+        self.assertIn("<div>light</div>", values["glossary"])
+        self.assertNotIn("chosen", values["glossary"])
         self.assertEqual(values["pitch"], "")
