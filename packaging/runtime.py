@@ -42,7 +42,10 @@ if sys.stdout is None or sys.stderr is None or sys.platform == "darwin":
     if log_path.exists() and log_path.stat().st_size > 1_000_000:
         log_path.replace(log_path.with_suffix(".log.old"))
     stream = log_path.open("a", encoding="utf-8", buffering=1)
-    faulthandler.enable(file=stream)
+    try:
+        faulthandler.enable(file=stream)
+    except OSError:
+        pass  # Restricted hosts can deny native handlers; ordinary logging still works.
     if sys.stdout is None:
         sys.stdout = stream
     sys.stderr = DiagnosticStream(sys.stderr, stream)

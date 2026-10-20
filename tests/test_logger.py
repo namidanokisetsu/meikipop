@@ -11,6 +11,11 @@ from meikipop.utils import logger
 
 
 class LoggerTests(unittest.TestCase):
+    def setUp(self):
+        fault_handler = patch("faulthandler.enable")
+        self.fault_handler = fault_handler.start()
+        self.addCleanup(fault_handler.stop)
+
     def test_mac_download_trust_uses_bundle_certificates_and_preserves_override(self):
         import os
         import ssl
@@ -40,6 +45,20 @@ class LoggerTests(unittest.TestCase):
                 state["stream"].close()
             self.assertIn("macOS packaged diagnostic", original.getvalue())
             self.assertIn("macOS packaged diagnostic", (Path(directory) / "meikipop-runtime.log").read_text())
+            self.fault_handler.assert_called_once_with(file=state["stream"])
+
+    def test_denied_fault_handler_keeps_ordinary_logging(self):
+        self.fault_handler.side_effect = PermissionError("Operation not permitted")
+        with tempfile.TemporaryDirectory() as directory, patch("sys.platform", "darwin"), \
+                patch("sys.stderr", io.StringIO()), \
+                patch("platformdirs.user_cache_dir", return_value=directory):
+            state = runpy.run_path(str(Path(__file__).resolve().parents[1] / "packaging/runtime.py"))
+            try:
+                state["sys"].stderr.write("ordinary diagnostic\n")
+                state["sys"].stderr.flush()
+                self.assertIn("ordinary diagnostic", (Path(directory) / "meikipop-runtime.log").read_text())
+            finally:
+                state["stream"].close()
 
     def tearDown(self):
         root_logger = logging.getLogger()

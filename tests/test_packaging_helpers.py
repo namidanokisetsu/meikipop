@@ -27,7 +27,8 @@ class HelperWindowTests(unittest.TestCase):
 
         with patch("sys.platform", platform), patch("sys.stdout", stdout), patch("sys.stderr", io.StringIO()), \
                 patch("platformdirs.user_cache_dir", return_value=temporary.name), \
-                patch("meikipop.utils.model_cache.configure_model_cache"), patch.object(subprocess, "Popen", Process):
+                patch("meikipop.utils.model_cache.configure_model_cache"), patch.object(subprocess, "Popen", Process), \
+                patch("faulthandler.enable"):
             state = runpy.run_path(str(Path(__file__).resolve().parents[1] / "packaging/runtime.py"))
             selected = subprocess.Popen
         if "stream" in state:
