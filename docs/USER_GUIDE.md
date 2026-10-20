@@ -46,7 +46,8 @@ action. OCR and translation coverage depend on the selected provider/model;
 Settings shows the available choices for your language.
 
 **Appearance** controls fonts, themes and readings, with separate options for
-preview and pinned results. Turn off **Snap scrolling** for ordinary scrolling.
+preview and pinned results. Scrolling is continuous by default; enable
+**Snap scrolling** to move between sections.
 Set **Definitions** in Preview or Pinned to choose the meaning cutoff; **All**
 shows the full content. Turkish misses can still show the analyzed root and
 grammar, and screen lookup keeps available spelling suggestions.

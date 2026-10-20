@@ -176,7 +176,7 @@ class ProfileAppearance(QWidget):
         self.theme.blockSignals(False)
         self.compact_preview.setChecked(self.settings.value(f"profiles/{self.profile()}/compact_preview", True, bool))
         self.pinned_sentence.setChecked(self.settings.value(f"profiles/{self.profile()}/pinned_sentence", False, bool))
-        self.snap_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/snap_scrolling", True, bool))
+        self.snap_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/snap_scrolling", False, bool))
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family",
                                                          _configured_font or default_family(self.profile()))))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))

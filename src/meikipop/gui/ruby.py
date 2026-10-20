@@ -17,6 +17,7 @@ RUBY = QTextFormat.ObjectTypes.UserObject.value + 1
 BASE = QTextFormat.Property.UserProperty.value + 1
 READING = BASE + 1
 KANJI = READING + 1
+KANJI_GROUP = KANJI + 1
 PREFIX = "meikipop-ruby:"
 TAG_PREFIX = "meikipop-tag:"
 _ruby_ids = count()
@@ -32,9 +33,11 @@ def _reading_text(encoded):
     return document.toPlainText()
 
 
-def ruby_html(base, reading, color=None, *, kanji=()):
+def ruby_html(base, reading, color=None, *, kanji=(), kanji_group=None):
     # Distinct anchors prevent Qt from merging adjacent identical readings.
     suffix = f'/{quote("".join(kanji), safe="")}' if kanji else ""
+    if suffix and kanji_group is not None:
+        suffix += f"/{kanji_group}"
     return (f'<a href="{PREFIX}{quote(reading, safe="")}#{next(_ruby_ids)}{suffix}" '
             f'style="color:{color or config.color_foreground};text-decoration:none">{base}</a>')
 
@@ -144,7 +147,9 @@ class RubyBrowser(DictionaryBrowser):
                 fmt.setObjectType(RUBY)
                 fmt.setProperty(BASE, cursor.selectedText())
                 fmt.setProperty(READING, _reading_text(href[len(PREFIX):].partition("#")[0]))
-                fmt.setProperty(KANJI, unquote(href.partition("#")[2].partition("/")[2]))
+                characters, _, group = href.partition("#")[2].partition("/")[2].partition("/")
+                fmt.setProperty(KANJI, unquote(characters))
+                fmt.setProperty(KANJI_GROUP, group)
                 cursor.insertText("\ufffc", fmt)
         finally:
             cursor.endEditBlock()
@@ -245,7 +250,10 @@ class RubyBrowser(DictionaryBrowser):
             for index, character in enumerate(text):
                 right = left + base.horizontalAdvance(text[:index + 1])
                 if left + base.horizontalAdvance(text[:index]) <= point.x() < right:
-                    return character if character in fmt.property(KANJI) else ""
+                    if character in fmt.property(KANJI):
+                        group = fmt.property(KANJI_GROUP)
+                        return f"{group}:{character}" if group else character
+                    return ""
         return ""
 
     def anchorAt(self, point):

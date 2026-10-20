@@ -138,7 +138,7 @@ class SetupDialog(QDialog):
         layout = QVBoxLayout(self)
         profile_row = QHBoxLayout()
         self.profile = QComboBox()
-        for code in configured_profiles(settings):
+        for code in visible_profiles(settings):
             self.profile.addItem(language_name(code), code)
         self.profile.setCurrentIndex(max(0, self.profile.findData(settings.value("profile", ""))))
         profile_row.addWidget(QLabel("Language"))

@@ -597,7 +597,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         display_reading = f"[{reading}]" if result.source == "ja" else reading
         kanji = {entry.character for entry in result.kanji}
         display_term_html = "".join(
-            f'<a href="headkanji:{quote(character, safe="")}" title="Kanji" '
+            f'<a href="headkanji:{group_index}:{quote(character, safe="")}" title="Kanji" '
             f'style="color:{config.color_highlight_word}">{escape(character)}</a>'
             if character in kanji and not preview else escape(character) for character in display_term)
         group_entries = tuple(entry for entries in dictionaries.values() for entry in entries)
@@ -616,10 +616,17 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                         if reading and reading != term and not any(pitch.reading == reading for pitch in pitches) else "")
         if result.source == "ja" and headword_furigana and reading and reading != term:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>'
-                         f'{ruby_html(escape(term), escape(reading), config.color_highlight_word, kanji=kanji if not preview else ())}{metadata}</h2>')
+                         f'{ruby_html(escape(term), escape(reading), config.color_highlight_word, kanji=kanji if not preview else (), kanji_group=group_index)}{metadata}</h2>')
         else:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{display_term_html}{reading_html}{metadata}</h2>')
         parts.append(_metadata(group_entries, show_frequencies=False, show_inflections=show_inflections))
+        if not preview:
+            from meikipop.gui.kanji_panel import render_kanji_details
+            for character in dict.fromkeys(term):
+                if f"head:{group_index}:{character}" in kanji_details:
+                    parts.append(render_kanji_details(
+                        tuple(entry for entry in result.kanji if entry.character == character),
+                        scheme=f"headkanji:{group_index}"))
         for source in sources:
             if source not in dictionaries:
                 continue
@@ -689,7 +696,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         parts.append(f"<p>{escape(result.message)}</p>")
     if result.kanji and not preview:
         from meikipop.gui.kanji_panel import render_kanji
-        parts.append('<a name="kanji"></a><a name="scroll-section-kanji"></a>'
+        parts.append('<a name="kanji"></a>'
                      + render_kanji(result.kanji, compact_only=True, expanded_characters=kanji_details))
     if not result.entries and not result.translation and not result.kanji and not result.message and result.text:
         if not unmatched_text:
@@ -984,7 +991,7 @@ class QuickLookupWindow(QDialog):
         self.audio_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.audio_button.customContextMenuRequested.connect(self.audio_source_menu)
         action_layout.addWidget(self.audio_button)
-        header_layout.addWidget(self.audio_actions)
+        header_layout.addWidget(self.audio_actions, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.header)
         controls.addWidget(self.source)
         controls.addWidget(self.target_label)
@@ -1000,13 +1007,12 @@ class QuickLookupWindow(QDialog):
             f"profiles/{initial_profile}/selection_lookup", False, bool))
         from meikipop.dictionary.library import default_library_path
         self.browser.library_root = directory or default_library_path()
-        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{initial_profile}/snap_scrolling", True, bool))
+        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{initial_profile}/snap_scrolling", False, bool))
         self.browser.setOpenLinks(False)
         self.browser.setOpenExternalLinks(False)
         self.browser.setAccessibleName("Dictionary results")
         self.browser.document().setIndentWidth(10)
         self.browser.anchorClicked.connect(self._link)
-        self.browser.scrolled.connect(self._place_actions)
         self.browser.word_selected.connect(self.lookup_word)
         layout.addWidget(self.browser, 1)
         self.status = QLabel()
@@ -1130,7 +1136,7 @@ class QuickLookupWindow(QDialog):
     def reload_appearance(self, render=True):
         from meikipop.gui.profile_appearance import load_appearance
         load_appearance(self.settings, self.preferred_foreign)
-        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{self.preferred_foreign}/snap_scrolling", True, bool))
+        self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{self.preferred_foreign}/snap_scrolling", False, bool))
         self.apply_style()
         if render:
             self._render()
@@ -1443,13 +1449,14 @@ class QuickLookupWindow(QDialog):
             self.stream_timer.start()
             return
         bar = self.browser.verticalScrollBar()
-        at_end = bar.value() >= bar.maximum() - 2
+        at_end = (bar.maximum() > 0 and bar.value() >= bar.maximum() - 2
+                  and not self.browser.textCursor().hasSelection())
         base = self._translation_base
         if base is not None:
             result = replace(result, entries=base.entries, suggestions=base.suggestions, kanji=base.kanji)
         self._result = result
         self._partial_translation = True
-        self._render()
+        self._render(static=True)
         if at_end:
             bar.setValue(bar.maximum())
 
@@ -1513,7 +1520,7 @@ class QuickLookupWindow(QDialog):
         if not same:
             self._result_screenshot = None
         self._result_input = self.search.text().strip()
-        self._render()
+        self._render(static=same)
         self.back.setEnabled(bool(self._history))
         self.back.setVisible(bool(self._history))
         self._update_trail()
@@ -1553,8 +1560,7 @@ class QuickLookupWindow(QDialog):
                 show_source = self.settings.value(f"profiles/{self.preferred_foreign}/pinned_sentence", False, bool)
                 source_text = self._result_context or (self._result.text if self._result.translation else "")
                 if show_source and source_text:
-                    width = (self.browser.viewport().width() - self.audio_actions.sizeHint().width()
-                             - 8 - 2 * self.browser.document().documentMargin())
+                    width = self.browser.viewport().width() - 2 * self.browser.document().documentMargin()
                     source_text = _compact_context(source_text, self.browser.font(), width)
             self._place_actions()
             from meikipop.gui.profile_appearance import DEFAULTS
@@ -1570,14 +1576,13 @@ class QuickLookupWindow(QDialog):
             if identity == self._render_identity:
                 mark("render_reused", self.revision)
                 return
-            scroll = self.browser.verticalScrollBar().value()
-            anchor = self.browser.cursorForPosition(self.browser.viewport().rect().topLeft())
-            block_text, offset = anchor.block().text(), self.browser.cursorRect(anchor).top()
-            position_in_block = anchor.position() - anchor.block().position()
+            from meikipop.gui.section_scroll import ReadingPosition
+            result_key = (self._result.text, self._result.source, self._result.target)
+            position = (ReadingPosition(self.browser)
+                        if getattr(self, "_rendered_result_key", None) == result_key else None)
             mark("html_begin", self.revision)
             self.browser.setHtml(render_result(self._result, expanded, **preview_options,
                                                preview=self._peek and not self.is_pinned and compact,
-                                               overlay_actions=(self.audio_actions.sizeHint().width() + 8) if self._peek and self.is_pinned else 0,
                                                show_source=show_source, source_text=source_text,
                                                details_expanded=self._details_expanded,
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
@@ -1587,21 +1592,13 @@ class QuickLookupWindow(QDialog):
                                                separate_headwords=separate_headwords,
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._render_identity = identity
+            self._rendered_result_key = result_key
             self._document_revision = self.revision
             mark("document_ready", self.revision)
             # Restore snap-page padding before restoring a position near the end.
             self.browser.section_scroll._refresh_header()
-            if scroll and not static:
-                block = self.browser.document().begin()
-                while block.isValid() and block.text() != block_text:
-                    block = block.next()
-                if block.isValid() and block_text:
-                    from PyQt6.QtGui import QTextCursor
-                    restored = QTextCursor(block)
-                    restored.setPosition(block.position() + position_in_block)
-                    scroll = (self.browser.verticalScrollBar().value()
-                              + self.browser.cursorRect(restored).top() - offset)
-            self.browser.verticalScrollBar().setValue(scroll)
+            if position is not None:
+                position.restore(self.browser)
             self.browser.setToolTip("")
             if static:
                 self.fit_timer.stop()
@@ -1681,10 +1678,16 @@ class QuickLookupWindow(QDialog):
         if self._pin_anchor_click:
             self._pin_anchor_click = False
             return  # The first click already expanded the complete peek.
-        if url.scheme() == "headkanji" and url.path() in {entry.character for entry in self._result.kanji}:
-            self._kanji_details.add(url.path())
-            self._render()
-            self.browser.scrollToAnchor("kanji-detail-" + quote(url.path(), safe=""))
+        if url.scheme() == "headkanji":
+            group, separator, character = url.path().partition(":")
+            if not separator:
+                group, character = "0", group
+            groups = list(dict.fromkeys((entry.term, entry.reading) for entry in self._result.entries))
+            if (not group.isdigit() or int(group) >= len(groups) or character not in groups[int(group)][0]
+                    or character not in {entry.character for entry in self._result.kanji}):
+                return
+            self._kanji_details.symmetric_difference_update((f"head:{group}:{character}",))
+            self._render(static=True)
             return
         if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
             self._kanji_details.symmetric_difference_update((url.path(),))
@@ -1872,19 +1875,8 @@ class QuickLookupWindow(QDialog):
         if self._shutting_down:
             return
         self.mode_row.hide()
-        self.header.setVisible(not self._peek)
-        if self._peek:
-            viewport = self.browser.viewport()
-            if self.audio_actions.parentWidget() is not viewport:
-                self.audio_actions.setParent(viewport)
-            self.audio_actions.adjustSize()
-            self.audio_actions.move(max(0, viewport.width() - self.audio_actions.width() - 4), 0)
-            self.audio_actions.setVisible(self.is_pinned)
-            self.audio_actions.raise_()
-        else:
-            if self.audio_actions.parentWidget() is not self.header:
-                self.header.layout().addWidget(self.audio_actions)
-            self.audio_actions.show()
+        self.header.setVisible(not self._peek or self.is_pinned)
+        self.audio_actions.setVisible(not self._peek or self.is_pinned)
 
     def open_search(self, text="", *, at_cursor=False, passive=False, selection=False):
         self.remember_foreground()

@@ -192,6 +192,19 @@ class RubyTests(unittest.TestCase):
         self.browser.selectAll()
         self.assertEqual(self.browser.createMimeDataFromSelection().text(), "祈願")
 
+    def test_ruby_kanji_click_keeps_its_headword_group(self):
+        self.browser.setHtml('<h2>' + ruby_html("猫", "ねこ", kanji="猫", kanji_group=2) + '</h2>')
+        self.browser.show()
+        self.app.processEvents()
+        point = next(QPoint(x, y) for y in range(65) for x in range(100)
+                     if self.browser._ruby_kanji_at(QPoint(x, y)) == "2:猫")
+        clicks = []
+        self.browser.anchorClicked.connect(lambda url: clicks.append(url.path()))
+        QTest.mouseClick(self.browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+        self.assertEqual(clicks, ["2:猫"])
+        self.browser.selectAll()
+        self.assertEqual(self.browser.createMimeDataFromSelection().text(), "猫")
+
     def test_pitch_objects_preserve_original_reading_for_copy_and_lookup(self):
         from meikipop.dictionary.pitch import Pitch, PITCH_OBJECT, render_pitches
         html = render_pitches((Pitch("NHK", "きがん", 1, nasal=(2,)),))

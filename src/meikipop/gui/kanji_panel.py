@@ -73,11 +73,31 @@ def _entry_html(entry, reading_color, *, full=False, show_source=False):
     return "".join(parts)
 
 
-def _character_link(character, accent, expanded):
+def _character_link(character, accent, expanded, scheme="kanji"):
     href = quote(character, safe="")
     title = "Collapse" if expanded else "Expand"
-    return (f'<a href="kanji:{href}" title="{title}" '
+    return (f'<a href="{scheme}:{href}" title="{title}" '
             f'style="color:{accent};text-decoration:none">{_text(character)}</a>')
+
+
+def render_kanji_details(entries, scheme="kanji"):
+    if not entries:
+        return ""
+    from meikipop.config.config import config
+    from meikipop.utils.stroke_order_font import stroke_order_family
+    character = entries[0].character
+    accent = _text(config.color_highlight_word)
+    reading_color = _text(config.color_highlight_reading)
+    family = stroke_order_family(character) if getattr(config, "kanji_stroke_order", True) else ""
+    glyph_style = f'font-size:128px;font-family:{_text(family)}' if family else 'font-size:96px'
+    anchor = quote(f"{scheme}:{character}", safe="")
+    parts = [f'<p style="margin:2px 0 1px"><a name="kanji-detail-{anchor}"></a>'
+             f'<span style="{glyph_style}">{_character_link(character, accent, True, scheme)}</span></p>',
+             '<table width="100%" cellspacing="0" cellpadding="1">']
+    for entry in entries:
+        parts.append(f'<tr><td valign="top">{_entry_html(entry, reading_color, full=True, show_source=True)}</td></tr>')
+    parts.append('</table>')
+    return "".join(parts)
 
 
 def render_kanji(entries, expanded=False, *, compact_only=False, expanded_characters=()):
@@ -87,11 +107,11 @@ def render_kanji(entries, expanded=False, *, compact_only=False, expanded_charac
     from meikipop.config.config import config
     accent = _text(config.color_highlight_word)
     reading_color = _text(config.color_highlight_reading)
-    parts = ['<hr><p style="margin:2px 0 4px"><small><b>Kanji</b> &nbsp; <a href="kanji:toggle">',
+    parts = ['<p style="margin:8px 0 4px"><a name="scroll-section-kanji"></a><small><b>Kanji</b> &nbsp; <a href="kanji:toggle">',
              'Show less' if expanded else 'Details', '</a></small></p>']
     if compact_only:
         expanded = False
-        parts = ['<hr>']
+        parts = ['<p style="margin:8px 0 4px"><a name="scroll-section-kanji"></a></p>']
     expanded_characters = set(expanded_characters)
     groups = {}
     for entry in entries:
@@ -122,14 +142,5 @@ def render_kanji(entries, expanded=False, *, compact_only=False, expanded_charac
     for character, group in groups:
         if character not in detailed:
             continue
-        from meikipop.utils.stroke_order_font import stroke_order_family
-        family = stroke_order_family(character) if getattr(config, "kanji_stroke_order", True) else ""
-        glyph_style = f'font-size:128px;font-family:{_text(family)}' if family else 'font-size:96px'
-        parts.append(f'<a name="kanji-detail-{quote(character, safe="")}"></a>'
-                     f'<div style="margin:2px 0 6px"><p style="margin:2px 0 1px">'
-                     f'<span style="{glyph_style}">{_character_link(character, accent, True)}</span></p>')
-        parts.append('<table width="100%" cellspacing="0" cellpadding="1">')
-        for entry in group:
-            parts.append(f'<tr><td valign="top">{_entry_html(entry, reading_color, full=True, show_source=True)}</td></tr>')
-        parts.append('</table></div>')
+        parts.append(render_kanji_details(group))
     return "".join(parts)

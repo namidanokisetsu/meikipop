@@ -11,6 +11,79 @@ from meikipop.gui.ruby import RubyBrowser
 SECTION_PREFIX = "scroll-section-"
 
 
+class ReadingPosition:
+    """Keep text positions relative to named sections across rich-text updates."""
+
+    @staticmethod
+    def _blocks(document):
+        section, counts, index = "", {}, 0
+        block = document.begin()
+        while block.isValid():
+            names = set(block.charFormat().anchorNames())
+            iterator = block.begin()
+            while not iterator.atEnd():
+                names.update(iterator.fragment().charFormat().anchorNames())
+                iterator += 1
+            anchors = sorted(name for name in names if name.startswith(
+                (SECTION_PREFIX, "scroll-headword-", "kanji-detail-", "dictionary-")))
+            if anchors:
+                section, counts, index = tuple(anchors), {}, 0
+            text = block.text()
+            occurrence = counts.get(text, 0)
+            yield (section, text, occurrence), index, block
+            counts[text] = occurrence + 1
+            index += 1
+            block = block.next()
+
+    def __init__(self, browser):
+        self.scroll = browser.verticalScrollBar().value()
+        cursor = browser.textCursor()
+        self.selection = cursor.selectedText()
+        top = browser.cursorForPosition(browser.viewport().rect().topLeft())
+        if self.selection and browser.viewport().rect().intersects(browser.cursorRect(cursor)):
+            top = cursor
+        self.top_offset = browser.cursorRect(top).top()
+        positions = (top.position(), cursor.anchor(), cursor.position())
+        self.positions = []
+        blocks = list(self._blocks(browser.document()))
+        for position in positions:
+            block = browser.document().findBlock(position)
+            key, index, _ = next(item for item in blocks if item[2] == block)
+            self.positions.append((key, index, position - block.position()))
+
+    def restore(self, browser):
+        blocks = list(self._blocks(browser.document()))
+        by_key = {key: block for key, _, block in blocks}
+        by_index = {(key[0], index): block for key, index, block in blocks}
+
+        def locate(saved):
+            key, index, offset = saved
+            block = by_key.get(key)
+            if block is None:
+                candidate = by_index.get((key[0], index))
+                if candidate is not None and candidate.text().startswith(key[1]):
+                    block = candidate
+            if block is None or offset > block.length() - 1:
+                return None
+            return block.position() + offset
+
+        top, anchor, position = map(locate, self.positions)
+        bar = browser.verticalScrollBar()
+        if self.selection and anchor is not None and position is not None:
+            cursor = QTextCursor(browser.document())
+            cursor.setPosition(anchor)
+            cursor.setPosition(position, QTextCursor.MoveMode.KeepAnchor)
+            if cursor.selectedText() == self.selection:
+                with QSignalBlocker(bar):
+                    browser.setTextCursor(cursor)
+        scroll = self.scroll
+        if top is not None:
+            cursor = QTextCursor(browser.document())
+            cursor.setPosition(top)
+            scroll = bar.value() + browser.cursorRect(cursor).top() - self.top_offset
+        bar.setValue(scroll)
+
+
 class StickyHeading(RubyBrowser):
     def paintEvent(self, event):
         from meikipop.config.config import config

@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import zipfile
 
 from PyQt6.QtCore import QEvent, QPoint, QRect, QSettings, Qt, QUrl
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtGui import QKeyEvent, QTextCursor, QTextFormat
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
@@ -291,24 +291,26 @@ class QuickLookupTests(unittest.TestCase):
         dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
         try:
             dialog.appearance.save()
-            self.assertTrue(dialog.appearance.snap_scrolling.isChecked())
-            self.assertTrue(self.window.browser.section_scroll.enabled)
-            with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
-                dialog.appearance.snap_scrolling.setChecked(False)
-                render.assert_not_called()
-            self.assertFalse(self.settings.value("profiles/ja/snap_scrolling", True, bool))
-            self.assertFalse(self.window.browser.section_scroll.enabled)
-            dialog.sync_profile("tr")
-            self.assertTrue(dialog.appearance.snap_scrolling.isChecked())
-            self.assertTrue(self.window.browser.section_scroll.enabled)
-            dialog.sync_profile("ja")
             self.assertFalse(dialog.appearance.snap_scrolling.isChecked())
             self.assertFalse(self.window.browser.section_scroll.enabled)
+            with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
+                dialog.appearance.snap_scrolling.setChecked(True)
+                render.assert_not_called()
+            self.assertTrue(self.settings.value("profiles/ja/snap_scrolling", False, bool))
+            self.assertTrue(self.window.browser.section_scroll.enabled)
+            dialog.sync_profile("tr")
+            self.assertFalse(dialog.appearance.snap_scrolling.isChecked())
+            self.assertFalse(self.window.browser.section_scroll.enabled)
+            dialog.sync_profile("ja")
+            self.assertTrue(dialog.appearance.snap_scrolling.isChecked())
+            self.assertTrue(self.window.browser.section_scroll.enabled)
         finally:
             dialog.deleteLater()
 
     def test_disabling_snap_adds_rules_between_headwords_only(self):
         from PyQt6.QtGui import QTextFormat
+        self.settings.setValue("profiles/ja/snap_scrolling", True)
+        self.window.reload_appearance()
         self.window.show_entries((entry(), entry("犬")), "猫")
         def rules():
             count, block = 0, self.window.browser.document().begin()
@@ -1274,8 +1276,9 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_context("公園で猫が寝ている。")
         self.window.pin.setChecked(True)
         self.assertTrue(self.window.audio_button.isVisible())
-        self.assertTrue(self.window.header.isHidden())
-        self.assertEqual(self.window.audio_actions.parentWidget(), self.window.browser.viewport())
+        self.assertTrue(self.window.header.isVisible())
+        self.assertTrue(self.window.search.isHidden())
+        self.assertEqual(self.window.audio_actions.parentWidget(), self.window.header)
         self.assertEqual(self.window.audio_actions.layout().indexOf(self.window.translate), 0)
         self.assertEqual(self.window.audio_actions.layout().indexOf(self.window.sentence_audio_button), 1)
         self.assertEqual(self.window.audio_actions.layout().indexOf(self.window.audio_button), 2)
@@ -1895,18 +1898,78 @@ class QuickLookupTests(unittest.TestCase):
         self.window._link(QUrl("kanji:%E7%8C%AB"))
         self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
 
-    def test_headword_kanji_opens_its_details_at_the_bottom_without_new_lookup(self):
+    def test_headword_kanji_toggles_inline_without_scrolling_or_resizing(self):
         kanji = (KanjiEntry("猫", source="Kanji A", meanings=("cat",), stats=(("strokes", 11),)),)
         self.window.show_entries((entry("猫", definitions=("Meaning " * 200,)),), "猫", kanji=kanji)
         self.window._expanded.add("Dictionary")
         self.window._render()
+        self.app.processEvents()
         result, revision = self.window._result, self.window.revision
-        self.assertIn('href="headkanji:%E7%8C%AB"', self.window.browser.toHtml())
-        self.window._link(QUrl("headkanji:%E7%8C%AB"))
+        geometry = self.window.geometry()
+        self.assertIn('href="headkanji:0:%E7%8C%AB"', self.window.browser.toHtml())
+        self.window._link(QUrl("headkanji:0:%E7%8C%AB"))
+        self.app.processEvents()
         self.assertIn("Strokes 11", self.window.browser.toPlainText())
-        self.assertGreater(self.window.browser.verticalScrollBar().value(), 0)
+        self.assertLess(self.window.browser.toPlainText().index("Strokes 11"),
+                        self.window.browser.toPlainText().index("Meaning"))
+        self.assertEqual(self.window.browser.verticalScrollBar().value(), 0)
+        self.assertEqual(self.window.geometry(), geometry)
         self.assertIs(self.window._result, result)
         self.assertEqual(self.window.revision, revision)
+        self.window._link(QUrl("headkanji:0:%E7%8C%AB"))
+        self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
+
+    def test_pinned_translation_controls_stay_outside_text_when_resized(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.pin.setChecked(True)
+        self.window._display(SearchResult("猫", "ja", "en", translation="Translated sentence. " * 60))
+        for width in (340, 600):
+            self.window.resize(width, 340)
+            self.app.processEvents()
+            viewport = self.window.browser.viewport()
+            top = viewport.mapTo(self.window, QPoint())
+            controls = self.window.audio_actions
+            bottom = controls.mapTo(self.window, controls.rect().bottomLeft())
+            self.assertLess(bottom.y(), top.y())
+            self.assertEqual(controls.width(), controls.sizeHint().width())
+            self.assertEqual(self.window.browser.verticalScrollBar().value(), 0)
+
+    def test_translation_stream_preserves_selection_and_view_in_repeated_definitions(self):
+        text = "𠮷 repeated selection"
+        original = SearchResult("猫", "ja", "en", tuple(entry(source=source, definitions=(text,))
+                                for source in ("First", "Second")) + (
+                                    entry(source="Third", definitions=("Following text.\n" * 20,)),),
+                                translation="Initial translation.")
+        self.window._display(original)
+        self.window.show()
+        self.app.processEvents()
+        browser = self.window.browser
+        first = browser.document().find(text)
+        second = browser.document().find(text, first.selectionEnd())
+        cursor = QTextCursor(browser.document())
+        cursor.setPosition(second.selectionEnd())
+        cursor.setPosition(second.selectionStart(), QTextCursor.MoveMode.KeepAnchor)
+        browser.setTextCursor(cursor)
+        before = browser.cursorRect().top()
+        self.window._translation_busy = True
+        self.window._translation_base = original
+        self.window._translation_chunk = replace(original, translation="Initial translation.\n" + "More text.\n" * 25)
+        self.window._flush_translation()
+        self.app.processEvents()
+        self.assertEqual(browser.selected_text(), text)
+        self.assertLess(browser.textCursor().position(), browser.textCursor().anchor())
+        self.assertGreater(browser.textCursor().selectionStart(), browser.document().find("Second").selectionEnd())
+        self.assertEqual(browser.cursorRect().top(), before)
+
+    def test_kanji_sections_do_not_insert_horizontal_rules(self):
+        result = SearchResult("猫", "ja", "en", (entry(),),
+                              kanji=(KanjiEntry("猫", meanings=("cat",)),))
+        for details in ((), ("猫",), ("head:0:猫",)):
+            self.window._display(result, kanji_details=details)
+            block = self.window.browser.document().begin()
+            while block.isValid():
+                self.assertFalse(block.blockFormat().hasProperty(QTextFormat.Property.BlockTrailingHorizontalRulerWidth))
+                block = block.next()
 
     def test_default_search_shortcut_can_be_disabled(self):
         self.assertIsNone(self.window._keys)
