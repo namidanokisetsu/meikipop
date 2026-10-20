@@ -2130,6 +2130,48 @@ class QuickLookupTests(unittest.TestCase):
             triggers.shutdown()
             triggers.deleteLater()
 
+    def test_automatic_selection_capture_is_cancelled_by_new_interactions(self):
+        from meikipop.gui.text_triggers import TextTriggers
+        triggers = TextTriggers(self.window)
+        try:
+            with patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch.object(QApplication, "activeModalWidget", return_value=None), \
+                    patch.object(QApplication, "activePopupWidget", return_value=None), \
+                    patch.object(QApplication, "doubleClickInterval", return_value=400), \
+                    patch("meikipop.utils.macos.require_input_monitoring_permission"), \
+                    patch("pynput.mouse.Listener"), patch.object(self.window.selection, "start") as capture:
+                self.settings.setValue("profiles/ja/selected_text", True)
+                for action in (lambda: triggers.click(-200, -200, True),
+                               lambda: triggers.click(-200, -200, True, left=False),
+                               triggers.reload, triggers.shutdown):
+                    triggers.press = triggers.last_click = None
+                    for down in (True, False, True, False):
+                        triggers.click(-100, -100, down)
+                    self.assertTrue(triggers.capture_timer.isActive())
+                    action()
+                    self.assertFalse(triggers.capture_timer.isActive())
+                capture.assert_not_called()
+                triggers.reload()
+                triggers.click(-100, -100, False)
+                self.assertFalse(triggers.capture_timer.isActive())
+        finally:
+            triggers.shutdown()
+            triggers.deleteLater()
+
+    def test_automatic_selection_capture_ignores_open_menus(self):
+        from meikipop.gui.text_triggers import TextTriggers
+        triggers = TextTriggers(self.window)
+        try:
+            self.settings.setValue("profiles/ja/selected_text", True)
+            with patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch.object(QApplication, "activePopupWidget", return_value=Mock()), \
+                    patch.object(self.window.selection, "start") as capture:
+                triggers.capture_selection()
+                capture.assert_not_called()
+        finally:
+            triggers.shutdown()
+            triggers.deleteLater()
+
     def test_selection_listener_does_not_hide_popup_on_scaled_display_or_scan_click(self):
         from meikipop.gui.text_triggers import TextTriggers
         triggers = TextTriggers(self.window)
