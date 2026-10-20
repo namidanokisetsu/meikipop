@@ -188,7 +188,7 @@ class ProfileThemeTests(unittest.TestCase):
             try:
                 self.assertEqual(widget.theme.currentText(), 'Dark')
                 self.assertEqual(widget.controls['background_opacity'].value(), 90)
-                self.assertEqual(widget.preview_definitions.value(), 3)
+                self.assertEqual(widget.preview_definitions.value(), 1)
                 self.assertFalse(widget.pinned_sentence.isChecked())
                 self.assertFalse(widget.snap_scrolling.isChecked())
                 self.assertEqual([section.toggle.text() for section in

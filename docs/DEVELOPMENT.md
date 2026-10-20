@@ -46,6 +46,8 @@ from dictionary entries. Disclosure edits batch layout updates, and Paddle
 keeps stable per-language scan callbacks so unchanged pixels reuse OCR.
 Disclosure preserves the scroll offset; streaming text retains its text anchor.
 Automatic popup fitting stays separate from the user's chosen reading size.
+Preview defaults to one definition; pinned results have no definition cutoff.
+Dictionary display preferences only control whether a section starts collapsed.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;

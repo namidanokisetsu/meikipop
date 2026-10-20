@@ -161,7 +161,7 @@ class SetupDialog(QDialog):
         dictionary_layout.addWidget(self.packs, 1)
         self.dictionary_display = QComboBox()
         self.dictionary_display.setAccessibleName("Default dictionary display")
-        for label, value in (("Expanded", "expanded"), ("Preview", "preview"), ("Collapsed", "collapsed")):
+        for label, value in (("Shown", "expanded"), ("Collapsed", "collapsed")):
             self.dictionary_display.addItem(label, value)
         self.dictionary_display.setToolTip("Initial display for this dictionary; pinning keeps this choice")
         self.dictionary_display.currentIndexChanged.connect(self.save_dictionary_display)
@@ -537,7 +537,7 @@ class SetupDialog(QDialog):
                  and item.data(Qt.ItemDataRole.UserRole + 3))
         self.dictionary_display.setEnabled(bool(valid))
         self.dictionary_display.setVisible(bool(valid))
-        mode = "preview"
+        mode = "expanded"
         if valid:
             source = item.data(Qt.ItemDataRole.UserRole + 2)
             for candidate in ("expanded", "collapsed"):

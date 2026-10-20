@@ -208,11 +208,10 @@ class _GlossConverter(StructuredContentConverter):
                 f'<small>[{escape(label)}]</small></a></div>')
 
     def __init__(self, expanded=False, limit=360, preview=False, generic_source=False, term="",
-                 details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False, preview_definitions=3,
-                 grammar=True, pinned_definitions=3):
+                 details_expanded=(), detail_prefix="", definitions=(), definition_furigana=False, preview_definitions=1,
+                 grammar=True):
         super().__init__()
         self.preview_definitions = preview_definitions
-        self.pinned_definitions = pinned_definitions
         self.definition_furigana = definition_furigana
         self.grammar = grammar
         self.colors = surface_colors(config.color_background, config.color_foreground)
@@ -380,8 +379,10 @@ class _GlossConverter(StructuredContentConverter):
                     isinstance(child, dict) and isinstance(child.get("data"), dict)
                     and "meaning" in child["data"] for child in content))
                 if ((tag in ("ol", "ul") and kind != "glossary") or kind == "glosses" or numbered_senses or marked_senses) and isinstance(content, list):
-                    senses = [child for child in content if not isinstance(child, str) or child.strip()]
-                    maximum = self.preview_definitions if self.preview else self.pinned_definitions
+                    senses = [child for child in content if (not isinstance(child, str) or child.strip())
+                              and not (isinstance(child, dict) and isinstance(child.get("data"), dict)
+                                       and child["data"].get("content") == "section-heading")]
+                    maximum = self.preview_definitions if self.preview else 0
                     if maximum and len(senses) > maximum:
                         node["content"] = senses[:maximum]
                         self.clipped = True
@@ -552,12 +553,11 @@ def _dictionary_section_key(term, reading, source):
 def render_result(result, expanded=(), preview=False, overlay_actions=False, show_source=True,
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
                   definition_furigana=False, collapsed=(), kanji_details=(),
-                  preview_frequency=True, preview_pitch=True, preview_definitions=3,
-                  pinned_frequency=True, pinned_pitch=True, grammar=None, separate_headwords=False, pinned_definitions=3):
+                  preview_frequency=True, preview_pitch=True, preview_definitions=1,
+                  pinned_frequency=True, pinned_pitch=True, grammar=None, separate_headwords=False):
     """Share lexical headings while preserving the configured dictionary order."""
     preview_definitions = max(0, min(50, preview_definitions))
-    pinned_definitions = max(0, min(50, pinned_definitions))
-    maximum = preview_definitions if preview else pinned_definitions
+    maximum = preview_definitions if preview else 0
     grammar_tags = not preview if grammar is None else grammar
     show_inflections = grammar is not False
     muted = surface_colors(config.color_background, config.color_foreground)["muted"]
@@ -642,7 +642,6 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
             limit = 240 if result.source == "ja" and not full else None
             converter = _GlossConverter(expanded=full, limit=limit,
                                         preview=preview, preview_definitions=preview_definitions,
-                                        pinned_definitions=pinned_definitions,
                                         generic_source=generic_source, term=term,
                                         details_expanded=details_expanded, detail_prefix=f"{group_index}:{index}",
                                         definition_furigana=definition_furigana,
@@ -1557,8 +1556,7 @@ class QuickLookupWindow(QDialog):
             preview_options = dict(
                 preview_frequency=self.settings.value(prefix + "preview_frequency", True, bool),
                 preview_pitch=self.settings.value(prefix + "preview_pitch", True, bool),
-                preview_definitions=self.settings.value(prefix + "preview_definitions", 3, int),
-                pinned_definitions=self.settings.value(prefix + "pinned_definitions", 3, int),
+                preview_definitions=self.settings.value(prefix + "preview_definitions", 1, int),
                 pinned_frequency=self.settings.value(prefix + "pinned_frequency", True, bool),
                 pinned_pitch=self.settings.value(prefix + "pinned_pitch", True, bool),
                 grammar=self.settings.value(prefix + "preview_grammar", True, bool)

@@ -78,11 +78,9 @@ class ProfileAppearance(QWidget):
         self.pinned_pitch = QCheckBox("Pitch")
         self.pinned_grammar = QCheckBox("Grammar labels")
         self.preview_definitions = QSpinBox()
-        self.pinned_definitions = QSpinBox()
-        for control in (self.preview_definitions, self.pinned_definitions):
-            control.setRange(0, 50)
-            control.setSpecialValueText("All")
-            control.setToolTip("Meanings shown before expanding")
+        self.preview_definitions.setRange(0, 50)
+        self.preview_definitions.setSpecialValueText("All")
+        self.preview_definitions.setToolTip("Meanings shown in preview")
         preview_form.addRow(self.preview_frequency)
         preview_form.addRow(self.preview_pitch)
         preview_form.addRow(self.preview_grammar)
@@ -90,7 +88,6 @@ class ProfileAppearance(QWidget):
         pinned_form.addRow(self.pinned_frequency)
         pinned_form.addRow(self.pinned_pitch)
         pinned_form.addRow(self.pinned_grammar)
-        pinned_form.addRow("Definitions", self.pinned_definitions)
         self.pinned_sentence = QCheckBox("Show sentence when pinned")
         pinned_form.addRow(self.pinned_sentence)
         self.snap_scrolling = QCheckBox("Snap scrolling")
@@ -146,7 +143,6 @@ class ProfileAppearance(QWidget):
         for control in (self.preview_grammar, self.pinned_frequency, self.pinned_pitch, self.pinned_grammar):
             control.toggled.connect(self.save)
         self.preview_definitions.valueChanged.connect(self.save)
-        self.pinned_definitions.valueChanged.connect(self.save)
         self.compact_preview.toggled.connect(self.save)
         self.pinned_sentence.toggled.connect(self.save)
         self.snap_scrolling.toggled.connect(self.save)
@@ -165,8 +161,7 @@ class ProfileAppearance(QWidget):
         self.preview_grammar.setChecked(self.settings.value(prefix + "preview_grammar", True, bool))
         for name in ("pinned_frequency", "pinned_pitch", "pinned_grammar"):
             getattr(self, name).setChecked(self.settings.value(prefix + name, True, bool))
-        self.preview_definitions.setValue(self.settings.value(prefix + "preview_definitions", 3, int))
-        self.pinned_definitions.setValue(self.settings.value(prefix + "pinned_definitions", 3, int))
+        self.preview_definitions.setValue(self.settings.value(prefix + "preview_definitions", 1, int))
         self.preview_form.setRowVisible(self.preview_pitch, self.profile() == "ja")
         self.pinned_form.setRowVisible(self.pinned_pitch, self.profile() == "ja")
         custom = custom_palette(self.settings, self.profile())
@@ -238,7 +233,6 @@ class ProfileAppearance(QWidget):
         for name in ("preview_grammar", "pinned_frequency", "pinned_pitch", "pinned_grammar"):
             self.settings.setValue(prefix + name, getattr(self, name).isChecked())
         self.settings.setValue(prefix + "preview_definitions", self.preview_definitions.value())
-        self.settings.setValue(prefix + "pinned_definitions", self.pinned_definitions.value())
         self.settings.setValue(prefix + "pinned_sentence", self.pinned_sentence.isChecked())
         self.settings.setValue(prefix + "snap_scrolling", self.snap_scrolling.isChecked())
         self.settings.setValue(prefix + "font_family", self.font.currentFont().family())

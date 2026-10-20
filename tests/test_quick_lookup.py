@@ -30,6 +30,11 @@ def entry(term="猫", source="Dictionary", definitions=("cat",), language="ja"):
                  language, tuple(definitions))
 
 
+def disclosure(body, lead="first meaning"):
+    return {"type": "structured-content", "content": [lead, {
+        "tag": "details", "content": [{"tag": "summary", "content": "More"}, body]}]}
+
+
 class FakeEngine:
     def __init__(self):
         self.library = SimpleNamespace(packs=[(None, {"language": "de"}, None)])
@@ -102,21 +107,18 @@ class QuickLookupTests(unittest.TestCase):
         finally:
             dialog.deleteLater()
 
-    def test_pinned_meaning_limit_applies_to_structured_and_plain_definitions(self):
+    def test_pinned_meanings_are_unlimited_even_with_old_limit_settings(self):
         senses = [f"Meaning {i}" for i in range(8)]
         structured = {"type": "structured-content", "content": {"tag": "ol", "content": [
             {"tag": "li", "content": text} for text in senses]}}
         for definitions in (senses, [structured]):
             result = SearchResult('test', 'tr', 'en', (entry(language='tr', definitions=definitions),))
-            for limit in (2, 5, 0):
-                html = render_result(result, pinned_definitions=limit)
-                for i in range(limit or 8):
-                    self.assertIn(senses[i], html)
-                if limit:
-                    self.assertNotIn(senses[limit], html)
-                    self.assertIn('href="expand:', html)
-                else:
-                    self.assertNotIn('href="expand:', html)
+            self.settings.setValue("profiles/ja/pinned_definitions", 2)
+            self.window.show_entries(result.entries, "test", peek=True)
+            self.window.pin.setChecked(True)
+            for sense in senses:
+                self.assertIn(sense, self.window.browser.toPlainText())
+            self.assertNotIn('href="expand:', self.window.browser.toHtml())
 
     def test_default_preview_and_pin_preferences_preserve_full_context(self):
         from meikipop.gui.quick_lookup import audio_autoplay_mode
@@ -126,18 +128,20 @@ class QuickLookupTests(unittest.TestCase):
         self.window.show_entries((word,), "cat", peek=True)
         self.window.set_context("Original sentence")
         text = self.window.browser.toPlainText()
-        self.assertIn("third", text)
-        self.assertNotIn("fourth", text)
+        self.assertIn("first", text)
+        self.assertNotIn("second", text)
         self.window.audio.play.assert_not_called()
         self.window.pin.setChecked(True)
+        self.assertIn("fourth", self.window.browser.toPlainText())
         self.assertEqual(audio_autoplay_mode(self.settings, "ja"), "pin")
         self.window.audio.play.assert_called_once()
         self.assertNotIn("Original sentence", self.window.browser.toPlainText())
         self.assertEqual(self.window._result_context, "Original sentence")
 
     def test_more_click_keeps_window_geometry_and_scroll_position(self):
-        words = tuple(entry(source=f"Source {index}", definitions=tuple(
-            f"Meaning {index}:{sense}" for sense in range(9))) for index in range(6))
+        words = tuple(entry(source=f"Source {index}", definitions=(disclosure([
+            {"tag": "div", "content": f"Meaning {index}:{sense}"} for sense in range(9)]),))
+            for index in range(6))
         self.window.show_entries(words, "cat")
         self.app.processEvents()
         browser = self.window.browser
@@ -145,8 +149,7 @@ class QuickLookupTests(unittest.TestCase):
         browser.verticalScrollBar().setValue(20)
         cursor.setPosition(cursor.selectionStart() + 1)
         point = browser.cursorRect(cursor).center()
-        self.assertEqual(browser.anchorAt(point), "expand:0:0")
-        self.assertTrue(cursor.charFormat().fontUnderline())
+        self.assertEqual(browser.anchorAt(point), "details:0:0:0")
         geometry = self.window.geometry()
         scroll = browser.verticalScrollBar().value()
         scroll_changes = []
@@ -161,7 +164,8 @@ class QuickLookupTests(unittest.TestCase):
         self.assertFalse(self.window.fit_timer.isActive())
 
     def test_disclosure_waits_for_native_mouse_release(self):
-        self.window.show_entries((entry(definitions=tuple(f"Meaning {i}" for i in range(8))),), "cat")
+        self.window.show_entries((entry(definitions=(disclosure(
+            [{"tag": "div", "content": f"Meaning {i}"} for i in range(8)]),)),), "cat")
         self.app.processEvents()
         browser = self.window.browser
         cursor = browser.document().find("More")
@@ -176,10 +180,10 @@ class QuickLookupTests(unittest.TestCase):
             self.assertIn("Meaning 7", browser.toPlainText())
 
     def test_more_does_not_follow_text_displaced_by_expanding_earlier_entries(self):
-        self.settings.setValue("profiles/ja/pinned_definitions", 5)
-        words = tuple(entry(language="en", definitions=({"type": "structured-content", "content": {
-            "tag": "ol", "content": [{"tag": "li", "content": f"Entry {index} meaning {sense}"}
-                                      for sense in range(12)]}},)) for index in range(5))
+        words = tuple(entry(language="en", definitions=(disclosure(
+            [{"tag": "div", "content": f"Entry {index} meaning {sense}"} for sense in range(12)],
+            lead=[{"tag": "div", "content": f"Lead {index}:{i}"} for i in range(8)]),))
+            for index in range(5))
         self.window._reading_size_custom = True
         self.window.resize(480, 240)
         self.window.show_entries(words, "cat", source="en", peek=True)
@@ -446,7 +450,7 @@ class QuickLookupTests(unittest.TestCase):
         text = self.window.browser.toPlainText()
         self.assertIn("Full meaning 5", text)
         self.assertIn("Preview meaning 0", text)
-        self.assertNotIn("Preview meaning 5", text)
+        self.assertIn("Preview meaning 5", text)
         self.assertNotIn("Closed meaning 0", text)
         self.window._link(QUrl("expand:1"))
         self.assertIn("Preview meaning 5", self.window.browser.toPlainText())
@@ -478,9 +482,9 @@ class QuickLookupTests(unittest.TestCase):
                     before = browser.toHtml()
                     self.assertIn('href="collapse:0:1"', before)
                     self.assertEqual("Fourth sense" in browser.toPlainText(), not expanded)
-                    self.window._link(QUrl("expand:1"))
+                    self.window._link(QUrl("collapse:1"))
                     self.app.processEvents()
-                    self.assertEqual("Second" in self.window._expanded, expanded)
+                    self.assertEqual("Second" in self.window._collapsed, not expanded)
                     self.assertEqual("Fourth sense" in browser.toPlainText(), expanded)
                     cursor = browser.document().find("Second")
                     cursor.movePosition(cursor.MoveOperation.EndOfBlock, cursor.MoveMode.KeepAnchor)
@@ -531,18 +535,18 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("しん sense 0", text)
 
     def test_more_expands_only_its_reading_and_back_restores_section_states(self):
-        words = tuple(replace(entry("参", "Jitendex", tuple(f"{reading} sense {i}" for i in range(6))),
+        words = tuple(replace(entry("参", "Jitendex", (disclosure(f"{reading} example"),)),
                               reading=reading) for reading in ("さん", "み"))
         self.window.show_entries(words, "参")
-        self.window._link(QUrl("expand:1:0"))
+        self.window._link(QUrl("details:1:0:0"))
         text = self.window.browser.toPlainText()
-        self.assertNotIn("さん sense 5", text)
-        self.assertIn("み sense 5", text)
+        self.assertNotIn("さん example", text)
+        self.assertIn("み example", text)
         self.window._display(SearchResult("犬", "ja", "en", (entry("犬"),)))
         self.window.go_back()
         text = self.window.browser.toPlainText()
-        self.assertNotIn("さん sense 5", text)
-        self.assertIn("み sense 5", text)
+        self.assertNotIn("さん example", text)
+        self.assertIn("み example", text)
 
     def test_archive_owned_image_only_definition_is_retained(self):
         path = "meikipop-image:/ja-" + "a" * 64 + "/" + "b" * 64 + ".png"
@@ -590,7 +594,8 @@ class QuickLookupTests(unittest.TestCase):
             import_yomitan(archive, self.temp.name)
             dialog.reload()
             self.assertEqual(dialog.dictionary_display.currentData(), "collapsed")
-            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("preview"))
+            self.assertEqual(dialog.dictionary_display.findData("preview"), -1)
+            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("expanded"))
             self.assertEqual(self.settings.value("profiles/ja/collapsed_dictionaries", [], type=list), [])
             self.assertIn("mono definition", self.window.browser.toPlainText())
             dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("expanded"))
@@ -598,7 +603,7 @@ class QuickLookupTests(unittest.TestCase):
             self.assertIn("Monolingual", self.window._expanded)
             dialog.reload()
             self.assertEqual(dialog.dictionary_display.currentData(), "expanded")
-            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("preview"))
+            dialog.dictionary_display.setCurrentIndex(dialog.dictionary_display.findData("collapsed"))
             self.assertEqual(self.settings.value("profiles/ja/expanded_dictionaries", [], type=list), [])
             self.assertNotIn("Monolingual", self.window._expanded)
         finally:
@@ -1608,7 +1613,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window.deliver(revision, SearchResult("stale", "ja", "en", (entry("STALE"),)))
         self.assertNotIn("STALE", self.window.browser.toPlainText())
 
-    def test_rendering_previews_every_dictionary_and_expands_structured_glosses(self):
+    def test_reading_shows_every_dictionary_and_full_structured_glosses(self):
         definitions = ({"type": "structured-content", "content": {
             "tag": "div", "content": [{"tag": "span", "content": "Turkdict example " + "long " * 150},
                                        {"tag": "p", "data": {"content": "example"}, "content": "Final example"}]}},)
@@ -1619,11 +1624,11 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("Turkdict", self.window.browser.toPlainText())
         self.assertIn("Other", self.window.browser.toPlainText())
         self.assertIn("long " * 150, self.window.browser.toPlainText())
-        self.assertNotIn("Final example", self.window.browser.toPlainText())
+        self.assertIn("Final example", self.window.browser.toPlainText())
         self.window._link(QUrl("expand:0"))
         self.assertIn("Final example", self.window.browser.toPlainText())
         self.assertIn("Turkdict", self.window._expanded)
-        self.window._link(QUrl("expand:0"))
+        self.window._link(QUrl("collapse:0"))
         self.assertNotIn("Final example", self.window.browser.toPlainText())
 
     def test_dictionary_markup_and_external_resources_are_not_executed(self):
@@ -1688,15 +1693,15 @@ class QuickLookupTests(unittest.TestCase):
         result = SearchResult("araç", "tr", "en", (
             entry("araç", "Turkdict", (definition,), "tr"),
             entry("araç", "Other", ("vehicle", "device", "tool", "Fourth sense"), "tr")))
-        preview = render_result(result, pinned_definitions=2)
+        preview = render_result(result, preview=True, preview_definitions=2)
         self.assertIn("<ol><li>vehicle", preview)
         self.assertNotIn("Hidden example", preview)
         self.assertNotIn("Third sense", preview)
         expanded = render_result(result, {"Turkdict"})
         self.assertIn("Hidden example", expanded)
         self.assertIn("Third sense", expanded)
-        self.assertNotIn("Fourth sense", expanded)
-        self.assertIn('href="expand:0:1"', expanded)
+        self.assertIn("Fourth sense", expanded)
+        self.assertNotIn('href="expand:0:1"', expanded)
 
     def test_dictionary_styles_cannot_inject_markup_when_expanded(self):
         definition = {"type": "structured-content", "content": {"tag": "span", "style": {
@@ -1984,7 +1989,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Show less", self.window.browser.toPlainText())
         self.window._link(QUrl("kanji:toggle"))
         self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
-        self.assertNotIn("Fourth sense", self.window.browser.toPlainText())
+        self.assertIn("Fourth sense", self.window.browser.toPlainText())
         self.window._link(QUrl("expand:0"))
         self.assertIn("Fourth sense", self.window.browser.toPlainText())
         self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
@@ -2512,16 +2517,14 @@ class DictionaryManagerTests(unittest.TestCase):
             self.dialog.sync_profile("ja")
             self.assertTrue(resources.base_status.isHidden())
 
-    def test_definition_limits_are_saved_per_profile_with_all_option(self):
+    def test_preview_definition_limit_is_saved_per_profile_with_all_option(self):
         self.dialog.sync_profile('tr')
-        self.dialog.appearance.pinned_definitions.setValue(7)
+        self.assertFalse(hasattr(self.dialog.appearance, 'pinned_definitions'))
         self.dialog.appearance.preview_definitions.setValue(0)
-        self.assertEqual(self.settings.value('profiles/tr/pinned_definitions', type=int), 7)
         self.assertEqual(self.settings.value('profiles/tr/preview_definitions', type=int), 0)
         self.dialog.sync_profile('ja')
-        self.assertEqual(self.dialog.appearance.pinned_definitions.value(), 3)
+        self.assertEqual(self.dialog.appearance.preview_definitions.value(), 1)
         self.dialog.sync_profile('tr')
-        self.assertEqual(self.dialog.appearance.pinned_definitions.value(), 7)
         self.assertEqual(self.dialog.appearance.preview_definitions.text(), 'All')
 
     def test_legacy_import_requires_a_language_in_automatic_mode(self):

@@ -22,7 +22,8 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
 - **Typed or copied text:** open **Search** from the tray. The configurable text
   shortcut can also open selected text or clipboard text. Select a word in the
   search input and press Enter to look it up with the surrounding sentence.
-- **Read more:** click **More** or a dictionary heading to expand definitions.
+- **Read more:** pin the popup to show all definitions. Dictionary headings
+  collapse or reopen a dictionary; its own detail links open examples and notes.
   **Back** returns to the previous lookup. **Copy sentence** copies the context.
 
 Screen lookup freezes the image while Shift is held. For changing subtitles,
@@ -48,8 +49,8 @@ Settings shows the available choices for your language.
 **Appearance** controls fonts, themes and readings, with separate options for
 preview and pinned results. Scrolling is continuous by default; enable
 **Snap scrolling** to move between sections.
-Set **Definitions** in Preview or Pinned to choose the meaning cutoff; **All**
-shows the full content. Turkish misses can still show the analyzed root and
+Preview shows one definition by default; change **Definitions** or select **All**.
+Pinned results have no definition limit. Turkish misses can still show the analyzed root and
 grammar, and screen lookup keeps available spelling suggestions.
 These include accent alternatives of recovered Turkish roots, shown as links
 without replacing the original analysis.
