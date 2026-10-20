@@ -77,6 +77,37 @@ class SelectionTests(unittest.TestCase):
             controller.assert_not_called()
             self.assertFalse(self.capture.pending)
 
+    def test_copy_completes_on_arrival_and_restores_clipboard_within_default_timeout(self):
+        for delay in (.02, .2):
+            with self.subTest(delay=delay):
+                mime = QMimeData()
+                mime.setText("old clipboard")
+                mime.setHtml("<b>old clipboard</b>")
+                self.values.clear()
+                self.capture.user32.GetClipboardSequenceNumber.return_value = 10
+                unavailable = Mock()
+                self.capture.unavailable.connect(unavailable)
+                with patch("meikipop.gui.selection.sys.platform", "win32"), \
+                        patch.object(QApplication, "activeWindow", return_value=None), \
+                        patch.object(QApplication, "clipboard") as clipboard, \
+                        patch("pynput.keyboard.Controller"), \
+                        patch("meikipop.gui.selection.monotonic", return_value=10) as clock:
+                    clipboard.return_value.mimeData.return_value = mime
+                    self.capture.start(wait_for_modifiers=True)
+                    clock.return_value = 10 + delay
+                    self.capture.poll()
+                    self.assertTrue(self.capture.pending)
+                    clipboard.return_value.text.return_value = "selected phrase"
+                    self.capture.user32.GetClipboardSequenceNumber.return_value = 11
+                    self.capture.poll()
+                    self.assertFalse(self.capture.pending)
+                    self.assertEqual(self.values, ["selected phrase"])
+                    restored = clipboard.return_value.setMimeData.call_args.args[0]
+                    self.assertEqual(restored.text(), "old clipboard")
+                    self.assertEqual(restored.html(), "<b>old clipboard</b>")
+                    unavailable.assert_not_called()
+                self.capture.unavailable.disconnect(unavailable)
+
     def test_fast_capture_times_out_without_reusing_or_overwriting_clipboard(self):
         unavailable = Mock()
         self.capture.unavailable.connect(unavailable)
