@@ -37,11 +37,12 @@ class FakeEngine:
         self.contexts = []
         self.closed = False
 
-    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None, context=None, morphology=False):
+    def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
+               context=None, morphology=False, exact_only=False):
         self.calls.append((text, source, foreign, translate, threading.get_ident()))
         self.contexts.append(context)
         return SearchResult(text, "ja" if source == "auto" else source, "en",
-                            () if translate else (entry(text),), translation="translated" if translate else "")
+                            () if translate or exact_only else (entry(text),), translation="translated" if translate else "")
 
     def refresh(self):
         pass
@@ -953,19 +954,55 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.preferred_foreign, "en")
         self.assertEqual(self.settings.value("profile"), "en")
 
-    def test_explicit_sentence_skips_dictionary_and_translates_into_english(self):
+    def test_selected_sentence_checks_exact_entry_then_translates(self):
         self.window.lookup_selected("昨日は朝ご飯を食べなかった。")
-        self.wait_until(lambda: self.window._result is not None)
-        self.assertTrue(self.engine.calls[0][3])
+        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+        self.assertEqual([call[3] for call in self.engine.calls], [False, True])
         self.assertEqual(self.window._result.entries, ())
         self.assertNotIn("No entry", self.window.browser.toPlainText())
 
     def test_short_typed_sentence_translates_despite_old_disabled_setting(self):
         self.settings.setValue("profiles/ja/auto_translate_sentence", False)
         self.window.open_search("Cats sleep.")
-        self.wait_until(lambda: self.window._result is not None)
-        self.assertEqual([call[3] for call in self.engine.calls], [True])
+        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+        self.assertEqual([call[3] for call in self.engine.calls], [False, True])
         self.assertEqual(self.window._result.translation, "translated")
+
+    def test_typed_phrases_use_installed_entries_before_translation(self):
+        from meikipop.dictionary.library import import_yomitan
+        from meikipop.dictionary.search import SearchEngine
+        phrases = (("tr", "her ne kadar"), ("de", "nach wie vor"), ("en", "as soon as"),
+                   ("en", "e.g."), ("ja", "おはよう。"))
+        for index, (language, phrase) in enumerate(phrases):
+            archive = Path(self.temp.name) / f"phrase-{index}.zip"
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr("index.json", json.dumps(dict(title=f"Phrase {index}", format=3, sourceLanguage=language)))
+                zf.writestr("term_bank_1.json", json.dumps([[phrase, "", "", "", 0, ["fixture meaning"], -1, ""]]))
+            import_yomitan(archive, self.temp.name)
+        translator = Mock(last_model="fixture")
+        translator.translate.return_value = "explicit translation"
+        def search(text, **options):
+            self.engine.calls.append((text, options))
+            engine = SearchEngine(self.temp.name, translator=translator)
+            try:
+                with patch.object(engine, "_lemma_lookup", side_effect=AssertionError("Unexpected morphology")):
+                    return engine.search(text, **options)
+            finally:
+                engine.close()
+        self.engine.search = search
+        for language, phrase in phrases:
+            with self.subTest(phrase=phrase):
+                self.window.set_mode(language)
+                self.window.open_search(phrase)
+                self.wait_until(lambda: self.window._result is not None and self.window._result.text == phrase)
+                self.assertEqual([item.term for item in self.window._result.entries], [phrase])
+                self.assertEqual(self.window._result.source, language)
+                self.assertTrue(self.engine.calls[-1][1]["exact_only"])
+                translator.translate.assert_not_called()
+                self.assertIsNone(self.window.translation_worker)
+        self.window.submit(translate=True)
+        self.wait_until(lambda: self.window._result.translation)
+        translator.translate.assert_called_once()
 
     def test_word_without_dictionary_hit_falls_back_to_translation_once(self):
         self.settings.setValue("profiles/ja/auto_translate_miss", False)
@@ -2003,16 +2040,15 @@ class QuickLookupTests(unittest.TestCase):
             self.window.selection.unavailable.emit(False)
             self.assertFalse(self.window.isVisible())
 
-    def test_shortcut_clipboard_sentence_translates_without_dictionary_lookup(self):
+    def test_shortcut_clipboard_sentence_translates_after_exact_entry_miss(self):
         with patch.object(QApplication, "activeWindow", return_value=None), \
                 patch.object(QApplication, "clipboard") as clipboard, \
                 patch.object(self.window.selection, "start"):
             clipboard.return_value.text.return_value = "This is a complete sentence."
             self.window.request_lookup()
             self.window.selection.unavailable.emit(True)
-            self.wait_until(lambda: self.window._result is not None)
-            self.assertEqual(len(self.engine.calls), 1)
-            self.assertTrue(self.engine.calls[0][3])
+            self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+            self.assertEqual([call[3] for call in self.engine.calls], [False, True])
 
     def test_typed_lookup_takes_focus_after_passive_selection(self):
         with patch("meikipop.utils.window_focus.focus_search") as focus:

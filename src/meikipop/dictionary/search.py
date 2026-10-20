@@ -92,7 +92,8 @@ class SearchEngine:
         return tuple(dict.fromkeys(meta["language"] for _, meta, _ in self.library.packs if meta["enabled"]))
 
     def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
-               morphology=False, context=None, translation_progress=None, translation_state=None, cancelled=None, request_id=0):
+               morphology=False, context=None, translation_progress=None, translation_state=None, cancelled=None, request_id=0,
+               exact_only=False):
         if cancelled is not None and cancelled.is_set():
             raise RuntimeError("Translation cancelled.")
         self.refresh_if_changed()
@@ -108,12 +109,23 @@ class SearchEngine:
         requested_target = language_code(target) if target else None
         pair = tuple(language_code(code) for code in pair) if pair else None
         cache_key = (self.library.revision, text, source, foreign, translate, translator_key, requested_target, pair,
-                     morphology, context if morphology else None)
+                     morphology, context if morphology else None, exact_only)
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)
             return self.cache[cache_key]
         automatic_source = source == "auto"
-        source = self.detect(text, foreign, languages=None if translate and requested_target else pair) if automatic_source else source
+        exact_entries = ()
+        if exact_only and not translate:
+            # Phrase headwords establish their language even without separate word entries.
+            candidates = dict.fromkeys((foreign, *(pair or ("en",)))) if automatic_source else (source,)
+            for language in candidates:
+                exact_entries = self.library.lookup(text, language, tolerant=False,
+                                                   target_language=foreign if language != foreign else None)
+                if exact_entries:
+                    source = language
+                    break
+        if source == "auto":
+            source = self.detect(text, foreign, languages=None if translate and requested_target else pair)
         if pair:
             if not translate or automatic_source and not requested_target:
                 source = source if source in pair else pair[0]
@@ -129,7 +141,10 @@ class SearchEngine:
         self._analyses = ()
         matched_length = 0
         if text and not translate:
-            if (source == "en" and foreign != "en") or pair and source == pair[1]:
+            if exact_only:
+                entries = exact_entries
+                matched_length = len(text) if entries else 0
+            elif (source == "en" and foreign != "en") or pair and source == pair[1]:
                 dictionary_language = foreign if pair else target
                 entries = self.library.lookup(text, source, target_language=dictionary_language)
                 if not entries:

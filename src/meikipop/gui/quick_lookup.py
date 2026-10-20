@@ -74,12 +74,12 @@ class LookupWorker(QObject):
         self._thread.start()
 
     def request(self, revision, text, source, foreign, translate=False, target=None, pair=None, translation_settings=None,
-                morphology=False, context=None):
+                morphology=False, context=None, exact_only=False):
         self.cancel()
         mark("dispatch", revision, translation=translate)
         with self._condition:
             self._pending = (revision, text, source, foreign, translate, target, pair, translation_settings, morphology,
-                             context, threading.Event())
+                             context, exact_only, threading.Event())
             self._condition.notify()
 
     def cancel(self):
@@ -139,7 +139,7 @@ class LookupWorker(QObject):
                         codes = sorted({meta["language"] for _, meta, _ in engine.library.packs})
                         self._emit(self.languages, codes)
                     if pending is not None:
-                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology, context, cancelled = pending
+                        revision, text, source, foreign, translate, target, pair, translation_settings, morphology, context, exact_only, cancelled = pending
                         mark("dequeue", revision)
                         options = {"target": target} if target else {}
                         if pair:
@@ -148,6 +148,8 @@ class LookupWorker(QObject):
                             options["morphology"] = True
                         if context is not None:
                             options["context"] = context
+                        if exact_only:
+                            options["exact_only"] = True
                         if isinstance(engine, SearchEngine):
                             options.update(cancelled=cancelled, request_id=revision,
                                            translation_progress=lambda result: self._emit(self.progress, revision, result),
@@ -1331,8 +1333,9 @@ class QuickLookupWindow(QDialog):
         if not text:
             return
         self._sentence_lookup = translate is None and not selected
+        exact_only = self._sentence_lookup and is_sentence(text)
         if translate is None:
-            translate = self._sentence_lookup and is_sentence(text)
+            translate = False
         self._invalidate()
         self._last_request_translate = bool(translate)
         self._translation_model_state = ""
@@ -1382,7 +1385,8 @@ class QuickLookupWindow(QDialog):
                        pair=(self.preferred_foreign, self.foreign.currentData()),
                        translation_settings=translation_settings,
                        context=lookup_context if not translate else None,
-                       morphology=not translate and model_available(self.preferred_foreign))
+                       morphology=not translate and not exact_only and model_available(self.preferred_foreign),
+                       exact_only=exact_only)
 
     def deliver(self, revision, result):
         if revision != self.revision or self._shutting_down:

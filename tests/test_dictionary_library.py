@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock, patch
 import zipfile
 
 from meikipop.dictionary.library import Library, folded, import_yomitan, remove_dictionary, save_preferences
@@ -10,6 +11,37 @@ from meikipop.dictionary.search import SearchEngine
 
 
 class LibraryTests(unittest.TestCase):
+    def test_phrase_check_does_not_use_glosses_morphology_or_cached_word_results(self):
+        self.pack("Turkish", [self.row("önünde", ["in front of"])])
+        translator = Mock()
+        engine = SearchEngine(self.directory, translator=translator)
+        try:
+            normal = engine.search("in front of", source="en", foreign="tr")
+            self.assertEqual(normal.entries[0].term, "önünde")
+            with patch.object(engine.library, "reverse", side_effect=AssertionError("Unexpected gloss lookup")), \
+                    patch.object(engine.library, "suggest", side_effect=AssertionError("Unexpected suggestions")), \
+                    patch.object(engine, "_lemma_lookup", side_effect=AssertionError("Unexpected morphology")):
+                exact = engine.search("in front of", source="en", foreign="tr", exact_only=True, morphology=True)
+            self.assertFalse(exact.entries)
+            self.assertEqual(exact.matched_length, 0)
+            translator.translate.assert_not_called()
+        finally:
+            engine.close()
+
+    def test_phrase_check_keeps_bilingual_entries_in_the_selected_pair(self):
+        self.pack("EN-TR", [self.row("as soon as", ["olur olmaz"])], "en", target_language="tr")
+        self.pack("EN-JA", [self.row("as soon as", ["するとすぐに"])], "en", target_language="ja")
+        engine = SearchEngine(self.directory)
+        try:
+            for foreign, source in (("tr", "EN-TR"), ("ja", "EN-JA")):
+                result = engine.search("as soon as", foreign=foreign, pair=(foreign, "en"), exact_only=True)
+                self.assertEqual([entry.source for entry in result.entries], [source])
+                self.assertEqual(result.source, "en")
+                self.assertEqual(result.target, foreign)
+                self.assertEqual(result.matched_length, len("as soon as"))
+        finally:
+            engine.close()
+
     def test_english_profile_looks_up_entries_instead_of_reverse_glosses(self):
         self.pack("English", [self.row("cat", ["a feline animal"])], language="en")
         engine = SearchEngine(self.directory)
