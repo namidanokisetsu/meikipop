@@ -878,6 +878,8 @@ class QuickLookupWindow(QDialog):
         self.audio = None
         self._anki_task = None
         self._anki_saved_revision = None
+        self._anki_saved_note = None
+        self._anki_browse_task = None
         self._autoplayed = None
         self._scan_hold_active = False
         self._selection_lookup = False
@@ -982,10 +984,10 @@ class QuickLookupWindow(QDialog):
         action_layout = QHBoxLayout(self.audio_actions)
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(2)
-        action_layout.addWidget(self.translate)
         self.anki_button = self._action("anki", "Add to Anki")
         self.anki_button.setStyleSheet("QToolButton {border-radius:12px;}")
         self.anki_button.clicked.connect(self.add_to_anki)
+        action_layout.addWidget(self.anki_button)
         self.sentence_audio_button = self._action("audio_sentence", "Read sentence")
         self.sentence_audio_button.clicked.connect(lambda: self.play_audio(sentence=True))
         self.sentence_audio_button.setEnabled(False)
@@ -1028,7 +1030,7 @@ class QuickLookupWindow(QDialog):
         self.status.setWordWrap(True)
         self.status.hide()
         layout.addWidget(self.status)
-        toolbar.addWidget(self.anki_button)
+        toolbar.addWidget(self.translate)
         toolbar.addWidget(self.copy_button)
         toolbar.addWidget(close)
         layout.addWidget(self.actions_row)
@@ -1906,13 +1908,8 @@ class QuickLookupWindow(QDialog):
         if self._shutting_down:
             return
         self.mode_row.hide()
-        container = self.actions_row if self._peek else self.header
-        if self.audio_actions.parentWidget() is not container:
-            if self._peek:
-                container.layout().insertWidget(container.layout().indexOf(self.anki_button), self.audio_actions)
-            else:
-                container.layout().addWidget(self.audio_actions, 0, Qt.AlignmentFlag.AlignRight)
-        self.header.setVisible(not self._peek)
+        self.search.setVisible(not self._peek)
+        self.header.setVisible(not self._peek or self.is_pinned)
         self.audio_actions.setVisible(not self._peek or self.is_pinned)
 
     def open_search(self, text="", *, at_cursor=False, passive=False, selection=False):
@@ -2062,8 +2059,9 @@ class QuickLookupWindow(QDialog):
         enabled = self.settings.value(f"profiles/{self.preferred_foreign}/anki/enabled", False, bool)
         saved = self._anki_saved_revision == self.revision
         ready = (enabled and self._result is not None and bool(self._result.entries)
-                 and self._display_revision == self.revision and self._anki_task is None and not saved)
-        description = "Adding to Anki…" if self._anki_task is not None else "Added to Anki" if saved else "Add to Anki"
+                 and self._display_revision == self.revision and self._anki_task is None
+                 and self._anki_browse_task is None)
+        description = "Adding to Anki…" if self._anki_task is not None else "Show in Anki" if saved else "Add to Anki"
         icon = "anki_saved" if saved else "anki"
         self.anki_button.setProperty("action_name", icon)
         self.anki_button.setIcon(action_icon(icon, config.color_foreground))
@@ -2074,15 +2072,24 @@ class QuickLookupWindow(QDialog):
         if hasattr(self, "anki_shortcut"):
             binding = self.settings.value(f"profiles/{self.preferred_foreign}/anki/shortcut", "")
             self.anki_shortcut.setKey(QKeySequence(binding))
-            self.anki_shortcut.setEnabled(ready and bool(binding))
+            self.anki_shortcut.setEnabled(ready and not saved and bool(binding))
 
     def add_to_anki(self):
-        from meikipop.anki import load_settings
+        from meikipop.anki import AnkiClient, load_settings
         from meikipop.gui.anki import AnkiTask, export_note
         options = load_settings(self.settings, self.preferred_foreign)
         if not options.enabled or self._display_revision != self.revision or not self._result or not self._result.entries:
             return
-        if self._anki_task is not None or self._anki_saved_revision == self.revision:
+        if self._anki_task is not None or self._anki_browse_task is not None:
+            return
+        if self._anki_saved_revision == self.revision:
+            note_id, saved_options = self._anki_saved_note
+            self._anki_browse_task = AnkiTask(
+                lambda: AnkiClient(saved_options).call("guiBrowse", query=f"nid:{note_id}"),
+                self.revision, self)
+            self._anki_browse_task.finished.connect(self._anki_browse_finished)
+            self.update_anki()
+            self._anki_browse_task.thread.start()
             return
         if not options.deck or not options.model or not options.fields:
             self.open_settings()
@@ -2096,7 +2103,7 @@ class QuickLookupWindow(QDialog):
         self._anki_task = AnkiTask(
             lambda: export_note(entries, sentence, selection, options, translation=translation,
                                 screenshot=screenshot, directory=directory, audio_clip=audio_clip, kanji=kanji),
-            (self.revision, entries[0].term), self)
+            (self.revision, entries[0].term, options), self)
         self._anki_task.finished.connect(self._anki_finished)
         self.show_message("")
         self.update_anki()
@@ -2105,11 +2112,20 @@ class QuickLookupWindow(QDialog):
     def _anki_finished(self, response):
         task, self._anki_task = self._anki_task, None
         task.deleteLater()
-        (revision, word), note_id, error = response
+        (revision, word, options), note_id, error = response
         if not error:
             self._anki_saved_revision = revision
+            self._anki_saved_note = (note_id, options)
         if error:
             self.show_message(error if self._display_revision == revision else f"{word}: {error}")
+        self.update_anki()
+
+    def _anki_browse_finished(self, response):
+        self._anki_browse_task.deleteLater()
+        self._anki_browse_task = None
+        revision, _, error = response
+        if self._display_revision == revision:
+            self.show_message(error)
         self.update_anki()
 
     def play_audio(self, *, sentence=False, translation=False, source=None):
