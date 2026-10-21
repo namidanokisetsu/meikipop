@@ -48,6 +48,10 @@ Disclosure preserves the scroll offset; streaming text retains its text anchor.
 Japanese headword and compact-card kanji links share one detail pane below the
 dictionary viewport. Selection replaces its contents without rebuilding the
 dictionary document; the layout shares available height without resizing the window.
+Kanji summaries merge exact duplicate values across available sources, retain
+source attribution and show conflicting stroke counts separately. More appends
+source-specific reference fields without rebuilding the summary. Unstructured
+dictionary text stays verbatim; Anki exports retain complete source records.
 Automatic popup fitting stays separate from the user's chosen reading size.
 Pinning batches content and layout changes and completes fitting before repainting.
 Preview defaults to one definition without grammar labels; pinned results have no definition cutoff.

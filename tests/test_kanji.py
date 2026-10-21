@@ -1,10 +1,48 @@
 import unittest
 
 from meikipop.dictionary.kanji import KanjiEntry, from_legacy, kanji_characters
-from meikipop.gui.kanji_panel import render_kanji
+from meikipop.gui.kanji_panel import render_kanji, render_kanji_details, render_kanji_extra
 
 
 class KanjiTests(unittest.TestCase):
+    def test_summary_merges_exact_duplicates_for_any_number_of_sources(self):
+        records = tuple(KanjiEntry("猫", source, ("ビョウ",), ("ねこ",), ("cat",),
+                                  stats=(("strokes", "11"), ("halpern", "123")))
+                        for source in ("One", "Two", "Three"))
+        for count in (1, 2, 3):
+            with self.subTest(count=count):
+                html = render_kanji_details(records[:count])
+                for value in (">cat</span>", ">ビョウ</span>", ">ねこ</span>", "Strokes 11"):
+                    self.assertEqual(html.count(value), 1)
+                self.assertNotIn("halpern", html)
+                for record in records[:count]:
+                    self.assertIn(record.source, html)
+                    self.assertIn(record.source, render_kanji_extra(records[:count]))
+
+    def test_missing_fields_and_conflicting_strokes_keep_source_information(self):
+        records = (KanjiEntry("猫", "Readings", onyomi=("ビョウ",)),
+                   KanjiEntry("猫", "Meanings", meanings=("cat",), stats=(("stroke_count", "11"),)),
+                   KanjiEntry("猫", "Other", stats=(("strokes", "12"), ("custom", "<value>"))))
+        html = render_kanji_details(records)
+        self.assertIn("cat", html)
+        self.assertIn("ビョウ", html)
+        self.assertIn("Strokes 11</small> <small>(Meanings)", html)
+        self.assertIn("Strokes 12</small> <small>(Other)", html)
+        self.assertNotIn("custom", html)
+        self.assertIn("&lt;value&gt;", render_kanji_extra(records))
+        self.assertEqual(render_kanji_extra(records[:1]), "")
+        self.assertEqual(render_kanji_details(()), "")
+
+    def test_components_and_examples_are_deduplicated_without_losing_data(self):
+        records = tuple(KanjiEntry("猫", source, components=({"c": "田", "m": "field"},),
+                                  examples=({"w": "子猫", "r": "こねこ", "m": "kitten"},))
+                        for source in ("One", "Two"))
+        html = render_kanji_details(records)
+        self.assertEqual(html.count("field"), 1)
+        self.assertEqual(html.count("kitten"), 1)
+        self.assertIn("Parts", html)
+        self.assertIn("Examples", html)
+
     def test_characters_preserve_order_and_include_extensions(self):
         self.assertEqual(kanji_characters("日本語の日本𠮷"), ("日", "本", "語", "𠮷"))
         self.assertEqual(kanji_characters("日本語", 2), ("日", "本"))
@@ -89,7 +127,7 @@ class KanjiTests(unittest.TestCase):
         detailed = render_kanji(entries, compact_only=True, expanded_characters={"日"})
         self.assertIn('href="kanji:%E6%97%A5" title="Collapse"', detailed)
         for value in ("First", "Second", "day", "sun", "date", "ニチ", "ジツ", "ひ", "か",
-                      "Strokes 4", "Grade 1", "grade1", "jlptN5", "one", "Japan"):
+                      "Strokes 4", "Grade</small> 1", "grade1", "jlptN5", "one", "Japan"):
             self.assertIn(value, detailed)
         self.assertGreaterEqual(detailed.count('<table width="100%"'), 2)
 

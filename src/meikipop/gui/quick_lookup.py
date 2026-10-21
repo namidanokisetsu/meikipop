@@ -1036,6 +1036,12 @@ class QuickLookupWindow(QDialog):
         kanji_header = QHBoxLayout()
         kanji_header.addWidget(QLabel("Kanji"))
         kanji_header.addStretch()
+        self.kanji_more = QToolButton()
+        self.kanji_more.setText("More")
+        self.kanji_more.setToolTip("Dictionary reference fields")
+        self.kanji_more.setCheckable(True)
+        self.kanji_more.toggled.connect(self._toggle_kanji_more)
+        kanji_header.addWidget(self.kanji_more)
         self.kanji_close = self._action("close", "Close kanji")
         self.kanji_close.clicked.connect(self._close_kanji)
         kanji_header.addWidget(self.kanji_close)
@@ -1049,6 +1055,8 @@ class QuickLookupWindow(QDialog):
         layout.addWidget(self.kanji_panel, 1)
         self.kanji_panel.hide()
         self._kanji_html = ""
+        self._kanji_extra_html = ""
+        self._kanji_more_start = None
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.status.hide()
@@ -1845,14 +1853,39 @@ class QuickLookupWindow(QDialog):
         self.fit_timer.stop()
         self._render_kanji_panel()
 
+    def _toggle_kanji_more(self, expanded):
+        from meikipop.gui.section_scroll import ReadingPosition
+        position = ReadingPosition(self.kanji_browser)
+        cursor = QTextCursor(self.kanji_browser.document())
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.beginEditBlock()
+        if expanded:
+            self._kanji_more_start = cursor.position()
+            cursor.insertBlock()
+            cursor.insertHtml(self._kanji_extra_html)
+        elif self._kanji_more_start is not None:
+            cursor.setPosition(self._kanji_more_start, QTextCursor.MoveMode.KeepAnchor)
+            cursor.removeSelectedText()
+            self._kanji_more_start = None
+        cursor.endEditBlock()
+        self.kanji_more.setText("Less" if expanded else "More")
+        position.restore(self.kanji_browser, preserve_scroll=True)
+
     def _render_kanji_panel(self):
-        from meikipop.gui.kanji_panel import render_kanji_details
+        from meikipop.gui.kanji_panel import render_kanji_details, render_kanji_extra
         entries = tuple(entry for entry in self._result.kanji if entry.character in self._kanji_details) if self._result else ()
         visible = bool(entries) and not self._translation_view and not (self._peek and not self.is_pinned)
         html = render_kanji_details(entries) if visible else ""
-        if html != self._kanji_html:
+        extra = render_kanji_extra(entries) if visible else ""
+        if (html, extra) != (self._kanji_html, self._kanji_extra_html):
+            with QSignalBlocker(self.kanji_more):
+                self.kanji_more.setChecked(False)
+            self.kanji_more.setText("More")
+            self._kanji_more_start = None
             self.kanji_browser.setHtml(html)
             self._kanji_html = html
+            self._kanji_extra_html = extra
+        self.kanji_more.setVisible(bool(extra))
         self.kanji_panel.setVisible(visible)
 
     def _link(self, url):

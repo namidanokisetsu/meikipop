@@ -28,6 +28,8 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
 - **Kanji:** click a character in the headword or bottom cards to open its detail
   pane. Another character replaces it. Click the same character again or use
   the pane's close button to hide it.
+  The pane combines shared meanings and readings from your dictionaries;
+  **More** reveals reference fields and tags, grouped by source.
 
 Screen lookup freezes the image while Shift is held. For changing subtitles,
 release and press Shift again, or turn off **Freeze capture while holding the

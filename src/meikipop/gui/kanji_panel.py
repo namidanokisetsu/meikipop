@@ -1,5 +1,6 @@
 """Compact Qt rich-text kanji cards; expand details without another window."""
 from html import escape
+from dataclasses import replace
 from urllib.parse import quote
 
 
@@ -97,7 +98,42 @@ def _character_link(character, accent, expanded, scheme="kanji"):
             f'style="color:{accent};text-decoration:none">{_text(character)}</a>')
 
 
-def render_kanji_details(entries, scheme="kanji"):
+def _shared_values(entries, field):
+    values = []
+    for entry in entries:
+        for value in getattr(entry, field):
+            if value is None or not str(value):
+                continue
+            match = next((item for item in values if item[0] == value), None)
+            if match is None:
+                match = (value, [])
+                values.append(match)
+            if entry.source and entry.source not in match[1]:
+                match[1].append(entry.source)
+    return values
+
+
+def _attributed(value, sources):
+    return f'<span title="{_text(" · ".join(sources))}">{_text(value)}</span>'
+
+
+def render_kanji_extra(entries):
+    """Keep unknown fields available under their original source."""
+    parts = []
+    for entry in entries:
+        stats = [(name, value) for name, value in _stats_rows(entry.stats)
+                 if name != "Strokes" and value is not None and str(value)]
+        if not stats and not entry.tags:
+            continue
+        parts.append(f'<p><small><b>{_text(entry.source or "Dictionary")}</b></small></p>')
+        for name, value in stats:
+            parts.append(f'<p style="margin:0"><small>{_text(name)}</small> {_text(value)}</p>')
+        if entry.tags:
+            parts.append(f'<p style="margin:0"><small>Tags</small> {_joined(entry.tags)}</p>')
+    return "".join(parts)
+
+
+def render_kanji_details(entries, scheme="kanji", *, more=False):
     if not entries:
         return ""
     from meikipop.config.config import config
@@ -108,12 +144,42 @@ def render_kanji_details(entries, scheme="kanji"):
     family = stroke_order_family(character) if getattr(config, "kanji_stroke_order", True) else ""
     glyph_style = f'font-size:128px;font-family:{_text(family)}' if family else 'font-size:96px'
     anchor = quote(f"{scheme}:{character}", safe="")
-    parts = [f'<p style="margin:2px 0 1px"><a name="kanji-detail-{anchor}"></a>'
-             f'<span style="{glyph_style}">{_character_link(character, accent, True, scheme)}</span></p>',
-             '<table width="100%" cellspacing="0" cellpadding="1">']
+    parts = ['<table width="100%" cellspacing="0" cellpadding="1"><tr><td valign="top">',
+             f'<a name="kanji-detail-{anchor}"></a><span style="{glyph_style}">'
+             f'{_character_link(character, accent, True, scheme)}</span></td><td valign="top">']
+    sources = tuple(dict.fromkeys(entry.source for entry in entries if entry.source))
+    if sources:
+        parts.append(f'<p style="margin:0"><small>{_joined(sources)}</small></p>')
+    for label, field in (("Meanings", "meanings"), ("音", "onyomi"), ("訓", "kunyomi")):
+        values = _shared_values(entries, field)
+        if values:
+            color = reading_color if field != "meanings" else _text(config.color_foreground)
+            text = " · ".join(_attributed(value, sources) for value, sources in values)
+            parts.append(f'<p style="margin:2px 0"><small>{label}</small><br>'
+                         f'<span style="color:{color}">{text}</span></p>')
+    strokes = {}
     for entry in entries:
-        parts.append(f'<tr><td valign="top">{_entry_html(entry, reading_color, full=True, show_source=True)}</td></tr>')
+        for name, value in _stats_rows(entry.stats):
+            if name == "Strokes" and value is not None and str(value):
+                sources = strokes.setdefault(str(value), [])
+                if entry.source and entry.source not in sources:
+                    sources.append(entry.source)
+    for value, sources in strokes.items():
+        source = f' <small>({_joined(sources)})</small>' if len(strokes) > 1 and sources else ""
+        parts.append(f'<p style="margin:2px 0"><small>Strokes {_text(value)}</small>{source}</p>')
+    parts.append('</td></tr>')
     parts.append('</table>')
+    for field in ("components", "examples"):
+        groups = {}
+        for value, sources in _shared_values(entries, field):
+            groups.setdefault(tuple(sources), []).append(value)
+        for sources, values in groups.items():
+            fields = {"components": (), "examples": (), field: tuple(values)}
+            item = replace(entries[0], source=" · ".join(sources), meanings=(), onyomi=(), kunyomi=(),
+                           stats=(), tags=(), **fields)
+            parts.append(_entry_html(item, reading_color, full=True, show_source=len(entries) > 1))
+    if more:
+        parts.append(render_kanji_extra(entries))
     return "".join(parts)
 
 
@@ -159,5 +225,5 @@ def render_kanji(entries, expanded=False, *, compact_only=False, expanded_charac
     for character, group in groups:
         if character not in detailed:
             continue
-        parts.append(render_kanji_details(group))
+        parts.append(render_kanji_details(group, more=True))
     return "".join(parts)

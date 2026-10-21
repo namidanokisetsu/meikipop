@@ -2148,7 +2148,9 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("Kanji A", text)
         self.assertIn("Kanji B", text)
         self.assertIn("Strokes 11", text)
-        self.assertIn("Grade 8", text)
+        self.assertNotIn("Grade", text)
+        self.window.kanji_more.click()
+        self.assertIn("Grade", self.window.kanji_browser.toPlainText())
         self.assertNotIn("Strokes 4", text)
         self.window._display(SearchResult("犬", "ja", "en", (entry("犬"),)))
         self.assertTrue(self.window.kanji_panel.isHidden())
@@ -2212,6 +2214,34 @@ class QuickLookupTests(unittest.TestCase):
         self.assertTrue(self.window.kanji_panel.isHidden())
         self.assertEqual(browser.verticalScrollBar().value(), scroll)
         self.assertEqual(browser.textCursor().selectedText(), selection)
+
+    def test_kanji_more_preserves_summary_selection_and_dictionary_document(self):
+        kanji = (KanjiEntry("猫", "One", meanings=("cat",),
+                           stats=(("strokes", "11"), ("halpern", "123"))),
+                 KanjiEntry("犬", "Two", meanings=("dog",)))
+        self.window.show_entries((entry("猫犬"),), kanji=kanji)
+        self.window._link(QUrl("kanji:猫"))
+        self.app.processEvents()
+        browser = self.window.kanji_browser
+        browser.setTextCursor(browser.document().find("cat"))
+        geometry = self.window.geometry()
+        revision = self.window.browser.document().revision()
+        for _ in range(2):
+            self.window.kanji_more.click()
+            self.app.processEvents()
+            self.assertIn("halpern", browser.toPlainText())
+            self.assertEqual(browser.textCursor().selectedText(), "cat")
+            self.window.kanji_more.click()
+            self.app.processEvents()
+            self.assertNotIn("halpern", browser.toPlainText())
+            self.assertEqual(browser.textCursor().selectedText(), "cat")
+            self.assertEqual(self.window.geometry(), geometry)
+            self.assertEqual(self.window.browser.document().revision(), revision)
+        self.window.kanji_more.click()
+        self.window._link(QUrl("kanji:犬"))
+        self.assertTrue(self.window.kanji_more.isHidden())
+        self.assertFalse(self.window.kanji_more.isChecked())
+        self.assertNotIn("halpern", browser.toPlainText())
 
     def test_kanji_pane_fits_short_pinned_results(self):
         self.window.show_entries((entry(),), peek=True,
