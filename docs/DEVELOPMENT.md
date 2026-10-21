@@ -97,6 +97,9 @@ input stays with the source.
 Manual search retains normal focus behavior. Borderless fullscreen uses the same
 native monitor-bounds check. Side buttons page while over the popup and can be
 disabled per profile.
+Unhandled native popup events return `(False, 0)` directly. Calling PyQt's base
+`nativeEvent` can crash Windows handle creation; a hidden native-window fixture
+covers creation, capture exclusion, focus tracking and mouse activation.
 Settings groups lookup and popup bindings in Shortcuts, reusing the key recorder
 and existing Anki shortcut storage. Saved bindings and disabled actions survive
 profile switches. Popup actions yield to text fields, and native action repeats

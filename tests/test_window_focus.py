@@ -1,4 +1,7 @@
 import sys
+import os
+import subprocess
+import textwrap
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -8,6 +11,41 @@ from meikipop.utils.window_focus import (configure_macos_popup, focus_pinned_pop
 
 
 class PopupSpaceTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "Windows native event dispatch")
+    def test_native_popup_handles_window_creation_and_capture_without_crashing(self):
+        code = textwrap.dedent('''
+            import ctypes
+            from ctypes import wintypes
+            from PyQt6.QtWidgets import QApplication, QDialog
+            from meikipop.gui.quick_lookup import QuickLookupWindow
+            from meikipop.utils.capture import exclude_from_capture
+
+            class Popup(QDialog):
+                nativeEvent = QuickLookupWindow.nativeEvent
+                remember_foreground = QuickLookupWindow.remember_foreground
+
+            app = QApplication([])
+            popup = Popup()
+            handle = int(popup.winId())
+            assert handle
+            popup.remember_foreground()
+            exclude_from_capture(popup, True)
+            exclude_from_capture(popup, False)
+            user32 = ctypes.WinDLL("user32")
+            user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+            user32.SendMessageW.restype = ctypes.c_ssize_t
+            popup._fullscreen_overlay = True
+            assert user32.SendMessageW(handle, 0x0021, 0, 0) == 3
+            popup._fullscreen_overlay = False
+            user32.SendMessageW(handle, 0, 0, 0)
+            popup.destroy()
+            app.processEvents()
+        ''')
+        result = subprocess.run([sys.executable, "-X", "faulthandler", "-c", code],
+                                env={**os.environ, "QT_QPA_PLATFORM": "windows"},
+                                capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_windows_fullscreen_uses_monitor_bounds_and_excludes_desktop(self):
         user32 = Mock()
         user32.GetForegroundWindow.return_value = 42

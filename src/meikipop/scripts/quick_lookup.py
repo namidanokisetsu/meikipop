@@ -64,6 +64,19 @@ def main(argv=None):
             raise RuntimeError("Local translation setup is incomplete.")
         from meikipop.gui.first_run import LanguageSuggestion
         from meikipop.gui.dictionary_manager import SetupDialog
+        if sys.platform == "win32":
+            from PyQt6.QtWidgets import QApplication, QDialog
+            from meikipop.gui.quick_lookup import QuickLookupWindow
+
+            class NativePopup(QDialog):
+                nativeEvent = QuickLookupWindow.nativeEvent
+
+            application = QApplication.instance() or QApplication(sys.argv[:1])
+            popup = NativePopup()
+            if not popup.winId():
+                raise RuntimeError("Native popup creation failed.")
+            popup.destroy()
+            application.processEvents()
         if getattr(sys, "frozen", False):
             import json
             from pathlib import Path

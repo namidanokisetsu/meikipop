@@ -2790,7 +2790,9 @@ class QuickLookupWindow(QDialog):
             native = wintypes.MSG.from_address(int(message))
             if native.message == 0x0021:  # WM_MOUSEACTIVATE
                 return True, 3  # MA_NOACTIVATE keeps the fullscreen source active.
-        return super().nativeEvent(event_type, message)
+        # Let Qt dispatch unhandled messages; calling PyQt's base virtual can
+        # crash while Windows is creating the native window handle.
+        return False, 0
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.ShortcutOverride and isinstance(watched, (QLineEdit, QKeySequenceEdit)):

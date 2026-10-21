@@ -31,7 +31,9 @@ jobs:
       - name: check setup flow
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests -p test_first_run.py
+        run: |
+          python -m unittest discover -s tests -p test_first_run.py
+          python -m unittest discover -s tests -p test_window_focus.py
 
       - name: clean previous builds
         run: |
