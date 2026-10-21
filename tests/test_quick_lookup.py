@@ -1831,6 +1831,8 @@ class QuickLookupTests(unittest.TestCase):
     def test_copy_click_closes_after_copy_and_dismiss_does_not_pin(self):
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.set_context("猫がいる。")
+        QTest.mouseClick(self.window.browser.viewport(), Qt.MouseButton.LeftButton)
+        self.assertTrue(self.window.copy_button.isVisible())
         with patch.object(QApplication, "clipboard") as clipboard:
             clipboard.return_value.setText.side_effect = lambda _: self.assertTrue(self.window.is_pinned)
             QTest.mouseClick(self.window.copy_button, Qt.MouseButton.LeftButton)

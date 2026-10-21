@@ -10,6 +10,30 @@ from meikipop.gui.interaction_preferences import enabled
 
 class PendingTests(QuickLookupTests):
     # Reuse the small fake engine and lifetime helpers without re-running its suite.
+    def test_preview_pin_finishes_layout_before_returning(self):
+        from PyQt6.QtCore import QSize
+        for custom in (False, True):
+            for repeat in range(2):
+                with self.subTest(custom=custom, repeat=repeat):
+                    self.window.hide()
+                    self.window._reading_size_custom = custom
+                    self.window._normal_size = QSize(520, 410) if custom else QSize(480, 340)
+                    self.window.show_entries((entry(definitions=tuple(
+                        f"Meaning {i}: " + "description " * 20 for i in range(20))),), "cat", peek=True)
+                    self.app.processEvents()
+                    with patch.object(self.window, "_render", wraps=self.window._render) as render:
+                        self.window.pin.setChecked(True)
+                        geometry = self.window.geometry()
+                        self.assertFalse(self.window.fit_timer.isActive())
+                        self.assertFalse(self.window.render_timer.isActive())
+                        self.app.processEvents()
+                        self.app.processEvents()
+                        render.assert_called_once()
+                    self.assertEqual(self.window.geometry(), geometry)
+                    self.assertTrue(self.window.updatesEnabled())
+                    if custom:
+                        self.assertEqual(self.window.size(), QSize(520, 410))
+
     def test_clear_rejects_late_results_and_audio(self):
         self.window.show_entries((entry(),), "猫")
         self.window.set_context("猫です。")

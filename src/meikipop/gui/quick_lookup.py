@@ -1693,7 +1693,6 @@ class QuickLookupWindow(QDialog):
                     from meikipop.gui.typography import document_font
                     sentence_font = document_font(config.font_family, config.font_size_sentence, self.preferred_foreign)
                     source_text = _compact_context(source_text, sentence_font, width)
-            self._place_actions()
             from meikipop.gui.profile_appearance import DEFAULTS
             identity = (repr(self._result), self.preferred_foreign, tuple(sorted(expanded)),
                         tuple(sorted(self._details_expanded)),
@@ -2434,6 +2433,21 @@ class QuickLookupWindow(QDialog):
             self.hide()
 
     def _pin_changed(self, checked):
+        updates = self.updatesEnabled()
+        self.setUpdatesEnabled(False)
+        self._pin_transition = True
+        try:
+            self._apply_pin(checked)
+            self.fit_timer.stop()
+            self._fit_preview()
+        finally:
+            self._pin_transition = False
+            self.setUpdatesEnabled(updates)
+
+        if checked and self._peek and audio_autoplay_mode(self.settings, self.preferred_foreign) == "pin":
+            self._autoplay()
+
+    def _apply_pin(self, checked):
         if checked:
             self.remember_foreground()
             if self._peek:
@@ -2446,8 +2460,9 @@ class QuickLookupWindow(QDialog):
                 grip.installEventFilter(self)
         if self._peek:
             if checked:
-                self.setMinimumHeight(190)
-                self._resize_expanded()
+                if self._reading_size_custom or self._normal_size != QSize(480, 340):
+                    self.setMinimumHeight(190)
+                    self._resize_expanded()
             elif self._reading_size_custom or self.size() != self._auto_fit_size:
                 self._normal_size = self.size()
         if checked:
@@ -2458,10 +2473,9 @@ class QuickLookupWindow(QDialog):
             QTimer.singleShot(300, lambda: setattr(self, "_opening_search", False))
         self.context_label.hide()
         self._place_actions()
+        self.layout().activate()
+        self.render_timer.stop()
         self._render(preserve_scroll=True)
-
-        if checked and self._peek and audio_autoplay_mode(self.settings, self.preferred_foreign) == "pin":
-            self._autoplay()
 
     def eventFilter(self, watched, event):
         if (event.type() == QEvent.Type.MouseButtonPress and isinstance(watched, QWidget)
@@ -2479,7 +2493,8 @@ class QuickLookupWindow(QDialog):
             mark("paint", self._document_revision)
         if event.type() == QEvent.Type.Resize and hasattr(self, "browser") and watched is self.browser.viewport():
             self._place_actions()
-            if self._peek and self.is_pinned and hasattr(self, "render_timer"):
+            if (self._peek and self.is_pinned and hasattr(self, "render_timer")
+                    and not getattr(self, "_pin_transition", False)):
                 self.render_timer.start(0)
         if (event.type() == QEvent.Type.ToolTip and watched is not self.browser.viewport()
                 and not isinstance(watched, QToolButton)):

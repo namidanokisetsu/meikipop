@@ -49,6 +49,7 @@ Japanese headword and compact-card kanji links share one detail pane below the
 dictionary viewport. Selection replaces its contents without rebuilding the
 dictionary document; the layout shares available height without resizing the window.
 Automatic popup fitting stays separate from the user's chosen reading size.
+Pinning batches content and layout changes and completes fitting before repainting.
 Preview defaults to one definition without grammar labels; pinned results have no definition cutoff.
 Dictionary display preferences only control whether a section starts collapsed.
 Popup actions share the first visible sentence or headword line, reserving their
