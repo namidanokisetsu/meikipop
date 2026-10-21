@@ -135,9 +135,9 @@ class SearchEngine:
         else:
             target = requested_target if translate and requested_target else foreign if source == "en" else "en"
         if translate and target == source:
-            if requested_target:
+            if requested_target and not automatic_source:
                 raise ValueError("Choose different source and target languages.")
-            target = foreign if source == "en" and foreign != "en" else "en"
+            target = next((code for code in reversed(pair or (foreign, "en")) if code != source), "en")
         entries, suggestions, message = (), (), ""
         self._analyses = ()
         matched_length = 0

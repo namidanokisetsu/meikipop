@@ -92,6 +92,8 @@ reuses installed models. Each language can choose its model and translation pair
 **Translate** opens a separate view with the full source and translation.
 Click either language name to change it. **Back** returns to the dictionary
 with its selection and scroll position preserved.
+With an automatic source, a target that matches the detected language switches
+to the other language in the pair.
 Typed phrases use exact dictionary entries when available. Sentences without
 an exact entry and manual word misses use translation; hovering does not.
 The first request loads the model. **Keep model warm** avoids later reloads

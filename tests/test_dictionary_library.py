@@ -363,6 +363,10 @@ class LibraryTests(unittest.TestCase):
             second = engine.search("cat", foreign="ja", pair=("ja", "en"), translate=True)
             self.assertEqual((first.source, first.target), ("ja", "en"))
             self.assertEqual((second.source, second.target), ("en", "ja"))
+            previous_target = engine.search("猫", target="ja", foreign="ja", pair=("ja", "en"), translate=True)
+            self.assertEqual((previous_target.source, previous_target.target), ("ja", "en"))
+            reversed_pair = engine.search("猫", target="ja", foreign="en", pair=("en", "ja"), translate=True)
+            self.assertEqual((reversed_pair.source, reversed_pair.target), ("ja", "en"))
             self.assertEqual(first.entries, ())
             self.assertEqual(second.entries, ())
             manual = engine.search("Merhaba", source="tr", target="ru", foreign="ja",

@@ -1414,6 +1414,18 @@ class QuickLookupTests(unittest.TestCase):
             self.window.translation_worker = None
             dialog.deleteLater()
 
+    def test_automatic_sentence_translation_does_not_reuse_a_matching_target(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        self.settings.setValue("profiles/ja/translation_target", "ja")
+        with patch.object(self.window, "translation_worker", Mock()):
+            self.window.submit(translate=True, context=True)
+            request = self.window.translation_worker.request.call_args
+            self.assertEqual(request.args[2], "ja")
+            self.assertIsNone(request.kwargs["target"])
+            self.assertEqual((self.window._translation_content.source, self.window._translation_content.target), ("ja", "en"))
+        self.assertEqual(self.settings.value("profiles/ja/translation_target"), "ja")
+
     def test_typed_results_are_silent_for_all_autoplay_modes(self):
         self.window.audio = Mock()
         for mode in ("lookup", "pin", "off"):

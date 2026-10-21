@@ -1382,7 +1382,8 @@ class QuickLookupWindow(QDialog):
     def _render_translation(self):
         result = self._translation_content
         self.translation_browser.set_content(result.text, result.translation,
-                                             language_name(result.source), language_name(result.target))
+                                             "Automatic" if result.source == "auto" else language_name(result.source),
+                                             language_name(result.target))
 
     def _leave_translation(self):
         if not self._translation_view:
@@ -1518,9 +1519,15 @@ class QuickLookupWindow(QDialog):
                 source = selected_source
             if selected_target != "auto":
                 target = selected_target
-            display_source = source if source != "auto" else self._result.source if self._result else self.preferred_foreign
+            if selected_source == "auto" and source != "auto" and target == source:
+                target = None
+            display_source = (source if source != "auto" else self._result.source
+                              if self._result and (context or self._result.text == text) else "auto")
             display_target = target or (self.preferred_foreign if display_source == self.foreign.currentData()
                                         else self.foreign.currentData())
+            if selected_source == "auto" and display_target == display_source:
+                display_target = (self.preferred_foreign if display_source == self.foreign.currentData()
+                                  else self.foreign.currentData())
             self._show_translation(text, display_source, display_target)
         from meikipop.dictionary.translation import load_profile_settings
         try:
