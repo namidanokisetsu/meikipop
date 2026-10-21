@@ -5,7 +5,7 @@ import threading
 
 from PyQt6.QtCore import QObject, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget,
+    QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget,
     QInputDialog, QLineEdit, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -138,6 +138,7 @@ class SetupDialog(QDialog):
         layout = QVBoxLayout(self)
         profile_row = QHBoxLayout()
         self.profile = QComboBox()
+        self.profile.setToolTip("Active lookup language and its settings")
         for code in visible_profiles(settings):
             self.profile.addItem(language_name(code), code)
         self.profile.setCurrentIndex(max(0, self.profile.findData(settings.value("profile", ""))))
@@ -214,6 +215,7 @@ class SetupDialog(QDialog):
         self.translation_mode.addItem("Quality (8 GB)", "quality")
         self.translation_mode.addItem("Lightweight (1.9 GB)", "lightweight")
         self.translation_mode.addItem("Custom local server", "custom")
+        self.translation_mode.setToolTip("Sizes are downloads. Running a model needs additional memory.")
         translation_form.addRow("Model", self.translation_mode)
         self.translation_endpoint = QLineEdit()
         self.translation_endpoint.setAccessibleName("Local translation server address")
@@ -256,6 +258,8 @@ class SetupDialog(QDialog):
 
         shortcuts = QWidget()
         shortcut_layout = QFormLayout(shortcuts)
+        shared_shortcuts = QGroupBox("All languages")
+        shared_layout = QFormLayout(shared_shortcuts)
         self.scan_key = QComboBox()
         for label, value in (("None", ""), ("Shift", "shift"), ("Ctrl", "ctrl"), ("Alt", "alt"),
                              ("Ctrl + Shift", "ctrl+shift"), ("Ctrl + Alt", "ctrl+alt"), ("Alt + Shift", "alt+shift")):
@@ -273,11 +277,10 @@ class SetupDialog(QDialog):
         self.pin_shortcut.enabled.setText("Key")
         self.pin_shortcut.enabled.setToolTip("Enable keyboard pinning")
         self.pin_shortcut.setToolTip("Pin the preview while holding the screen lookup shortcut")
-        default_search = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
-        self.shortcut = ShortcutEdit(settings.value("hotkey", default_search),
+        self.shortcut = ShortcutEdit(settings.value("hotkey", ""),
                                      settings.value("hotkey_preset", shortcut_preset()))
         self.shortcut.setToolTip("Look up selected or copied text. Shared by all languages.")
-        shortcut_layout.addRow("Text lookup", self.shortcut)
+        shared_layout.addRow("Text lookup", self.shortcut)
         self.selected_text = QCheckBox("Look up selected text automatically")
         shortcut_layout.addRow(self.selected_text)
         self.selected_text.toggled.connect(self.save_text_triggers)
@@ -289,7 +292,7 @@ class SetupDialog(QDialog):
             self.start_with_windows = QCheckBox("Start with Windows")
             self.start_with_windows.setChecked(is_startup_enabled())
             self.start_with_windows.toggled.connect(self.save_startup)
-            shortcut_layout.addRow(self.start_with_windows)
+            shared_layout.addRow(self.start_with_windows)
 
         scanning = QWidget()
         scan_layout = QFormLayout(scanning)
@@ -297,7 +300,7 @@ class SetupDialog(QDialog):
         self.freeze_while_held = QCheckBox("Freeze capture while holding the lookup key")
         self.freeze_while_held.setToolTip("One screenshot per hold. Release to refresh; the video keeps playing.")
         scan_layout.addRow(self.freeze_while_held)
-        self.freeze_while_held.toggled.connect(lambda _: self.autosave(self.save_scan_settings))
+        self.freeze_while_held.toggled.connect(lambda _: self.autosave(self.save_capture_settings))
         self.pin_gesture = QComboBox()
         for label, code in (("Left click", "left"), ("Middle click", "middle"),
                             ("Popup click only", "popup")):
@@ -430,11 +433,12 @@ class SetupDialog(QDialog):
         self.translation_stream.toggled.connect(lambda _: self.autosave(self.save_translation))
         self.translation_warm.toggled.connect(lambda _: self.autosave(lambda: self.save_translation(cancel=False)))
         for control in (self.scan_key, self.scan_mouse):
-            control.currentIndexChanged.connect(lambda _: self.autosave(self.save_shortcut))
-        for control in (self.shortcut, self.pin_shortcut):
-            control.recorder.editingFinished.connect(lambda: self.autosave(self.save_shortcut))
-            control.enabled.toggled.connect(lambda _: self.autosave(self.save_shortcut))
-        for control in (self.pin_gesture, self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider):
+            control.currentIndexChanged.connect(lambda _: self.autosave(self.save_screen_shortcut))
+        for control, callback in ((self.shortcut, self.save_shortcut), (self.pin_shortcut, self.save_pin_shortcut)):
+            control.recorder.editingFinished.connect(lambda callback=callback: self.autosave(callback))
+            control.enabled.toggled.connect(lambda _, callback=callback: self.autosave(callback))
+        self.pin_gesture.currentIndexChanged.connect(lambda _: self.autosave(self.save_capture_settings))
+        for control in (self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider):
             control.currentIndexChanged.connect(lambda _: self.autosave(self.save_scan_settings))
         self.screenai_directory.editingFinished.connect(lambda: self.autosave(self.save_scan_settings))
         self.audio_volume.valueChanged.connect(lambda _: self.autosave(self.save_audio))
@@ -460,6 +464,7 @@ class SetupDialog(QDialog):
         self.screen_section = SettingsSection("Screen recognition", scanning)
         self.screen_section.toggle.setChecked(not self.resources.ocr_section.isHidden())
         lookup_layout.addWidget(self.screen_section)
+        lookup_layout.addWidget(shared_shortcuts)
         lookup_layout.addStretch()
         self.lookup_tab = add_page(lookup, "Lookup")
         add_page(dictionaries, "Dictionaries")
@@ -674,20 +679,48 @@ class SetupDialog(QDialog):
         try:
             from meikipop.gui.text_shortcuts import validate_shortcuts
             validate_shortcuts((self.shortcut.text(),))
-            from meikipop.gui.turkish.desktop_input import validate_pin_shortcut
-            validate_pin_shortcut(self.pin_shortcut.text())
             warning = self._apply_shortcut(self.shortcut.text(), self.shortcut.recorder.keySequence().toString())
-            bindings = ",".join(value for value in (self.scan_key.currentData(), self.scan_mouse.currentData()) if value)
-            self.settings.setValue(f"profiles/{self.profile.currentData()}/scan_bindings", bindings)
-            self.settings.setValue(f"profiles/{self.profile.currentData()}/pin_shortcut", self.pin_shortcut.text())
-            self.settings.setValue(f"profiles/{self.profile.currentData()}/pin_shortcut_preset", self.pin_shortcut.recorder.keySequence().toString())
-            self.settings.setValue(f"profiles/{self.profile.currentData()}/selected_text", self.selected_text.isChecked())
-            if self.parent() is not None:
-                self.parent().set_mode(self.profile.currentData())
-                self.parent().scan_settings_changed.emit()
             self.status.setText(warning if isinstance(warning, str) and warning else "")
         except (ValueError, OSError, RuntimeError) as error:
+            with QSignalBlocker(self.shortcut.enabled), QSignalBlocker(self.shortcut.recorder):
+                self.shortcut.set_value(self.settings.value("hotkey", ""),
+                                        self.settings.value("hotkey_preset", shortcut_preset()))
             self.status.setText(str(error))
+
+    def save_screen_shortcut(self):
+        bindings = ",".join(value for value in (self.scan_key.currentData(), self.scan_mouse.currentData()) if value)
+        self.settings.setValue(f"profiles/{self.profile.currentData()}/scan_bindings", bindings)
+        self.notify_scan_settings()
+
+    def save_pin_shortcut(self):
+        prefix = f"profiles/{self.profile.currentData()}/"
+        try:
+            from meikipop.gui.turkish.desktop_input import validate_pin_shortcut
+            value = self.pin_shortcut.text()
+            validate_pin_shortcut(value)
+        except ValueError as error:
+            with QSignalBlocker(self.pin_shortcut.enabled), QSignalBlocker(self.pin_shortcut.recorder):
+                self.pin_shortcut.set_value(self.settings.value(prefix + "pin_shortcut", "c"),
+                                            self.settings.value(prefix + "pin_shortcut_preset", "C"))
+            self.status.setText(str(error))
+            return
+        self.settings.setValue(prefix + "pin_shortcut", value)
+        self.settings.setValue(prefix + "pin_shortcut_preset", self.pin_shortcut.recorder.keySequence().toString())
+        self.notify_scan_settings()
+        self.status.clear()
+
+    def notify_scan_settings(self):
+        if self.parent() is not None:
+            self.parent().set_mode(self.profile.currentData())
+            self.parent().scan_settings_changed.emit()
+
+    def save_capture_settings(self):
+        prefix = f"profiles/{self.profile.currentData()}/"
+        self.settings.setValue(prefix + "pin_gesture", self.pin_gesture.currentData())
+        self.settings.setValue(prefix + "freeze_while_held", self.freeze_while_held.isChecked())
+        self.notify_scan_settings()
+        if self.parent() is not None:
+            self.parent()._render()
 
     def save_scan_settings(self):
         component_directory = self.screenai_directory.text().strip()
@@ -697,11 +730,11 @@ class SetupDialog(QDialog):
             try:
                 find_component_directory(component_directory or None)
             except RuntimeError as error:
+                self.update_ocr_controls()
+                self.screenai_directory.setText(self.settings.value("screenai_directory", ""))
                 self.status.setText(str(error))
                 return
         prefix = f"profiles/{self.profile.currentData()}/"
-        self.settings.setValue(prefix + "pin_gesture", self.pin_gesture.currentData())
-        self.settings.setValue(prefix + "freeze_while_held", self.freeze_while_held.isChecked())
         if provider.currentData() is not None:
             self.settings.setValue(prefix + "ocr_provider", provider.currentData())
         self.settings.setValue("screenai_directory", component_directory)
@@ -967,6 +1000,15 @@ class SetupDialog(QDialog):
             self.status.setText(str(error))
             return False
 
+    def set_operation_busy(self, busy):
+        for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button, self.remove_profile_button,
+                        self.packs, self.up, self.down, self.language,
+                        self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
+                        self.translation_partner, self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
+                        self.translation_model):
+            control.setEnabled(not busy)
+        self.remove_profile_button.setEnabled(not busy and self.profile.count() > 1)
+
     def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None, fonts=False):
         if self.operation is not None:
             return
@@ -976,12 +1018,7 @@ class SetupDialog(QDialog):
         self.operation.finished.connect(self._finished)
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
-        for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button, self.remove_profile_button,
-                        self.packs, self.up, self.down, self.language,
-                        self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
-                        self.translation_partner, self.translation_mode, self.translation_source, self.translation_target, self.translation_endpoint,
-                        self.translation_model):
-            control.setEnabled(False)
+        self.set_operation_busy(True)
         self.operation.start()
         self.resources.refresh()
 
@@ -999,11 +1036,7 @@ class SetupDialog(QDialog):
             self.settings.setValue("screenai_directory", component)
         self.operation = None
         self.cancel_button.setVisible(False)
-        for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button,
-                        self.packs, self.up, self.down, self.language,
-                        self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
-                        self.translation_partner, self.translation_mode, self.translation_source, self.translation_target):
-            control.setEnabled(True)
+        self.set_operation_busy(False)
         self.update_translation_controls()
         self.update_ocr_controls()
         self.reload(preserve=True)

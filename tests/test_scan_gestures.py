@@ -324,6 +324,60 @@ class ScanSettingsTests(unittest.TestCase):
                 dialog.deleteLater()
                 self.app.processEvents()
 
+    def test_invalid_shortcuts_do_not_block_independent_settings(self):
+        from meikipop.gui.dictionary_manager import SetupDialog
+        with tempfile.TemporaryDirectory() as temp:
+            settings = QSettings(str(Path(temp) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
+            apply_shortcut = Mock()
+            dialog = SetupDialog(Path(temp) / "library", settings, apply_shortcut)
+            try:
+                self.assertFalse(dialog.shortcut.enabled.isChecked())
+                self.assertFalse(dialog.shortcut.recorder.keySequence().isEmpty())
+                dialog.shortcut.enabled.setChecked(True)
+                apply_shortcut.reset_mock()
+                dialog.shortcut.recorder.clear()
+                dialog.pin_shortcut.recorder.clear()
+                dialog.scan_key.setCurrentIndex(dialog.scan_key.findData("ctrl"))
+                self.assertEqual(settings.value("profiles/ja/scan_bindings"), "ctrl,middle")
+                apply_shortcut.assert_not_called()
+                dialog.pin_shortcut.recorder.setKeySequence(QKeySequence("X"))
+                dialog.pin_shortcut.recorder.editingFinished.emit()
+                self.assertEqual(settings.value("profiles/ja/pin_shortcut"), "x")
+                dialog.pin_shortcut.recorder.setKeySequence(QKeySequence("Esc"))
+                dialog.pin_shortcut.recorder.editingFinished.emit()
+                self.assertEqual(dialog.pin_shortcut.text(), "x")
+                self.assertTrue(dialog.status.text())
+                dialog.shortcut.recorder.editingFinished.emit()
+                self.assertFalse(dialog.shortcut.enabled.isChecked())
+                self.assertTrue(dialog.status.text())
+            finally:
+                dialog.deleteLater()
+                self.app.processEvents()
+
+    def test_invalid_ocr_component_restores_provider_without_blocking_capture_settings(self):
+        from meikipop.gui.dictionary_manager import SetupDialog
+        with tempfile.TemporaryDirectory() as temp:
+            settings = QSettings(str(Path(temp) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
+            dialog = SetupDialog(Path(temp) / "library", settings, Mock())
+            try:
+                previous = dialog.ja_ocr_provider.currentData()
+                with patch("meikipop.ocr.providers.screenai.component.find_component_directory",
+                           side_effect=RuntimeError("Component missing")):
+                    dialog.screenai_directory.setText(str(Path(temp) / "missing"))
+                    dialog.ja_ocr_provider.setCurrentIndex(dialog.ja_ocr_provider.findData("screenai"))
+                    self.assertEqual(dialog.ja_ocr_provider.currentData(), previous)
+                    self.assertEqual(dialog.screenai_directory.text(), "")
+                    self.assertEqual(dialog.status.text(), "Component missing")
+                    dialog.freeze_while_held.setChecked(False)
+                    dialog.pin_gesture.setCurrentIndex(dialog.pin_gesture.findData("popup"))
+                    self.assertFalse(settings.value("profiles/ja/freeze_while_held", True, bool))
+                    self.assertEqual(settings.value("profiles/ja/pin_gesture"), "popup")
+            finally:
+                dialog.deleteLater()
+                self.app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2463,8 +2463,7 @@ class QuickLookupWindow(QDialog):
         return warning
 
     def restore_shortcut(self, explicit=None):
-        default = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
-        binding = explicit if explicit is not None else self.settings.value("hotkey", default)
+        binding = explicit if explicit is not None else self.settings.value("hotkey", "")
         self.apply_shortcut(binding)
 
     def shutdown(self):

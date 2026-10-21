@@ -68,7 +68,7 @@ class ProfileAppearance(QWidget):
         self.theme = QComboBox()
         self.theme.addItems(THEMES)
         form.addRow("Theme", self.theme)
-        self.compact_preview = QCheckBox("Compact preview")
+        self.compact_preview = QCheckBox("First dictionary only")
         self.compact_preview.setToolTip("First matching dictionary; pin to show all dictionaries")
         preview_form.addRow(self.compact_preview)
         self.preview_frequency = QCheckBox("Frequency")
@@ -111,12 +111,14 @@ class ProfileAppearance(QWidget):
                 ("font_size_header", "Word size", 10, 72),
                 ("font_size_definitions", "Definition size", 10, 48),
                 ("furigana_scale", "Furigana size", 30, 100),
-                ("scale", "Text size", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
+                ("scale", "Text scale", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
             widget = QSpinBox()
             widget.setRange(minimum, maximum)
             if key in ("furigana_scale", "scale", "background_opacity"):
                 widget.setSuffix("%")
             self.controls[key] = widget
+            if key == "scale":
+                widget.setToolTip("Scales word and definition sizes together")
             (form if key in ("scale", "background_opacity") else detail_form).addRow(label, widget)
         for key, label in (("color_background", "Background"), ("color_foreground", "Text"),
                            ("color_highlight_word", "Word"), ("color_highlight_reading", "Reading")):

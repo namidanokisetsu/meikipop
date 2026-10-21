@@ -31,6 +31,31 @@ class ResourceTests(unittest.TestCase):
                 (root / "model.gguf").write_bytes(b"partial")
                 self.assertFalse(translation_ready("lightweight"))
 
+    def test_setup_completion_restores_controls_after_success_cancel_or_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
+            settings.setValue("profiles/tr/target", "en")
+            with patch("meikipop.gui.resources.ocr_ready", return_value=True), \
+                    patch("meikipop.gui.resources.translation_ready", return_value=False), \
+                    patch("meikipop.gui.dictionary_manager.SetupOperation.start"):
+                dialog = SetupDialog(Path(directory) / "library", settings, Mock())
+                try:
+                    dialog.translation_mode.setCurrentIndex(dialog.translation_mode.findData("custom"))
+                    for status, changed in (("Done", True), ("Cancelled", False), ("Failed", False)):
+                        with self.subTest(status=status):
+                            dialog.begin_operation([])
+                            self.assertFalse(dialog.translation_endpoint.isEnabled())
+                            self.assertFalse(dialog.translation_model.isEnabled())
+                            self.assertFalse(dialog.remove_profile_button.isEnabled())
+                            dialog._finished(status, changed)
+                            self.assertTrue(dialog.translation_endpoint.isEnabled())
+                            self.assertTrue(dialog.translation_model.isEnabled())
+                            self.assertTrue(dialog.remove_profile_button.isEnabled())
+                finally:
+                    dialog.deleteLater()
+                    self.app.processEvents()
+
     def test_removing_recommended_dictionary_restores_download_action(self):
         import threading
         import zipfile

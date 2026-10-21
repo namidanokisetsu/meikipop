@@ -56,7 +56,11 @@ Pinned results have no definition limit. Turkish misses can still show the analy
 grammar, and screen lookup keeps available spelling suggestions.
 These include accent alternatives of recovered Turkish roots, shown as links
 without replacing the original analysis.
-Settings save immediately and most preferences are separate for each language.
+Settings save immediately. The language selector also changes the active lookup
+language; most preferences belong to that language. **Lookup → All languages**
+contains the optional text shortcut and Windows startup setting. The text shortcut
+starts disabled. **First dictionary only** limits preview to the first matching
+dictionary; **Text scale** scales word and definition sizes together.
 
 ## Audio and translation
 

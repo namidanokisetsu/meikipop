@@ -53,6 +53,9 @@ Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;
 preserve Japanese behavior when adding another language. Model weights,
 dictionary packs, generated assets and environments stay outside Git.
+Settings save screen, pin and text shortcuts independently. OCR component
+validation only gates provider setup; rejected choices restore the saved controls.
+Setup jobs share one control list for disabling and restoring their inputs.
 
 Anki's popup action snapshots the lookup and saves once on a worker, including
 glossary conversion and mapped media preparation. `glossary-first` uses the first

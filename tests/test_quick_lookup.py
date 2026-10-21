@@ -2118,13 +2118,18 @@ class QuickLookupTests(unittest.TestCase):
                 self.assertFalse(block.blockFormat().hasProperty(QTextFormat.Property.BlockTrailingHorizontalRulerWidth))
                 block = block.next()
 
-    def test_default_search_shortcut_can_be_disabled(self):
+    def test_search_shortcut_is_opt_in_and_restores_explicit_choice(self):
         self.assertIsNone(self.window._keys)
         with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:
             self.window.restore_shortcut()
+            hotkeys.assert_not_called()
+            self.assertEqual(self.settings.value("hotkey"), "")
             import sys
+            chosen = "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"
+            self.settings.setValue("hotkey", chosen)
+            self.window.restore_shortcut()
             self.assertEqual(self.settings.value("hotkey"),
-                             "<cmd>+<shift>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d")
+                             chosen)
             hotkeys.return_value.start.assert_called_once()
             self.window.apply_shortcut("")
             hotkeys.return_value.stop.assert_called_once()
