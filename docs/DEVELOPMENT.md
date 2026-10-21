@@ -45,6 +45,9 @@ serialized on lookup workers. Missing definitions retain analyses separately
 from dictionary entries. Disclosure edits batch layout updates, and Paddle
 keeps stable per-language scan callbacks so unchanged pixels reuse OCR.
 Disclosure preserves the scroll offset; streaming text retains its text anchor.
+Japanese headword and compact-card kanji links share one detail pane below the
+dictionary viewport. Selection replaces its contents without rebuilding the
+dictionary document; the layout shares available height without resizing the window.
 Automatic popup fitting stays separate from the user's chosen reading size.
 Preview defaults to one definition without grammar labels; pinned results have no definition cutoff.
 Dictionary display preferences only control whether a section starts collapsed.

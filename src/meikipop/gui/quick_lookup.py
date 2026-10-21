@@ -624,13 +624,6 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
         else:
             parts.append(f'<h2><a name="scroll-headword-{group_index}"></a>{display_term_html}{reading_html}{metadata}</h2>')
         parts.append(_metadata(group_entries, show_frequencies=False, show_inflections=show_inflections))
-        if not preview:
-            from meikipop.gui.kanji_panel import render_kanji_details
-            for character in dict.fromkeys(term):
-                if f"head:{group_index}:{character}" in kanji_details:
-                    parts.append(render_kanji_details(
-                        tuple(entry for entry in result.kanji if entry.character == character),
-                        scheme=f"headkanji:{group_index}"))
         for source in sources:
             if source not in dictionaries:
                 continue
@@ -700,7 +693,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
     if result.kanji and not preview:
         from meikipop.gui.kanji_panel import render_kanji
         parts.append('<a name="kanji"></a>'
-                     + render_kanji(result.kanji, compact_only=True, expanded_characters=kanji_details))
+                     + render_kanji(result.kanji, compact_only=True))
     if not result.entries and not result.translation and not result.kanji and not result.message and result.text:
         if not unmatched_text:
             parts.append("<p>No entry found.</p>")
@@ -1037,6 +1030,25 @@ class QuickLookupWindow(QDialog):
         self.content_stack.addWidget(self.browser)
         self.content_stack.addWidget(self.translation_browser)
         layout.addWidget(self.content_stack, 1)
+        self.kanji_panel = QWidget()
+        kanji_layout = QVBoxLayout(self.kanji_panel)
+        kanji_layout.setContentsMargins(0, 0, 0, 0)
+        kanji_header = QHBoxLayout()
+        kanji_header.addWidget(QLabel("Kanji"))
+        kanji_header.addStretch()
+        self.kanji_close = self._action("close", "Close kanji")
+        self.kanji_close.clicked.connect(self._close_kanji)
+        kanji_header.addWidget(self.kanji_close)
+        kanji_layout.addLayout(kanji_header)
+        self.kanji_browser = RubyBrowser()
+        self.kanji_browser.setAccessibleName("Kanji details")
+        self.kanji_browser.setOpenLinks(False)
+        self.kanji_browser.setOpenExternalLinks(False)
+        self.kanji_browser.anchorClicked.connect(self._queue_link)
+        kanji_layout.addWidget(self.kanji_browser, 1)
+        layout.addWidget(self.kanji_panel, 1)
+        self.kanji_panel.hide()
+        self._kanji_html = ""
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.status.hide()
@@ -1155,6 +1167,7 @@ class QuickLookupWindow(QDialog):
         from meikipop.gui.typography import document_font
         font = document_font(config.font_family, config.font_size_definitions, self.preferred_foreign)
         self.browser.setFont(font)
+        self.kanji_browser.setFont(font)
         self.translation_browser.setFont(document_font(config.font_family, config.font_size_sentence, self.preferred_foreign))
         self.search.setFont(font)
         for button in self.findChildren(QToolButton):
@@ -1322,6 +1335,7 @@ class QuickLookupWindow(QDialog):
         self._translation_content = SearchResult(text, source, target)
         self.fit_timer.stop()
         self.content_stack.setCurrentWidget(self.translation_browser)
+        self.kanji_panel.hide()
         self.back.setEnabled(True)
         self._update_trail()
         self._place_actions()
@@ -1341,6 +1355,7 @@ class QuickLookupWindow(QDialog):
             setattr(self, name, value)
         self._translation_return = None
         self.content_stack.setCurrentWidget(self.browser)
+        self._render_kanji_panel()
         self.back.setEnabled(bool(self._history))
         self._update_trail()
         self._place_actions()
@@ -1403,6 +1418,7 @@ class QuickLookupWindow(QDialog):
             self._render_identity = None
             self._document_revision = None
             self.browser.clear()
+            self._close_kanji()
 
     def submit(self, translate=None, *, context=False, remember=False, selection=False):
         if not translate:
@@ -1609,7 +1625,7 @@ class QuickLookupWindow(QDialog):
         elif self._new_chain or not same:
             self._collapsed = self.collapsed_dictionaries()
         if kanji_details is not None:
-            self._kanji_details = set(kanji_details)
+            self._kanji_details = set(tuple(kanji_details)[:1])
         elif self._new_chain or not same:
             self._kanji_details.clear()
         if expanded is not None:
@@ -1638,6 +1654,7 @@ class QuickLookupWindow(QDialog):
             self._autoplay()
 
     def _render(self, static=False, *, preserve_scroll=False):
+        self._render_kanji_panel()
         if self._translation_view:
             self._render_translation()
             return
@@ -1686,7 +1703,7 @@ class QuickLookupWindow(QDialog):
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
                         self.settings.value("profiles/ja/definition_furigana", True, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool),
-                        tuple(sorted(self._collapsed)), tuple(sorted(self._kanji_details)), separate_headwords)
+                        tuple(sorted(self._collapsed)), separate_headwords)
             if identity == self._render_identity:
                 mark("render_reused", self.revision)
                 return
@@ -1704,7 +1721,6 @@ class QuickLookupWindow(QDialog):
                                                headword_furigana=self.settings.value("profiles/ja/headword_furigana", False, bool),
                                                definition_furigana=self.settings.value("profiles/ja/definition_furigana", True, bool),
                                                collapsed=self._collapsed,
-                                               kanji_details=self._kanji_details,
                                                separate_headwords=separate_headwords,
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._action_heading = None
@@ -1822,6 +1838,25 @@ class QuickLookupWindow(QDialog):
             if revision == self.revision and identity == self._render_identity:
                 self._link(url)
 
+    def _close_kanji(self):
+        self._kanji_details.clear()
+        self._render_kanji_panel()
+
+    def _select_kanji(self, character):
+        self._kanji_details = set() if character in self._kanji_details else {character}
+        self.fit_timer.stop()
+        self._render_kanji_panel()
+
+    def _render_kanji_panel(self):
+        from meikipop.gui.kanji_panel import render_kanji_details
+        entries = tuple(entry for entry in self._result.kanji if entry.character in self._kanji_details) if self._result else ()
+        visible = bool(entries) and not self._translation_view and not (self._peek and not self.is_pinned)
+        html = render_kanji_details(entries) if visible else ""
+        if html != self._kanji_html:
+            self.kanji_browser.setHtml(html)
+            self._kanji_html = html
+        self.kanji_panel.setVisible(visible)
+
     def _link(self, url):
         if self._result is None:
             return
@@ -1840,12 +1875,10 @@ class QuickLookupWindow(QDialog):
             if (not group.isdigit() or int(group) >= len(groups) or character not in groups[int(group)][0]
                     or character not in {entry.character for entry in self._result.kanji}):
                 return
-            self._kanji_details.symmetric_difference_update((f"head:{group}:{character}",))
-            self._render(static=True, preserve_scroll=True)
+            self._select_kanji(character)
             return
         if url.scheme() == "kanji" and url.path() in {entry.character for entry in self._result.kanji}:
-            self._kanji_details.symmetric_difference_update((url.path(),))
-            self._render(static=True, preserve_scroll=True)
+            self._select_kanji(url.path())
             return
         if url.scheme() == "details" and re.fullmatch(r"\d+:\d+:\d+", url.path()):
             key = url.path()
