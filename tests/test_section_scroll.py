@@ -207,10 +207,10 @@ class SectionScrollTests(unittest.TestCase):
 
     def test_short_sections_snap_both_directions(self):
         self.scroller.set_enabled(True)
-        second = min(self.bar.maximum(), self.bar.singleStep() * QApplication.wheelScrollLines())
         self.wheel()
         self.finish_animation()
-        self.assertEqual(self.bar.value(), second)
+        self.assertGreater(self.bar.value(), 0)
+        self.assertIn(self.bar.value(), self.scroller.line_starts())
         self.wheel(angle=120)
         self.finish_animation()
         self.assertEqual(self.bar.value(), 0)
@@ -242,7 +242,7 @@ class SectionScrollTests(unittest.TestCase):
         stops = self.scroller.stops()
         height = self.browser.viewport().height() - self.scroller.header.height()
         self.assertIn(second, stops)
-        self.assertEqual(max(stop for stop in stops if stop < second), second - height)
+        self.assertGreaterEqual(max(stop for stop in stops if stop < second), second - height)
         self.bar.setValue(second)
         self.assertFalse(self.scroller.header.isVisible())
         self.assertGreaterEqual(self.browser.cursorRect(self.browser.document().find("犬")).top(), 0)
@@ -292,14 +292,17 @@ class SectionScrollTests(unittest.TestCase):
     def test_mouse_wheel_scrolls_immediately_without_intermediate_animation(self):
         self.render(lines=20)
         self.scroller.set_enabled(True)
-        step = self.bar.singleStep() * QApplication.wheelScrollLines()
         self.wheel()
-        self.assertEqual(self.bar.value(), step)
+        first = self.bar.value()
+        self.assertGreater(first, 0)
+        self.assertIn(first, self.scroller.line_starts())
         self.assertIsNone(self.scroller._target)
         self.wheel()
-        self.assertEqual(self.bar.value(), step * 2)
+        second = self.bar.value()
+        self.assertGreater(second, first)
+        self.assertIn(second, self.scroller.line_starts())
         self.finish_animation()
-        self.assertEqual(self.bar.value(), step * 2)
+        self.assertEqual(self.bar.value(), second)
 
     def test_arrow_page_and_boundary_keys_preserve_text_selection(self):
         self.scroller.set_enabled(True)
@@ -307,7 +310,8 @@ class SectionScrollTests(unittest.TestCase):
         selected = self.browser.selected_text()
         QTest.keyClick(self.browser, Qt.Key.Key_Down)
         self.finish_animation()
-        self.assertEqual(self.bar.value(), self.bar.singleStep())
+        self.assertGreater(self.bar.value(), 0)
+        self.assertIn(self.bar.value(), self.scroller.line_starts())
         QTest.keyClick(self.browser, Qt.Key.Key_Up)
         self.finish_animation()
         self.assertEqual(self.bar.value(), 0)
@@ -403,16 +407,28 @@ class SectionScrollTests(unittest.TestCase):
         self.scroller.set_enabled(True)
         self.scroller.animation_enabled = False
         self.wheel()
-        self.assertEqual(self.bar.value(), self.bar.singleStep() * QApplication.wheelScrollLines())
+        self.assertGreater(self.bar.value(), 0)
+        self.assertIn(self.bar.value(), self.scroller.line_starts())
 
     def test_fractional_wheel_steps_accumulate(self):
         self.scroller.set_enabled(True)
         for _ in range(3):
             self.wheel(angle=-30)
-        self.assertAlmostEqual(self.bar.value(), self.bar.singleStep() * QApplication.wheelScrollLines() * .75, delta=2)
+        self.assertEqual(self.bar.value(), 0)
         self.wheel(angle=-30)
         self.finish_animation()
-        self.assertAlmostEqual(self.bar.value(), self.bar.singleStep() * QApplication.wheelScrollLines(), delta=2)
+        self.assertGreater(self.bar.value(), 0)
+        self.assertIn(self.bar.value(), self.scroller.line_starts())
+
+    def test_partial_wheel_notch_does_not_carry_into_another_result(self):
+        self.scroller.set_enabled(True)
+        self.wheel(angle=-60)
+        self.assertEqual(self.bar.value(), 0)
+        self.render(lines=20)
+        self.wheel(angle=-60)
+        self.assertEqual(self.bar.value(), 0)
+        self.wheel(angle=-60)
+        self.assertGreater(self.bar.value(), 0)
 
     def test_modified_horizontal_and_selection_scrolls_are_not_intercepted(self):
         self.scroller.set_enabled(True)
@@ -433,11 +449,48 @@ class SectionScrollTests(unittest.TestCase):
         self.bar.setValue(self.scroller.stops()[1] + 3)
         value = self.bar.value()
         self.assertEqual(value, self.scroller.stops()[1] + 3)
-        target = min(self.bar.maximum(), value + self.bar.singleStep() * QApplication.wheelScrollLines())
         self.wheel()
         self.finish_animation()
-        self.assertEqual(self.bar.value(), target)
+        self.assertGreater(self.bar.value(), value)
+        self.assertIn(self.bar.value(), self.scroller.line_starts())
         self.assertEqual(self.browser.selected_text(), selected)
+
+    def test_rich_explanation_never_shows_partial_edge_lines(self):
+        import math
+        from PyQt6.QtCore import QRect
+        from PyQt6.QtGui import QRegion
+        self.browser.resize(710, 430)
+        self.browser.setHtml('<style>body{font-size:24px}h2{font-size:28px;margin:0}</style>'
+                             '<h2><a name="scroll-headword-0"></a><a name="scroll-section-0"></a>ちゃんと</h2>'
+                             '<p>Bunpro Dictionary</p><p>[ちゃんと・きちんと]</p><h3>Meaning</h3>'
+                             '<p>Properly, Neatly, Orderly, Sufficiently, Decently</p><h3>Explanation</h3>'
+                             '<p>' + 'A long explanation of similar expressions and their usage. ' * 25 + '</p>')
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        self.app.processEvents()
+        document = self.browser.document()
+        for scroll in (0, 1, 7, 47, 84, 153):
+            with self.subTest(scroll=scroll):
+                self.bar.setValue(scroll)
+                viewport = self.browser.viewport()
+                top = self.scroller.header.height() if self.scroller.header.isVisible() else 0
+                body = QRegion(QRect(0, top, viewport.width(), viewport.height() - top))
+                mask = viewport.mask().intersected(body)
+                block = document.begin()
+                checked = 0
+                while block.isValid():
+                    rect = document.documentLayout().blockBoundingRect(block)
+                    for index in range(block.layout().lineCount()):
+                        line = block.layout().lineAt(index)
+                        start = math.ceil(rect.top() + line.y()) - self.bar.value()
+                        end = math.ceil(rect.top() + line.y() + line.height()) - self.bar.value()
+                        partial = start < top < end or start < viewport.height() < end
+                        if partial and end - start <= viewport.height() - top:
+                            visible = QRegion(QRect(0, start, viewport.width(), end - start)).intersected(mask)
+                            self.assertTrue(visible.isEmpty(), (block.text(), start, end, top))
+                            checked += 1
+                    block = block.next()
+                self.assertGreater(checked, 0)
 
     def test_document_replacement_and_resize_recompute_stops(self):
         self.scroller.set_enabled(True)

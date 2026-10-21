@@ -21,6 +21,8 @@ permissions to the launching app or terminal. `meikipop`, `meikipop search`
 and `meikipop-search` open the shared popup;
 `python -m meikipop.scripts.quick_lookup --no-ocr` starts dictionary search alone.
 Use Settings for explicit dictionary, OCR and model downloads.
+The Windows source launcher uses the installed app's settings and data. Quit
+the running tray app first; single-instance forwarding otherwise opens that copy.
 
 ## Architecture and constraints
 
@@ -61,6 +63,11 @@ Sticky headings retain the ruby and pitch object renderers and forward links
 without navigating their own document.
 Snap scrolling keeps its section clipping during progress-bar dragging and maps
 the pointer to the nearest reading stop without changing selection.
+Wheel notches and arrows move by measured text lines within a section; page
+stops use those same line boundaries. Viewport clipping excludes partial text
+lines at the sticky heading and bottom edge while retaining oversized content.
+Sticky heading height follows its laid-out fragment and source block, including
+after width changes; it does not reserve extra padding over the first body line.
 Kanji summaries merge exact duplicate values across available sources, retain
 source attribution and show conflicting stroke counts separately. More appends
 source-specific reference fields without rebuilding the summary. Unstructured

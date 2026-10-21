@@ -67,7 +67,8 @@ Settings shows the available choices for your language.
 **Appearance** controls fonts, themes and readings, with separate options for
 preview and pinned results. Scrolling is continuous by default; enable
 **Snap scrolling** to move between sections. Drag the progress bar to jump
-between reading positions. Mouse Back/Forward buttons turn pages over the popup;
+between reading positions. Within a section, the wheel and arrows move by whole
+text lines. Mouse Back/Forward buttons turn pages over the popup;
 **Side-button scrolling** disables this per profile. Over fullscreen Windows
 apps, a pinned popup accepts arrows, Page Up/Down and Home/End while the source
 keeps focus. **Esc** closes the popup. In **Settings > Shortcuts**, record or
