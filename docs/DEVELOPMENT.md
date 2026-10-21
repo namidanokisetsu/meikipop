@@ -54,6 +54,7 @@ source-specific reference fields without rebuilding the summary. Unstructured
 dictionary text stays verbatim; Anki exports retain complete source records.
 Automatic popup fitting stays separate from the user's chosen reading size.
 Pinning batches content and layout changes and completes fitting before repainting.
+Nested document updates leave inherited paint suppression to the parent window.
 Preview defaults to one definition without grammar labels; pinned results have no definition cutoff.
 Dictionary display preferences only control whether a section starts collapsed.
 Popup actions share the first visible sentence or headword line, reserving their

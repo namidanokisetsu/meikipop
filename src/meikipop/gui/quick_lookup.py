@@ -712,7 +712,9 @@ class LocalDictionaryBrowser(RubyBrowser):
     def setHtml(self, html):
         document = self.document()
         updates = self.updatesEnabled()
-        self.setUpdatesEnabled(False)
+        # An ancestor may already suppress painting; do not disable this child explicitly.
+        if updates:
+            self.setUpdatesEnabled(False)
         try:
             with QSignalBlocker(document), QSignalBlocker(self.verticalScrollBar()):
                 document.setLayoutEnabled(False)
@@ -722,7 +724,8 @@ class LocalDictionaryBrowser(RubyBrowser):
                     document.setLayoutEnabled(True)
             self.section_scroll._document_changed()
         finally:
-            self.setUpdatesEnabled(updates)
+            if updates:
+                self.setUpdatesEnabled(True)
 
     def _set_html(self, html):
         super().setHtml(html)

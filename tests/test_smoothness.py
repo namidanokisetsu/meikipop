@@ -31,8 +31,16 @@ class PendingTests(QuickLookupTests):
                         render.assert_called_once()
                     self.assertEqual(self.window.geometry(), geometry)
                     self.assertTrue(self.window.updatesEnabled())
+                    self.assertTrue(self.window.browser.updatesEnabled())
+                    self.assertTrue(self.window.browser.viewport().updatesEnabled())
                     if custom:
                         self.assertEqual(self.window.size(), QSize(520, 410))
+                    self.window.pin.setChecked(False)
+                    self.window.show_entries((entry(term="next", definitions=("next meaning",)),), "next", peek=True)
+                    self.app.processEvents()
+                    self.assertIn("next meaning", self.window.browser.toPlainText())
+                    self.assertTrue(self.window.browser.updatesEnabled())
+                    self.assertTrue(self.window.browser.viewport().updatesEnabled())
 
     def test_clear_rejects_late_results_and_audio(self):
         self.window.show_entries((entry(),), "猫")
