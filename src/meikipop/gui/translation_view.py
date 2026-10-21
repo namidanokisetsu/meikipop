@@ -22,8 +22,8 @@ class TranslationView(RubyBrowser):
         if url.scheme() == "language" and url.path() in ("source", "target"):
             self.language_requested.emit(url.path())
 
-    def set_content(self, text, translation, source, target):
-        content = (text, translation, source, target, config.color_foreground, config.color_highlight_word)
+    def set_content(self, text, translation, source, target, message=""):
+        content = (text, translation, source, target, message, config.color_foreground, config.color_highlight_word)
         if content == self._content:
             return
         position = ReadingPosition(self) if self._content and text == self._content[0] else None
@@ -35,6 +35,8 @@ class TranslationView(RubyBrowser):
             parts.append(f'<p><a name="scroll-section-{role}"></a>'
                          f'<a href="language:{role}">{escape(label)}</a></p>'
                          f'<p>{escape(value).replace(chr(10), "<br>")}</p>')
+        if message:
+            parts.append(f'<p>{escape(message).replace(chr(10), "<br>")}</p>')
         self.setHtml(''.join(parts))
         if position is not None:
             position.restore(self)

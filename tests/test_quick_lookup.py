@@ -1326,8 +1326,31 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.engine.calls, [("hello", False)])
         self.window.submit(translate=True)
         self.wait_until(lambda: self.window._result.message == "Install translation model.")
+        self.assertIn("Install translation model.", self.window.translation_browser.toPlainText())
         self.assertEqual(self.engine.calls, [("hello", False), ("hello", True)])
         self.assertTrue(self.window.translate.isEnabled())
+        self.window._translate_clicked()
+        self.wait_until(lambda: len(self.engine.calls) == 3 and self.window._pending_revision is None)
+        self.assertEqual(self.engine.calls[-1], ("hello", True))
+        self.assertIn("Install translation model.", self.window.translation_browser.toPlainText())
+
+    def test_translation_worker_failure_keeps_partial_text_and_allows_retry(self):
+        self.window.translation_worker = Mock()
+        self.window.search.setText("A sentence to translate.")
+        self.window.submit(translate=True)
+        revision = self.window.revision
+        self.window._translation_progress(revision, SearchResult(
+            "A sentence to translate.", "en", "ja", translation="Partial translation"))
+        self.window._flush_translation()
+        self.window._failed(revision, "Connection interrupted.")
+        visible = self.window.translation_browser.toPlainText()
+        self.assertIn("Partial translation", visible)
+        self.assertIn("Connection interrupted.", visible)
+        self.assertFalse(self.window._translation_busy)
+        self.window._translate_clicked()
+        self.assertTrue(self.window._translation_busy)
+        self.assertNotIn("Connection interrupted.", self.window.translation_browser.toPlainText())
+        self.window.translation_worker.request.assert_called()
 
     def test_partial_match_in_explicit_word_lookup_does_not_translate_sentence(self):
         original = self.engine.search
@@ -2703,13 +2726,14 @@ class QuickLookupTests(unittest.TestCase):
             self.assertTrue(self.window.isVisible())
             clipboard.assert_not_called()
 
-    def test_shortcut_selected_sentence_translates_after_exact_entry_miss(self):
+    def test_shortcut_selected_sentence_waits_for_explicit_translation(self):
         with patch.object(QApplication, "activeWindow", return_value=None), \
                 patch.object(self.window.selection, "start"):
             self.window.request_lookup()
             self.window.selection.completed.emit("This is a complete sentence.")
-            self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
-            self.assertEqual([call[3] for call in self.engine.calls], [False, True])
+            self.wait_until(lambda: self.window._result is not None)
+            self.assertEqual([call[3] for call in self.engine.calls], [False])
+            self.assertIsNone(self.window.translation_worker)
 
     def test_typed_lookup_takes_focus_after_passive_selection(self):
         with patch("meikipop.utils.window_focus.focus_search") as focus:

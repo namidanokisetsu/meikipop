@@ -1390,7 +1390,7 @@ class QuickLookupWindow(QDialog):
         result = self._translation_content
         self.translation_browser.set_content(result.text, result.translation,
                                              "Automatic" if result.source == "auto" else language_name(result.source),
-                                             language_name(result.target))
+                                             language_name(result.target), result.message)
 
     def _leave_translation(self):
         if not self._translation_view:
@@ -1864,7 +1864,11 @@ class QuickLookupWindow(QDialog):
             self.busy_delay.stop()
             self._set_translation_busy(False)
             self._restore_actions()
-            self.show_message(message)
+            if self._translation_view:
+                self._translation_content = replace(self._translation_content, message=str(message))
+                self._render_translation()
+            else:
+                self.show_message(message)
 
     def show_message(self, text):
         self.status.setText(str(text))
