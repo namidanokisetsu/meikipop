@@ -39,7 +39,7 @@ class DataAssetTests(unittest.TestCase):
         self.write(self.data / "languages/ru/stanza/1.14.0/model.pt")
         self.pack("en")
         assets = {asset.key: asset for asset in inventory(self.library, ("ja",), **self.roots)}
-        self.assertEqual(assets["translation:lightweight"].paths, (model,))
+        self.assertEqual(assets["translation:lightweight"].paths, (model.resolve(),))
         self.assertEqual(assets["translation:lightweight"].status, "Incomplete")
         self.assertEqual(assets["ocr:paddle"].language, "")
         self.assertEqual(assets["stanza:ru"].language, "ru")

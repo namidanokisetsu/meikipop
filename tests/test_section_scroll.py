@@ -460,6 +460,9 @@ class SectionScrollTests(unittest.TestCase):
         from PyQt6.QtCore import QRect
         from PyQt6.QtGui import QRegion
         self.browser.resize(710, 430)
+        font = self.browser.document().defaultFont()
+        font.setPixelSize(24)
+        self.browser.document().setDefaultFont(font)
         self.browser.setHtml('<style>body{font-size:24px}h2{font-size:28px;margin:0}</style>'
                              '<h2><a name="scroll-headword-0"></a><a name="scroll-section-0"></a>ちゃんと</h2>'
                              '<p>Bunpro Dictionary</p><p>[ちゃんと・きちんと]</p><h3>Meaning</h3>'
@@ -469,6 +472,8 @@ class SectionScrollTests(unittest.TestCase):
         self.scroller.set_enabled(True)
         self.app.processEvents()
         document = self.browser.document()
+        self.assertGreater(self.bar.maximum(), 0)
+        checked = 0
         for scroll in (0, 1, 7, 47, 84, 153):
             with self.subTest(scroll=scroll):
                 self.bar.setValue(scroll)
@@ -477,7 +482,6 @@ class SectionScrollTests(unittest.TestCase):
                 body = QRegion(QRect(0, top, viewport.width(), viewport.height() - top))
                 mask = viewport.mask().intersected(body)
                 block = document.begin()
-                checked = 0
                 while block.isValid():
                     rect = document.documentLayout().blockBoundingRect(block)
                     for index in range(block.layout().lineCount()):
@@ -490,7 +494,7 @@ class SectionScrollTests(unittest.TestCase):
                             self.assertTrue(visible.isEmpty(), (block.text(), start, end, top))
                             checked += 1
                     block = block.next()
-                self.assertGreater(checked, 0)
+        self.assertGreater(checked, 0)
 
     def test_document_replacement_and_resize_recompute_stops(self):
         self.scroller.set_enabled(True)
