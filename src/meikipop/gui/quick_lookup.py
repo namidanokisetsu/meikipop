@@ -154,6 +154,8 @@ class LookupWorker(QObject):
                             options.update(cancelled=cancelled, request_id=revision,
                                            translation_progress=lambda result: self._emit(self.progress, revision, result),
                                            translation_state=lambda value: self._emit(self.translation_state, revision, value))
+                            if source in ("ja", "auto"):
+                                options["max_lookup_length"] = config.max_lookup_length
                         result = engine.search(text, source=source, foreign=foreign, translate=translate, **options)
                         mark("lookup_done", revision)
                         self._emit(self.completed, revision, result)

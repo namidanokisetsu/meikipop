@@ -141,6 +141,24 @@ class JapaneseRankingTests(unittest.TestCase):
         self.assertEqual(entries[0].term, "あれ")
         self.assertEqual(len({(entry.term, entry.reading) for entry in entries}), 60)
 
+    def test_long_exact_headword_is_not_truncated_by_prefix_scan_limit(self):
+        term = "あ" * 26
+        self.install("Words", [self.word(term, term)])
+        result = self.engine().search(term, source="ja")
+        self.assertEqual([entry.term for entry in result.entries], [term])
+        self.assertEqual(result.matched_length, len(term))
+
+    def test_prefix_scan_length_changes_invalidate_cached_results(self):
+        stem = "あ" * 25
+        term, query = stem + "食べる", stem + "食べました"
+        self.install("Words", [self.word(term, stem + "たべる", "v1")])
+        engine = self.engine()
+        self.assertFalse(engine.search(query, source="ja", max_lookup_length=25).entries)
+        result = engine.search(query, source="ja", max_lookup_length=100)
+        self.assertEqual([entry.term for entry in result.entries], [term])
+        self.assertEqual(result.matched_length, len(query))
+        self.assertFalse(engine.search(query, source="ja", max_lookup_length=25).entries)
+
 
 if __name__ == "__main__":
     unittest.main()

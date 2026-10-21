@@ -305,11 +305,16 @@ class ScanWorkerTests(unittest.TestCase):
                 worker.queue.put(None)
                 engine = Mock()
                 engine.search.return_value = SearchResult(text, language, "en", (SimpleNamespace(term=term),), matched_length=matched)
-                with patch("meikipop.dictionary.search.SearchEngine", return_value=engine):
+                with patch("meikipop.dictionary.search.SearchEngine", return_value=engine), \
+                        patch("meikipop.gui.unified_ocr.config.max_lookup_length", 100):
                     worker.run()
                 delivered = sink.emit.call_args.args[2][1]
                 self.assertEqual((delivered.query, delivered.text, delivered.start, delivered.end),
                                  (text, text, 0, expected_end))
+                if language == "ja":
+                    self.assertEqual(engine.search.call_args.kwargs["max_lookup_length"], 100)
+                else:
+                    self.assertNotIn("max_lookup_length", engine.search.call_args.kwargs)
 
 
 class FakeWindow(QWidget):

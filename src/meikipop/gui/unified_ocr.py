@@ -8,6 +8,7 @@ from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCursor, QImage
 from PyQt6.QtWidgets import QApplication
 
+from meikipop.config.config import config
 from meikipop.ocr.context import hit_paragraphs, paddle_paragraphs
 from meikipop.ocr.scan_cache import ScanCache
 from meikipop.ocr.frames import RecognizedFrame
@@ -186,6 +187,8 @@ class ScanWorker(threading.Thread):
                     engine.refresh_if_changed()
                     morphology = bool(options[1]) if len(options) > 1 else False
                     analysis = {"morphology": True, "context": (hit.text, hit.start, hit.end)} if morphology else {}
+                    if language == "ja":
+                        analysis["max_lookup_length"] = config.max_lookup_length
                     result = engine.search(hit.query, source=language, foreign=language, **analysis)
                     hit = _matched_hit(hit, result, language)
                     self._emit(generation, result, hit, "")
@@ -275,6 +278,8 @@ class HitWorker(threading.Thread):
                         continue
                     mark("hit_lookup_begin", frame.request.revision)
                     options = {"morphology": True, "context": (hit.text, hit.start, hit.end)} if morphology else {}
+                    if frame.language == "ja":
+                        options["max_lookup_length"] = config.max_lookup_length
                     result = engine.search(hit.query, source=frame.language, foreign=frame.language, **options)
                     hit = _matched_hit(hit, result, frame.language)
                     mark("hit_lookup_done", frame.request.revision)

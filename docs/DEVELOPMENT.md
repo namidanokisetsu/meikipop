@@ -37,6 +37,8 @@ Paths below are relative to `src/meikipop/`.
 Japanese uses bundled deconjugation rules. Its headword/reading groups rank by
 installed frequency ranks, kana preference and deconjugation cost. The result
 limit applies to ranked groups, retaining their source records and dictionary order.
+Full dictionary matches precede prefix scanning; shared search and OCR use the
+existing maximum lookup length for that scan, including it in cache identity.
 Turkish uses Zeyrek 0.1.3, accent
 recovery and precomputed lexicon rankings; exact entries and imported forms
 retain precedence. Full morpheme paths remain attached to their analyses.

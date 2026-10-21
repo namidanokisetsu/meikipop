@@ -94,7 +94,7 @@ class SearchEngine:
 
     def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
                morphology=False, context=None, translation_progress=None, translation_state=None, cancelled=None, request_id=0,
-               exact_only=False):
+               exact_only=False, max_lookup_length=25):
         if cancelled is not None and cancelled.is_set():
             raise RuntimeError("Translation cancelled.")
         self.refresh_if_changed()
@@ -110,7 +110,7 @@ class SearchEngine:
         requested_target = language_code(target) if target else None
         pair = tuple(language_code(code) for code in pair) if pair else None
         cache_key = (self.library.revision, text, source, foreign, translate, translator_key, requested_target, pair,
-                     morphology, context if morphology else None, exact_only)
+                     morphology, context if morphology else None, exact_only, max_lookup_length)
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)
             return self.cache[cache_key]
@@ -162,7 +162,7 @@ class SearchEngine:
                     suggestions = self.library.suggest(text, dictionary_language)
             else:
                 if source == "ja":
-                    entries = self._japanese(text)
+                    entries = self._japanese(text, max_lookup_length)
                     matched_length = self._matched_length
                 else:
                     from meikipop.language.profiles import get_profile
@@ -287,7 +287,7 @@ class SearchEngine:
                 return entries, length
         return (), 0
 
-    def _japanese(self, text):
+    def _japanese(self, text, max_lookup_length=25):
         self._matched_length = 0
         from .deconjugator import Deconjugator
         from .kanji import kanji_characters
@@ -317,8 +317,10 @@ class SearchEngine:
                 lookups[surface] = self.library.lookup(surface, "ja", limit=None)
             return lookups[surface]
 
-        # Prefer the longest word at the beginning of a phrase, as the OCR lookup does.
-        for length in range(min(25, len(text)), 0, -1):
+        # Full dictionary matches are independent of the prefix scan budget.
+        lengths = ((len(text),) if len(text) > max_lookup_length and lookup(text)
+                   else range(min(max_lookup_length, len(text)), 0, -1))
+        for length in lengths:
             prefix = text[:length]
             results = [(entry, len(entry.inflection)) for entry in lookup(prefix)]
             for form in sorted(self.deconjugator.deconjugate(prefix), key=lambda f: (len(f.process), f.text, f.tags)):
