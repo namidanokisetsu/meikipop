@@ -42,7 +42,6 @@ class LookupSession:
 
     def hide(self):
         self.dismissed = self.dismissed or self.holding
-        self.hover_dismissed = self.hover_dismissed or self.hovering
 
     def invalidate(self):
         self.generation += 1

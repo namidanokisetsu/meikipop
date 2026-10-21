@@ -708,6 +708,24 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.controller.scan()
             self.assertEqual(capture.call_count, 2)
 
+    def test_popup_hide_keeps_hover_scanning_inside_area(self):
+        self.enable_hover()
+        self.controller.input = SimpleNamespace(visible=threading.Event(), pin_ready=threading.Event(),
+                                               pin_pending=threading.Event(), shutdown=Mock())
+        with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(100, 100)) as cursor, \
+                patch.object(self.controller, "_request_capture") as capture:
+            self.controller.scan()
+            self.window.show()
+            old = self.controller.generation
+            self.window.hide()
+            self.assertGreater(self.controller.generation, old)
+            self.assertTrue(self.controller.session.scanning())
+            cursor.return_value = QPoint(200, 100)
+            self.controller._last_capture_at = 0
+            self.controller.scan()
+            self.assertEqual(capture.call_count, 2)
+            self.assertTrue(self.controller.session.accepts(self.controller.generation))
+
     def test_programmatic_search_invalidates_pending_ocr(self):
         generation = self.controller.generation
         self.window.search.setText("typed lookup")
