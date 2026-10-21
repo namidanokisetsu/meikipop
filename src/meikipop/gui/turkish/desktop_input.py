@@ -52,6 +52,7 @@ class DesktopInput(QObject):
     search_requested = pyqtSignal()
     pin_requested = pyqtSignal()
     navigation_requested = pyqtSignal(int)
+    popup_action_requested = pyqtSignal(str)
 
     def __init__(self, bindings, clipboard_hotkey, search_hotkey, double_click_ms, parent=None):
         super().__init__(parent)
@@ -60,6 +61,7 @@ class DesktopInput(QObject):
         self.visible = threading.Event()
         self.pin_ready = threading.Event()
         self.pin_pending = threading.Event()
+        self.popup_controls_active = threading.Event()
         self.pin_gesture = "popup"
         self._consumed_pin = None
         self._darwin_consumed_pin = None
@@ -71,6 +73,7 @@ class DesktopInput(QObject):
         self._pin_native = None
         self._consumed_pin_keys = set()
         self.navigation_source = None
+        self.popup_bindings = {}
         self._consumed_navigation_keys = set()
         self._last_click = None
         self._press_point = None
@@ -110,8 +113,9 @@ class DesktopInput(QObject):
             self.dismissed.emit()
         token = normalise_pynput_key(key)
         if token:
-            self.activation.update(token, down)
-            self.hold_changed.emit(self.activation.active)
+            if not (down and self.popup_controls_active.is_set()):
+                self.activation.update(token, down)
+                self.hold_changed.emit(self.activation.active)
         if self._pin_hotkey is not None and sys.platform != "win32":
             canonical = self.keys.canonical(key)
             pending = self.pin_pending.is_set()
@@ -154,18 +158,25 @@ class DesktopInput(QObject):
                 self._consumed_pin_keys.discard(data.vkCode)
             self.keys.suppress_event()
             return False
-        if (data.vkCode in (0x21, 0x22, 0x23, 0x24, 0x26, 0x28)
-                and (self.navigation_source or data.vkCode in self._consumed_navigation_keys)):
+        if self.navigation_source or data.vkCode in self._consumed_navigation_keys:
             import ctypes
             user32 = ctypes.WinDLL("user32")
             user32.GetForegroundWindow.restype = ctypes.c_void_p
+            modifiers = sum(bit for keys, bit in (((0x10,), 1), ((0x11,), 2), ((0x12,), 4),
+                                                  ((0x5B, 0x5C), 8))
+                            if any(user32.GetAsyncKeyState(key) & 0x8000 for key in keys))
             active = (self.navigation_source and self.visible.is_set()
-                      and user32.GetForegroundWindow() == self.navigation_source
-                      and not any(user32.GetAsyncKeyState(key) & 0x8000
-                                  for key in (0x10, 0x11, 0x12, 0x5B, 0x5C)))
-            if down and active:
+                      and user32.GetForegroundWindow() == self.navigation_source)
+            action = self.popup_bindings.get((data.vkCode, modifiers))
+            navigation = not modifiers and data.vkCode in (0x21, 0x22, 0x23, 0x24, 0x26, 0x28)
+            if down and active and (action or navigation):
+                repeated = data.vkCode in self._consumed_navigation_keys
                 self._consumed_navigation_keys.add(data.vkCode)
-                self.navigation_requested.emit(data.vkCode)
+                if action:
+                    if not repeated:
+                        self.popup_action_requested.emit(action)
+                else:
+                    self.navigation_requested.emit(data.vkCode)
             if data.vkCode in self._consumed_navigation_keys:
                 if not down:
                     self._consumed_navigation_keys.discard(data.vkCode)
@@ -267,6 +278,7 @@ class DesktopInput(QObject):
 
     def shutdown(self):
         self.navigation_source = None
+        self.popup_controls_active.clear()
         self.hover_active.clear()
         self.pin_ready.clear()
         self.pin_pending.clear()

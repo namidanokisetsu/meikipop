@@ -13,7 +13,7 @@ from PyQt6.QtCore import QObject, QEvent, QLocale, QPointF, QSettings, QSignalBl
 from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeyEvent, QKeySequence, QShortcut, QTextBlockFormat, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QMenu, QSizePolicy, QSplitter, QStackedWidget, QToolButton, QToolTip, QVBoxLayout, QWidget,
+    QKeySequenceEdit, QLineEdit, QMenu, QSizePolicy, QSplitter, QStackedWidget, QToolButton, QToolTip, QVBoxLayout, QWidget,
 )
 
 from meikipop.config.config import config
@@ -1130,13 +1130,17 @@ class QuickLookupWindow(QDialog):
         self.selection.unavailable.connect(self._selection_unavailable)
         self.selection_requested.connect(self.request_selection)
         self.clipboard_requested.connect(lambda: self.lookup_selected(QApplication.clipboard().text()))
-        self.copy_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
-        self.copy_shortcut.activated.connect(self.copy_sentence)
-        self.back_shortcut = QShortcut(QKeySequence.StandardKey.Back, self)
-        self.back_shortcut.activated.connect(self.go_back)
-        self.anki_shortcut = QShortcut(self)
-        self.anki_shortcut.activated.connect(self.add_to_anki)
-        self.update_anki()
+        from meikipop.gui.popup_shortcuts import POPUP_ACTIONS
+        self._popup_shortcuts = {}
+        for action, _, _ in POPUP_ACTIONS:
+            shortcut = QShortcut(self)
+            shortcut.setAutoRepeat(False)
+            shortcut.activated.connect(lambda action=action: self.popup_action(action))
+            self._popup_shortcuts[action] = shortcut
+        self.copy_shortcut = self._popup_shortcuts["copy"]
+        self.back_shortcut = self._popup_shortcuts["back"]
+        self.anki_shortcut = self._popup_shortcuts["anki"]
+        self.reload_popup_shortcuts()
         self.apply_style()
         self._update_target_visibility()
         self.browser.clear()
@@ -1218,6 +1222,8 @@ class QuickLookupWindow(QDialog):
         load_appearance(self.settings, self.preferred_foreign)
         self.browser.section_scroll.set_enabled(self.settings.value(f"profiles/{self.preferred_foreign}/snap_scrolling", False, bool))
         self.apply_style()
+        if hasattr(self, "_popup_shortcuts"):
+            self.reload_popup_shortcuts()
         if render:
             before = tuple(button.isHidden() for button in self._popup_actions.values())
             self._place_actions()
@@ -2530,7 +2536,7 @@ class QuickLookupWindow(QDialog):
             button.setAccessibleName(description)
             button.setEnabled(ready)
         if hasattr(self, "anki_shortcut"):
-            binding = self.settings.value(f"profiles/{self.preferred_foreign}/anki/shortcut", "")
+            binding = self.settings.value(f"profiles/{self.preferred_foreign}/anki/shortcut", "Shift+A")
             self.anki_shortcut.setKey(QKeySequence(binding))
             self.anki_shortcut.setEnabled(ready and not browse and bool(binding))
 
@@ -2752,6 +2758,23 @@ class QuickLookupWindow(QDialog):
         self.render_timer.stop()
         self._render(preserve_scroll=True)
 
+    def reload_popup_shortcuts(self):
+        from meikipop.gui.popup_shortcuts import popup_bindings
+        for action, binding in popup_bindings(self.settings, self.preferred_foreign).items():
+            shortcut = self._popup_shortcuts[action]
+            shortcut.setKey(QKeySequence(binding))
+            shortcut.setEnabled(bool(binding))
+        self.update_anki()
+
+    def popup_action(self, action):
+        if (not self.isVisible() or self._peek and not self.is_pinned
+                or QApplication.activeModalWidget() is not None):
+            return
+        callback = {"replay": self.play_audio, "copy": self.copy_sentence,
+                    "anki": self.add_to_anki, "back": self.go_back}.get(action)
+        if callback is not None:
+            callback()
+
     def navigate_overlay(self, virtual_key):
         keys = {0x21: Qt.Key.Key_PageUp, 0x22: Qt.Key.Key_PageDown, 0x23: Qt.Key.Key_End,
                 0x24: Qt.Key.Key_Home, 0x26: Qt.Key.Key_Up, 0x28: Qt.Key.Key_Down}
@@ -2770,6 +2793,9 @@ class QuickLookupWindow(QDialog):
         return super().nativeEvent(event_type, message)
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.ShortcutOverride and isinstance(watched, (QLineEdit, QKeySequenceEdit)):
+            event.accept()
+            return True
         if (event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease)
                 and event.button() in (Qt.MouseButton.BackButton, Qt.MouseButton.ForwardButton)
                 and self.settings.value(f"profiles/{self.preferred_foreign}/side_button_scrolling", True, bool)

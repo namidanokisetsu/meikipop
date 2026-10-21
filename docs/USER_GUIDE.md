@@ -70,7 +70,10 @@ preview and pinned results. Scrolling is continuous by default; enable
 between reading positions. Mouse Back/Forward buttons turn pages over the popup;
 **Side-button scrolling** disables this per profile. Over fullscreen Windows
 apps, a pinned popup accepts arrows, Page Up/Down and Home/End while the source
-keeps focus.
+keeps focus. **Esc** closes the popup. In **Settings > Shortcuts**, record or
+disable lookup and popup bindings. Popup defaults are **R** for replay,
+**Shift+A** for Anki, **Shift+C** for copying the sentence and **Alt+Left** for Back.
+Close a pinned popup before starting another lookup with a keyboard hold.
 **Buttons** controls each popup action independently. **Sentence size** controls
 sentence and translation text. Click the compact sentence to read it in full.
 Tokyo Night and Dracula use darker, high-contrast palettes. Background opacity

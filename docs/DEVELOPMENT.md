@@ -84,11 +84,19 @@ history restoration or rendering. Pin autoplay follows its separate preference.
 Windows OCR popups over a fullscreen source expand without activation and reject
 mouse activation, keeping the source foreground and its taskbar hidden. The
 existing Windows input hook routes unmodified arrows, Page Up/Down and Home/End
-to the pinned popup only while its source remains foreground; matching releases
-are consumed even after dismissal. Other keyboard input stays with the source.
+and configured popup actions to the pinned popup only while its source remains
+foreground; matching releases are consumed even after dismissal. Other keyboard
+input stays with the source.
 Manual search retains normal focus behavior. Borderless fullscreen uses the same
 native monitor-bounds check. Side buttons page while over the popup and can be
 disabled per profile.
+Settings groups lookup and popup bindings in Shortcuts, reusing the key recorder
+and existing Anki shortcut storage. Saved bindings and disabled actions survive
+profile switches. Popup actions yield to text fields, and native action repeats
+are suppressed while navigation keys retain repeat scrolling. Escape retains
+the existing dismissal path.
+New keyboard holds do not start OCR while a popup is pinned, so modifier-based
+popup actions cannot replace the result before their primary key arrives.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;

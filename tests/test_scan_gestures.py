@@ -64,6 +64,43 @@ class ScanGestureTests(unittest.TestCase):
             self.input.filter_key(down, key)
             self.assertEqual(navigated.call_count, 2)
 
+    def test_fullscreen_actions_use_exact_modifiers_and_escape_still_closes(self):
+        requested, dismissed = Mock(), Mock()
+        self.input.popup_action_requested.connect(requested)
+        self.input.dismissed.connect(dismissed)
+        self.input.navigation_source = 42
+        self.input.visible.set()
+        self.input.popup_bindings = {(0x52, 0): "replay", (0x41, 1): "anki", (0x43, 1): "copy"}
+        user32 = Mock()
+        user32.GetForegroundWindow.return_value = 42
+        with patch("ctypes.WinDLL", return_value=user32, create=True):
+            for key, shifted, action in ((0x52, False, "replay"), (0x41, True, "anki"), (0x43, True, "copy")):
+                user32.GetAsyncKeyState.side_effect = lambda vk: 0x8000 if shifted and vk == 0x10 else 0
+                native = SimpleNamespace(vkCode=key)
+                self.assertFalse(self.input.filter_key(0x100, native))
+                self.input.filter_key(0x100, native)
+                self.assertEqual(requested.call_args.args, (action,))
+                self.assertFalse(self.input.filter_key(0x101, native))
+            self.assertEqual(requested.call_count, 3)
+            user32.GetAsyncKeyState.side_effect = lambda vk: 0
+            self.input.filter_key(0x100, SimpleNamespace(vkCode=0x41))
+            self.assertEqual(requested.call_count, 3)
+            self.input.filter_key(0x100, SimpleNamespace(vkCode=0x1B))
+            self.input.filter_key(0x101, SimpleNamespace(vkCode=0x1B))
+            dismissed.assert_called_once_with()
+
+    def test_popup_modifiers_do_not_start_another_ocr_session(self):
+        held = Mock()
+        self.input.hold_changed.connect(held)
+        self.input.popup_controls_active.set()
+        self.input.key(keyboard.Key.shift, True)
+        self.assertFalse(self.input.activation.active)
+        held.assert_not_called()
+        self.input.key(keyboard.Key.shift, False)
+        self.input.popup_controls_active.clear()
+        self.input.key(keyboard.Key.shift, True)
+        self.assertTrue(self.input.activation.active)
+
     def test_hover_preview_consumes_pin_gesture_without_a_held_key(self):
         self.input.hover_active.set()
         self.input.visible.set()

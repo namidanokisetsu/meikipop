@@ -165,7 +165,7 @@ class ResourceTests(unittest.TestCase):
                 try:
                     resources = dialog.resources
                     self.assertEqual([dialog.tabs.tabText(i) for i in range(dialog.tabs.count())],
-                                     ["Lookup", "Dictionaries", "Appearance", "Audio", "Translation", "Anki", "Data"])
+                                     ["Lookup", "Shortcuts", "Dictionaries", "Appearance", "Audio", "Translation", "Anki", "Data"])
                     dialog.show_anki()
                     self.assertIs(dialog.tabs.currentWidget(), dialog.anki_tab)
                     dialog.show_audio()

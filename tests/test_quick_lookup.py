@@ -1826,6 +1826,27 @@ class QuickLookupTests(unittest.TestCase):
         self.window.navigate_overlay(0x22)
         self.assertEqual(bar.value(), 0)
 
+    def test_popup_actions_reuse_existing_commands_without_stealing_typing(self):
+        self.window.show_entries((entry(),), "cat")
+        self.window.activateWindow()
+        self.window.browser.setFocus()
+        self.app.processEvents()
+        with patch.object(self.window, "play_audio") as replay, patch.object(self.window, "add_to_anki") as anki, \
+                patch.object(self.window, "copy_sentence") as copy:
+            QTest.keyClick(self.window.browser, Qt.Key.Key_R)
+            replay.assert_called_once_with()
+            self.window.popup_action("anki")
+            anki.assert_called_once_with()
+            QTest.keyClick(self.window.browser, Qt.Key.Key_C, Qt.KeyboardModifier.ShiftModifier)
+            copy.assert_called_once_with()
+            self.window.search.setFocus()
+            QTest.keyClick(self.window.search, Qt.Key.Key_R)
+            self.assertEqual(replay.call_count, 1)
+            self.assertIn("r", self.window.search.text())
+            self.settings.setValue("profiles/ja/popup/replay_shortcut", "")
+            self.window.reload_popup_shortcuts()
+            self.assertTrue(self.window._popup_shortcuts["replay"].key().isEmpty())
+
     def test_escape_hides_and_invalidates_pending_results(self):
         self.window.open_search()
         self.window.search.setText("猫")
@@ -2644,7 +2665,7 @@ class QuickLookupTests(unittest.TestCase):
         self.settings.setValue('hotkey', '<cmd>+<shift>+d' if sys.platform == 'darwin' else '<ctrl>+<shift>+d')
         self.window.open_settings()
         dialog = self.window._setup
-        dialog.tabs.setCurrentIndex(next(index for index in range(dialog.tabs.count()) if dialog.tabs.tabText(index) == "Lookup"))
+        dialog.tabs.setCurrentWidget(dialog.shortcuts_tab)
         dialog.shortcut.recorder.setFocus()
         self.app.processEvents()
         self.assertIs(self.app.focusWidget(), dialog.shortcut.recorder)

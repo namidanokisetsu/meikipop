@@ -420,8 +420,27 @@ class SetupDialog(QDialog):
         self.audio_autoplay.currentIndexChanged.connect(self.save_autoplay)
         from meikipop.gui.anki import AnkiSettingsPanel
         self.anki = AnkiSettingsPanel(settings)
+        from meikipop.gui.popup_shortcuts import POPUP_ACTIONS
+        popup_shortcuts = QWidget()
+        popup_form = QFormLayout(popup_shortcuts)
+        self.popup_shortcuts = {}
+        row = self.anki.shortcut_form.takeRow(self.anki.shortcut)
+        row.labelItem.widget().deleteLater()
+        self.anki.shortcut.enabled.toggled.disconnect(self.anki._save)
+        self.anki.shortcut.recorder.editingFinished.disconnect(self.anki._save)
+        for action, label, default in POPUP_ACTIONS:
+            control = self.anki.shortcut if action == "anki" else ShortcutEdit(default, default)
+            self.popup_shortcuts[action] = control
+            popup_form.addRow(label, control)
+            control.enabled.toggled.connect(lambda _: self.autosave(self.save_popup_shortcuts))
+            control.recorder.editingFinished.connect(lambda: self.autosave(self.save_popup_shortcuts))
+        popup_form.addRow("Scroll", QLabel("↑ / ↓ · Page Up / Down · Home / End"))
+        popup_form.addRow("Close popup", QLabel("Esc"))
+        self.appearance.pinned_form.takeRow(self.appearance.side_button_scrolling)
+        popup_form.addRow(self.appearance.side_button_scrolling)
         if hasattr(parent, "update_anki"):
             self.anki.changed.connect(parent.update_anki)
+            self.anki.changed.connect(parent.scan_settings_changed.emit)
 
         self.status = StatusLabel()
         self.audio_sources.failed.connect(self.status.setText)
@@ -477,13 +496,26 @@ class SetupDialog(QDialog):
 
         lookup = QWidget()
         lookup_layout = QVBoxLayout(lookup)
-        lookup_layout.addWidget(shortcuts)
+        for control in (self.selected_text, self.selection_lookup):
+            shortcut_layout.takeRow(control)
+            lookup_layout.addWidget(control)
+        text_row = shared_layout.takeRow(self.shortcut)
+        text_row.labelItem.widget().deleteLater()
+        shortcut_layout.addRow("Text lookup", self.shortcut)
         self.screen_section = SettingsSection("Screen recognition", scanning)
         self.screen_section.toggle.setChecked(not self.resources.ocr_section.isHidden())
         lookup_layout.addWidget(self.screen_section)
         lookup_layout.addWidget(shared_shortcuts)
         lookup_layout.addStretch()
         self.lookup_tab = add_page(lookup, "Lookup")
+        shortcut_page = QWidget()
+        shortcut_page_layout = QVBoxLayout(shortcut_page)
+        for title, content in (("Lookup", shortcuts), ("Popup", popup_shortcuts)):
+            section = SettingsSection(title, content)
+            section.toggle.setChecked(True)
+            shortcut_page_layout.addWidget(section)
+        shortcut_page_layout.addStretch()
+        self.shortcuts_tab = add_page(shortcut_page, "Shortcuts")
         add_page(dictionaries, "Dictionaries")
         add_page(self.appearance, "Appearance")
         self.audio_tab = add_page(audio, "Audio")
@@ -715,6 +747,36 @@ class SetupDialog(QDialog):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/scan_bindings", bindings)
         self.notify_scan_settings()
 
+    def save_popup_shortcuts(self):
+        from PyQt6.QtGui import QKeySequence
+        from meikipop.gui.popup_shortcuts import shortcut_key, native_chord
+        profile = self.profile.currentData()
+        bindings = {}
+        try:
+            for action, control in self.popup_shortcuts.items():
+                value = control.recorder.keySequence().toString() if control.enabled.isChecked() else ""
+                reserved = ("Esc", "Up", "Down", "PgUp", "PgDown", "Home", "End")
+                if control.enabled.isChecked() and (not value or any(QKeySequence(value) == QKeySequence(key)
+                                                                    for key in reserved)):
+                    raise ValueError("Choose a shortcut other than a navigation key or Escape.")
+                if value and value in bindings.values():
+                    raise ValueError("Choose a different shortcut for each popup action.")
+                if value and sys.platform == "win32":
+                    native_chord(value)
+                bindings[action] = value
+        except ValueError as error:
+            self.status.setText(str(error))
+            return
+        for action, value in bindings.items():
+            key = shortcut_key(profile, action)
+            self.settings.setValue(key, value)
+            self.settings.setValue(key + "_preset", self.popup_shortcuts[action].recorder.keySequence().toString())
+        if self.parent() is not None:
+            self.parent().reload_popup_shortcuts()
+            self.parent().update_anki()
+        self.notify_scan_settings()
+        self.status.clear()
+
     def save_pin_shortcut(self):
         prefix = f"profiles/{self.profile.currentData()}/"
         try:
@@ -780,6 +842,12 @@ class SetupDialog(QDialog):
             self._loading = previous_loading
             return
         self.anki.load(code)
+        from meikipop.gui.popup_shortcuts import POPUP_ACTIONS, popup_bindings, shortcut_key
+        for action, _, default in POPUP_ACTIONS:
+            control = self.popup_shortcuts[action]
+            with QSignalBlocker(control.enabled), QSignalBlocker(control.recorder):
+                control.set_value(popup_bindings(self.settings, code)[action],
+                                  self.settings.value(shortcut_key(code, action) + "_preset", default))
         with QSignalBlocker(self.freeze_while_held):
             self.freeze_while_held.setChecked(self.settings.value(f"profiles/{code}/freeze_while_held", True, bool))
         with QSignalBlocker(self.selection_lookup):

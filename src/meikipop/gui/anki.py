@@ -153,8 +153,9 @@ class AnkiSettingsPanel(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setWidget(mapping_widget)
         options_layout.addWidget(scroll, 1)
-        self.shortcut = ShortcutEdit("", "Ctrl+Shift+A")
-        self.shortcut.setToolTip("Add to Anki while the popup has focus")
+        self.shortcut = ShortcutEdit("Shift+A", "Shift+A")
+        self.shortcut.setToolTip("Add to Anki while reading the popup")
+        self.shortcut_form = form
         form.addRow("Add shortcut", self.shortcut)
         self.status = StatusLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
@@ -204,8 +205,8 @@ class AnkiSettingsPanel(QWidget):
             self._maps = {}
         self._maps = {model: mapping for model, mapping in self._maps.items() if isinstance(mapping, dict)}
         self._set_fields(list(options.fields), options.fields)
-        shortcut = self.settings.value(self._prefix + "shortcut", "")
-        self.shortcut.set_value(shortcut, self.settings.value(self._prefix + "shortcut_preset", "Ctrl+Shift+A"))
+        shortcut = self.settings.value(self._prefix + "shortcut", "Shift+A")
+        self.shortcut.set_value(shortcut, self.settings.value(self._prefix + "shortcut_preset", "Shift+A"))
         self.status.clear()
         self._loading = False
         self._refresh_pending = False
@@ -271,6 +272,10 @@ class AnkiSettingsPanel(QWidget):
                       check_all_models=self.check_all_models.isChecked(),
                       shortcut=shortcut if self.shortcut.enabled.isChecked() else "",
                       shortcut_preset=shortcut)
+        if self.shortcut_form.indexOf(self.shortcut) < 0:
+            # The Shortcuts tab owns validation after taking this control.
+            values.pop("shortcut")
+            values.pop("shortcut_preset")
         for key, value in values.items():
             if key in ("endpoint", "api_key") and self._task is not None and self.settings.value(self._prefix + key, "") != value:
                 self._generation += 1
