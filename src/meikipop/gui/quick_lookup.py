@@ -554,7 +554,8 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
                   headword_furigana=False, combine_frequencies=True, source_text=None, details_expanded=(),
                   definition_furigana=False, collapsed=(), kanji_details=(),
                   preview_frequency=True, preview_pitch=True, preview_definitions=1,
-                  pinned_frequency=True, pinned_pitch=True, grammar=None, separate_headwords=False):
+                  pinned_frequency=True, pinned_pitch=True, grammar=None, separate_headwords=False,
+                  headword_actions=0):
     """Share lexical headings while preserving the configured dictionary order."""
     preview_definitions = max(0, min(50, preview_definitions))
     maximum = preview_definitions if preview else 0
@@ -564,7 +565,7 @@ def render_result(result, expanded=(), preview=False, overlay_actions=False, sho
     clearance = 96 if overlay_actions is True else int(overlay_actions)
     if source_text is None:
         source_text = result.text if result.translation else ""
-    heading_clearance = 0 if show_source and source_text else clearance
+    heading_clearance = max(headword_actions, 0 if show_source and source_text else clearance)
     groups, sources = OrderedDict(), list(dict.fromkeys(entry.source for entry in result.entries))
     for entry in result.entries:
         if preview and (entry.source != sources[0] or groups and (entry.term, entry.reading) not in groups):
@@ -877,6 +878,9 @@ class QuickLookupWindow(QDialog):
         self._anki_task = None
         self._anki_saved_revision = None
         self._anki_saved_note = None
+        self._anki_saved_notes = {}
+        self._headword_rows = {}
+        self._headword_blocks = []
         self._anki_browse_task = None
         self._action_heading = None
         self._translation_view = False
@@ -1333,6 +1337,8 @@ class QuickLookupWindow(QDialog):
     def _clear_actions(self):
         self.update_anki()
         self.audio_button.setEnabled(False)
+        for _, _, audio in self._headword_rows.values():
+            audio.setEnabled(False)
         self.sentence_audio_button.setEnabled(False)
         self._clear_context()
 
@@ -1676,6 +1682,7 @@ class QuickLookupWindow(QDialog):
         self.sentence_audio_button.setEnabled(bool(result.text))
 
     def _render(self, static=False, *, preserve_scroll=False):
+        self._sync_headword_actions()
         self._render_kanji_panel()
         if self._translation_view:
             self._render_translation()
@@ -1724,7 +1731,7 @@ class QuickLookupWindow(QDialog):
                         self.settings.value("profiles/ja/headword_furigana", False, bool),
                         self.settings.value("profiles/ja/definition_furigana", True, bool),
                         self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool),
-                        tuple(sorted(self._collapsed)), separate_headwords)
+                        tuple(sorted(self._collapsed)), separate_headwords, self._headword_clearance())
             if identity == self._render_identity:
                 mark("render_reused", self.revision)
                 return
@@ -1736,6 +1743,7 @@ class QuickLookupWindow(QDialog):
             dictionary_result = replace(self._result, translation="") if self._result.entries else self._result
             self.browser.setHtml(render_result(dictionary_result, expanded, **preview_options,
                                                overlay_actions=self._action_clearance(),
+                                               headword_actions=self._headword_clearance(),
                                                preview=self._peek and not self.is_pinned and compact,
                                                show_source=show_source, source_text=source_text,
                                                details_expanded=self._details_expanded,
@@ -1745,16 +1753,23 @@ class QuickLookupWindow(QDialog):
                                                separate_headwords=separate_headwords,
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._action_heading = None
+            self._headword_blocks = []
             block = self.browser.document().begin()
             while block.isValid():
-                if (show_source and source_text or block.blockFormat().headingLevel() == 2):
+                if block.blockFormat().headingLevel() == 2:
+                    self._headword_blocks.append(block)
+                    if self._headword_rows:
+                        fmt = block.blockFormat()
+                        fmt.setLineHeight(max(row.sizeHint().height() for row, _, _ in self._headword_rows.values()),
+                                          QTextBlockFormat.LineHeightTypes.MinimumHeight.value)
+                        QTextCursor(block).setBlockFormat(fmt)
+                if self._action_heading is None and (show_source and source_text or block.blockFormat().headingLevel() == 2):
                     self._action_heading = block
                     if self._action_clearance():
                         fmt = block.blockFormat()
                         fmt.setLineHeight(self.audio_actions.sizeHint().height(),
                                           QTextBlockFormat.LineHeightTypes.MinimumHeight.value)
                         QTextCursor(block).setBlockFormat(fmt)
-                    break
                 block = block.next()
             self._render_identity = identity
             self._rendered_result_key = result_key
@@ -2156,6 +2171,7 @@ class QuickLookupWindow(QDialog):
     def _place_actions(self):
         if self._shutting_down:
             return
+        self._sync_headword_actions()
         self.mode_row.hide()
         for name, button in self._popup_actions.items():
             visible = self.settings.value(f"profiles/{self.preferred_foreign}/buttons/{name}", True, bool)
@@ -2163,6 +2179,8 @@ class QuickLookupWindow(QDialog):
                 visible = visible and self.settings.value(f"profiles/{self.preferred_foreign}/anki/enabled", False, bool)
             if name == "back":
                 visible = visible and (bool(self._history) or self._translation_view)
+            if name in ("anki", "audio") and self._headword_rows:
+                visible = False
             button.setVisible(visible)
         inline = self._inline_actions()
         container = self.browser.viewport() if inline else self.header
@@ -2191,6 +2209,7 @@ class QuickLookupWindow(QDialog):
         return sum(button.width() for button in buttons) + len(buttons) * self.audio_actions.layout().spacing()
 
     def _position_actions(self, *_):
+        self._position_headword_actions()
         if not self._inline_actions() or self.audio_actions.parentWidget() is not self.browser.viewport():
             return
         block = self._action_heading
@@ -2217,6 +2236,79 @@ class QuickLookupWindow(QDialog):
                                        round(top + (height - size.height()) / 2), size.width(), size.height())
         self.audio_actions.setVisible(top + height > 0 and top < viewport.height())
         self.audio_actions.raise_()
+
+    def _headword_groups(self):
+        groups = OrderedDict()
+        for entry in self._result.entries if self._result else ():
+            groups.setdefault((entry.term, entry.reading), []).append(entry)
+        return groups
+
+    def _sync_headword_actions(self):
+        groups = self._headword_groups()
+        if self._translation_view or self._peek and not self.is_pinned or len(groups) < 2:
+            groups = {}
+        for key in list(self._headword_rows):
+            if key not in groups:
+                row, _, _ = self._headword_rows.pop(key)
+                row.hide()
+                row.deleteLater()
+        for key in groups:
+            if key not in self._headword_rows:
+                row = QWidget(self.browser.viewport())
+                layout = QHBoxLayout(row)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.setSpacing(self.audio_actions.layout().spacing())
+                anki = self._action("anki", "Add to Anki")
+                audio = self._action("audio", "Play pronunciation")
+                anki.clicked.connect(lambda checked=False, key=key: self.add_to_anki(headword=key))
+                audio.clicked.connect(lambda checked=False, key=key: self.play_audio(headword=key))
+                audio.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                audio.customContextMenuRequested.connect(
+                    lambda point, key=key, button=audio: self.audio_source_menu(point, headword=key, button=button))
+                layout.addWidget(anki)
+                layout.addWidget(audio)
+                self._headword_rows[key] = row, anki, audio
+            row, anki, audio = self._headword_rows[key]
+            prefix = f"profiles/{self.preferred_foreign}/"
+            anki.setVisible(self.settings.value(prefix + "anki/enabled", False, bool)
+                            and self.settings.value(prefix + "buttons/anki", True, bool))
+            audio.setVisible(self.settings.value(prefix + "buttons/audio", True, bool))
+            audio.setEnabled(self._display_revision == self.revision)
+            audio.setIcon(action_icon("audio", config.color_foreground))
+        if self._headword_rows:
+            self.anki_button.hide()
+            self.audio_button.hide()
+
+    def _headword_clearance(self):
+        width = max((row.sizeHint().width() for row, anki, audio in self._headword_rows.values()
+                     if not anki.isHidden() or not audio.isHidden()), default=0)
+        return width + self._action_clearance() if width else 0
+
+    def _position_headword_actions(self):
+        if not self._headword_rows:
+            return
+        document = self.browser.document()
+        headings = self._headword_blocks
+        viewport = self.browser.viewport()
+        scroller = self.browser.section_scroll
+        for index, (row, anki, audio) in enumerate(self._headword_rows.values()):
+            if (index >= len(headings) or not headings[index].isValid()
+                    or anki.isHidden() and audio.isHidden()):
+                row.hide()
+                continue
+            block = headings[index]
+            rect = document.documentLayout().blockBoundingRect(block)
+            top = rect.top() - self.browser.verticalScrollBar().value()
+            if not scroller.header.isHidden() and scroller._heading == block.position():
+                top = scroller.header.y()
+            size = row.sizeHint()
+            shared_width = self._action_clearance() if block == self._action_heading else 0
+            line = block.layout().lineAt(0) if block.layout().lineCount() else None
+            height = max(line.y() + line.height() if line else rect.height(), size.height())
+            row.setGeometry(round(viewport.width() - document.documentMargin() - size.width() - shared_width),
+                            round(top + (height - size.height()) / 2), size.width(), size.height())
+            row.setVisible(top + height > 0 and top < viewport.height() and not self._translation_view)
+            row.raise_()
 
     def open_search(self, text="", *, at_cursor=False, passive=False, selection=False):
         self._leave_translation()
@@ -2317,10 +2409,13 @@ class QuickLookupWindow(QDialog):
         self._scan_hold_active = active
         self._autoplayed = set() if active else None
 
-    def _audio_key(self):
+    def _audio_key(self, headword=None):
         result = self._result
         if result.entries:
-            entry = result.entries[0]
+            entries = self._headword_groups().get(headword, ()) if headword is not None else result.entries
+            if not entries:
+                return None
+            entry = entries[0]
             return entry.language, entry.term, entry.reading or ""
         return result.source, result.text, ""
 
@@ -2340,16 +2435,17 @@ class QuickLookupWindow(QDialog):
             self._autoplayed.add(key)
         self.play_audio()
 
-    def audio_source_menu(self, point):
+    def audio_source_menu(self, point, *, headword=None, button=None):
         if self._result is None or not self._result.entries:
             return
         from meikipop.audio.sources import database_path, source_label, source_order
         profile = self.preferred_foreign
-        menu = QMenu(self.audio_button)
-        menu.addAction("Use source priority", self.play_audio)
+        button = button or self.audio_button
+        menu = QMenu(button)
+        menu.addAction("Use source priority", lambda: self.play_audio(headword=headword))
         menu.addSeparator()
         for source in source_order(self.settings, profile):
-            action = menu.addAction(source_label(source), lambda checked=False, source=source: self.play_audio(source=source))
+            action = menu.addAction(source_label(source), lambda checked=False, source=source: self.play_audio(source=source, headword=headword))
             action.setEnabled(source in ("tts", "online") or bool(database_path(self.settings, profile)))
         clip = getattr(self.audio, "current_clip", None)
         if clip and clip.page_url.startswith("https://commons.wikimedia.org/"):
@@ -2362,7 +2458,7 @@ class QuickLookupWindow(QDialog):
         menu.addSeparator()
         menu.addAction("Audio settings…", self.open_audio_settings)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        menu.popup(self.audio_button.mapToGlobal(point))
+        menu.popup(button.mapToGlobal(point))
 
     def open_audio_settings(self):
         self.open_settings()
@@ -2370,7 +2466,8 @@ class QuickLookupWindow(QDialog):
 
     def update_anki(self):
         enabled = self.settings.value(f"profiles/{self.preferred_foreign}/anki/enabled", False, bool)
-        saved = self._anki_saved_revision == self.revision
+        first = next(iter(self._headword_groups()), None)
+        saved = self._anki_saved_revision == self.revision and first in self._anki_saved_notes
         ready = (enabled and self._result is not None and bool(self._result.entries)
                  and self._display_revision == self.revision and self._anki_task is None
                  and self._anki_browse_task is None)
@@ -2381,14 +2478,23 @@ class QuickLookupWindow(QDialog):
         self.anki_button.setToolTip(description)
         self.anki_button.setAccessibleName(description)
         self.anki_button.setVisible(enabled and self.settings.value(
-            f"profiles/{self.preferred_foreign}/buttons/anki", True, bool))
+            f"profiles/{self.preferred_foreign}/buttons/anki", True, bool) and not self._headword_rows)
         self.anki_button.setEnabled(ready)
+        for key, (_, button, _) in self._headword_rows.items():
+            saved_word = self._anki_saved_revision == self.revision and key in self._anki_saved_notes
+            icon = "anki_saved" if saved_word else "anki"
+            description = "Show in Anki" if saved_word else "Add to Anki"
+            button.setProperty("action_name", icon)
+            button.setIcon(action_icon(icon, config.color_foreground))
+            button.setToolTip(description)
+            button.setAccessibleName(description)
+            button.setEnabled(ready)
         if hasattr(self, "anki_shortcut"):
             binding = self.settings.value(f"profiles/{self.preferred_foreign}/anki/shortcut", "")
             self.anki_shortcut.setKey(QKeySequence(binding))
             self.anki_shortcut.setEnabled(ready and not saved and bool(binding))
 
-    def add_to_anki(self):
+    def add_to_anki(self, *, headword=None):
         from meikipop.anki import AnkiClient, load_settings
         from meikipop.gui.anki import AnkiTask, export_note
         options = load_settings(self.settings, self.preferred_foreign)
@@ -2396,8 +2502,12 @@ class QuickLookupWindow(QDialog):
             return
         if self._anki_task is not None or self._anki_browse_task is not None:
             return
-        if self._anki_saved_revision == self.revision:
-            note_id, saved_options = self._anki_saved_note
+        groups = self._headword_groups()
+        headword = headword if headword is not None else next(iter(groups))
+        if headword not in groups:
+            return
+        if self._anki_saved_revision == self.revision and headword in self._anki_saved_notes:
+            note_id, saved_options = self._anki_saved_notes[headword]
             self._anki_browse_task = AnkiTask(
                 lambda: AnkiClient(saved_options).call("guiBrowse", query=f"nid:{note_id}"),
                 self.revision, self)
@@ -2409,15 +2519,15 @@ class QuickLookupWindow(QDialog):
             self.open_settings()
             self._setup.show_anki()
             return
-        entries, sentence = tuple(self._result.entries), self._result_context
-        kanji = tuple(self._result.kanji)
+        entries, sentence = tuple(groups[headword]), self._result_context
+        kanji = tuple(item for item in self._result.kanji if item.character in headword[0])
         selection, translation = self.browser.selected_text(), self._result.translation
         screenshot, directory = self._result_screenshot, self.directory
         audio_clip = getattr(self.audio, "current_clip", None)
         self._anki_task = AnkiTask(
             lambda: export_note(entries, sentence, selection, options, translation=translation,
                                 screenshot=screenshot, directory=directory, audio_clip=audio_clip, kanji=kanji),
-            (self.revision, entries[0].term, options), self)
+            (self.revision, headword, options), self)
         self._anki_task.finished.connect(self._anki_finished)
         self.show_message("")
         self.update_anki()
@@ -2426,12 +2536,15 @@ class QuickLookupWindow(QDialog):
     def _anki_finished(self, response):
         task, self._anki_task = self._anki_task, None
         task.deleteLater()
-        (revision, word, options), note_id, error = response
-        if not error:
+        (revision, headword, options), note_id, error = response
+        if not error and revision == self.revision:
+            if self._anki_saved_revision != revision:
+                self._anki_saved_notes.clear()
             self._anki_saved_revision = revision
             self._anki_saved_note = (note_id, options)
+            self._anki_saved_notes[headword] = (note_id, options)
         if error:
-            self.show_message(error if self._display_revision == revision else f"{word}: {error}")
+            self.show_message(error if self._display_revision == revision else f"{headword[0]}: {error}")
         self.update_anki()
 
     def _anki_browse_finished(self, response):
@@ -2442,11 +2555,11 @@ class QuickLookupWindow(QDialog):
             self.show_message(error)
         self.update_anki()
 
-    def play_audio(self, *, sentence=False, translation=False, source=None):
+    def play_audio(self, *, sentence=False, translation=False, source=None, headword=None):
         if self._result is None or self._display_revision != self.revision:
             return
         if not sentence and not translation and self._autoplayed is not None:
-            self._autoplayed.add(self._audio_key())
+            self._autoplayed.add(self._audio_key(headword))
         if self.audio is None:
             from meikipop.gui.lookup_audio import LookupAudio
             self.audio = LookupAudio(self)
@@ -2457,8 +2570,11 @@ class QuickLookupWindow(QDialog):
         elif sentence or not result.entries:
             text, language = (self._context or result.text) if sentence else result.text, result.source
         else:
+            entries = self._headword_groups().get(headword, ()) if headword is not None else result.entries
+            if not entries:
+                return
             options = {"source": source} if source else {}
-            self.audio.play(result.entries[0], self.revision, self.settings, profile=self.preferred_foreign, **options)
+            self.audio.play(entries[0], self.revision, self.settings, profile=self.preferred_foreign, **options)
             return
         self.audio.play_text(text, language, self.revision, self.settings, profile=self.preferred_foreign)
 

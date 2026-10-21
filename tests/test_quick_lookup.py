@@ -2283,6 +2283,32 @@ class QuickLookupTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(self.window.geometry(), geometry)
 
+    def test_headword_audio_buttons_follow_readings_and_scroll_with_headings(self):
+        entries = (replace(entry("same", definitions=("first " * 250,)), reading="one"),
+                   replace(entry("same"), reading="two"))
+        self.window.show_entries(entries, "same")
+        self.app.processEvents()
+        self.window.audio = Mock()
+        self.assertTrue(self.window.audio_button.isHidden())
+        self.assertEqual(len(self.window._headword_rows), 2)
+        second_row, _, second = self.window._headword_rows[("same", "two")]
+        self.assertTrue(second_row.isHidden())
+        second.click()
+        self.assertEqual(self.window.audio.play.call_args.args[0].reading, "two")
+        self.window.browser.verticalScrollBar().setValue(self.window.browser.verticalScrollBar().maximum())
+        self.app.processEvents()
+        self.assertTrue(second_row.isVisible())
+        self.window._set_peek(True)
+        self.window.pin.setChecked(True)
+        self.window.browser.verticalScrollBar().setValue(0)
+        self.app.processEvents()
+        first_row = self.window._headword_rows[("same", "one")][0]
+        self.assertTrue(first_row.isVisible())
+        self.assertFalse(first_row.geometry().intersects(self.window.audio_actions.geometry()))
+        self.settings.setValue("profiles/ja/buttons/audio", False)
+        self.window._place_actions()
+        self.assertTrue(second_row.isHidden())
+
     def test_kanji_summary_growth_is_bounded_by_available_screen(self):
         self.window.show_entries((entry(),), peek=True,
                                  kanji=(KanjiEntry("猫", meanings=("Long meaning " * 500,)),))

@@ -228,6 +228,34 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertEqual(window.anki_button.toolTip(), "Add to Anki")
         self.assertEqual(client.return_value.add.call_args.args[0]["expression"], "cat")
 
+    def test_each_reading_exports_only_its_group_and_tracks_its_saved_note(self):
+        window = self.anki_window()
+        entries = (Entry("1", "same", "one", "Words", "ja", ("first reading",)),
+                   Entry("2", "same", "two", "Words", "ja", ("second reading",)),
+                   Entry("3", "same", "two", "Other", "ja", ("other dictionary",)))
+        window.show_entries(entries, "same")
+        self.app.processEvents()
+        first = window._headword_rows[("same", "one")][1]
+        second = window._headword_rows[("same", "two")][1]
+        self.assertTrue(window.anki_button.isHidden())
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.side_effect = (123, 456)
+            second.click()
+            self.wait_until(lambda: window._anki_task is None)
+            values = client.return_value.add.call_args.args[0]
+            self.assertIn("second reading", values["glossary"])
+            self.assertIn("other dictionary", values["glossary"])
+            self.assertNotIn("first reading", values["glossary"])
+            self.assertEqual(second.toolTip(), "Show in Anki")
+            self.assertEqual(first.toolTip(), "Add to Anki")
+            first.click()
+            self.wait_until(lambda: window._anki_task is None)
+            self.assertEqual(first.toolTip(), "Show in Anki")
+            with patch("meikipop.anki.AnkiClient") as browser_client:
+                second.click()
+                self.wait_until(lambda: window._anki_browse_task is None)
+                browser_client.return_value.call.assert_called_once_with("guiBrowse", query="nid:123")
+
     def test_save_error_is_visible_and_can_be_retried_explicitly(self):
         window = self.anki_window()
         window.show_entries([Entry("1", "cat", "", "Words", "ja", ("cat",))], "cat")

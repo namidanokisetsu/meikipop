@@ -61,6 +61,9 @@ Preview defaults to one definition without grammar labels; pinned results have n
 Dictionary display preferences only control whether a section starts collapsed.
 Popup actions share the first visible sentence or headword line, reserving their
 measured width. Button visibility and sentence size are saved per profile.
+Multiple headword/reading groups have their own audio and Anki controls anchored
+to cached heading blocks. Anki exports and saved-note state belong to that group;
+sentence actions and automatic pronunciation retain their existing scope.
 Translation uses a separate reading surface and the existing worker; returning
 keeps the dictionary document, selection and scroll intact. Sentence links use
 the full captured context, never the compact display text. Preview clicks only

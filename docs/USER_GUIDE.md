@@ -25,6 +25,8 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
 - **Read more:** pin the popup to show all definitions. Dictionary headings
   collapse or reopen a dictionary; its own detail links open examples and notes.
   **Back** returns to the previous lookup. **Copy sentence** copies the context.
+  Multiple headwords have separate pronunciation and Anki buttons. Each uses that
+  headword and reading, combining its definitions across dictionaries.
 - **Kanji:** click a character in the headword or bottom cards to open its detail
   pane. Another character replaces it. Click the same character again or use
   the pane's close button to hide it.
