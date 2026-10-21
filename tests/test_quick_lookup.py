@@ -57,6 +57,28 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_close_on_cursor_leave_respects_geometry_and_interaction(self):
+        self.window.show()
+        self.window._peek = True
+        self.window.pin.setChecked(True)
+        leave = QEvent(QEvent.Type.Leave)
+        with patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-500, -500)), \
+                patch.object(self.window, "hide") as hide:
+            self.window.leaveEvent(leave)
+            hide.assert_not_called()
+            self.settings.setValue("close_on_cursor_leave", True)
+            with patch.object(QApplication, "activePopupWidget", return_value=Mock()):
+                self.window.leaveEvent(leave)
+            hide.assert_not_called()
+            with patch.object(QApplication, "mouseButtons", return_value=Qt.MouseButton.LeftButton):
+                self.window.leaveEvent(leave)
+            hide.assert_not_called()
+            with patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=self.window.geometry().center()):
+                self.window.leaveEvent(leave)
+            hide.assert_not_called()
+            self.window.leaveEvent(leave)
+            hide.assert_called_once_with()
+
     def test_profile_removal_keeps_downloads_and_survives_library_refresh(self):
         self.settings.setValue("profiles/tr/target", "en")
         self.window.update_languages(("ja", "tr"))

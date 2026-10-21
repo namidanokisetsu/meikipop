@@ -258,8 +258,9 @@ class SetupDialog(QDialog):
 
         shortcuts = QWidget()
         shortcut_layout = QFormLayout(shortcuts)
-        shared_shortcuts = QGroupBox("All languages")
+        shared_shortcuts = QWidget()
         shared_layout = QFormLayout(shared_shortcuts)
+        shared_layout.setContentsMargins(0, 0, 0, 0)
         self.scan_key = QComboBox()
         for label, value in (("None", ""), ("Shift", "shift"), ("Ctrl", "ctrl"), ("Alt", "alt"),
                              ("Ctrl + Shift", "ctrl+shift"), ("Ctrl + Alt", "ctrl+alt"), ("Alt + Shift", "alt+shift")):
@@ -281,6 +282,11 @@ class SetupDialog(QDialog):
                                      settings.value("hotkey_preset", shortcut_preset()))
         self.shortcut.setToolTip("Look up selected or copied text. Shared by all languages.")
         shared_layout.addRow("Text lookup", self.shortcut)
+        self.close_on_cursor_leave = QCheckBox("Close popup when cursor leaves")
+        self.close_on_cursor_leave.setToolTip("Includes pinned popups")
+        self.close_on_cursor_leave.setChecked(settings.value("close_on_cursor_leave", False, bool))
+        self.close_on_cursor_leave.toggled.connect(lambda enabled: settings.setValue("close_on_cursor_leave", enabled))
+        shared_layout.addRow(self.close_on_cursor_leave)
         self.selected_text = QCheckBox("Look up selected text automatically")
         shortcut_layout.addRow(self.selected_text)
         self.selected_text.toggled.connect(self.save_text_triggers)

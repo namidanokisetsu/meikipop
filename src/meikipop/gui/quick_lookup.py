@@ -2819,6 +2819,15 @@ class QuickLookupWindow(QDialog):
             return True
         return False
 
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        if (self.settings.value("close_on_cursor_leave", False, bool) and self.isVisible()
+                and not self._capture_visibility and not self.geometry().contains(QCursor.pos())
+                and QApplication.mouseButtons() == Qt.MouseButton.NoButton
+                and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None
+                and not (self._setup is not None and self._setup.isVisible())):
+            self.hide()
+
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.Type.ActivationChange and not self.isActiveWindow():

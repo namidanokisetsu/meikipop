@@ -41,6 +41,8 @@ Screen lookup freezes the image while Shift is held. For changing subtitles,
 release and press Shift again, or turn off **Freeze capture while holding the
 lookup key** in Lookup.
 Automatic lookup of selected text is separate and optional.
+**Lookup ? Close popup when cursor leaves** also closes pinned popups when you
+move away. It stays open while selecting text or using a menu.
 
 ## Dictionaries and appearance
 
