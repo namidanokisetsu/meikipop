@@ -151,7 +151,7 @@ class LookupWorker(QObject):
                         if exact_only:
                             options["exact_only"] = True
                         if isinstance(engine, SearchEngine):
-                            options.update(cancelled=cancelled, request_id=revision,
+                            options.update(cancelled=cancelled, request_id=revision, romaji=not translate,
                                            translation_progress=lambda result: self._emit(self.progress, revision, result),
                                            translation_state=lambda value: self._emit(self.translation_state, revision, value))
                             if source in ("ja", "auto"):

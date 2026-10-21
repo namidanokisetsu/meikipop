@@ -98,7 +98,7 @@ class SearchEngine:
 
     def search(self, text, source="auto", foreign="ja", translate=False, target=None, pair=None, translation_settings=None,
                morphology=False, context=None, translation_progress=None, translation_state=None, cancelled=None, request_id=0,
-               exact_only=False, max_lookup_length=25):
+               exact_only=False, max_lookup_length=25, romaji=False):
         if cancelled is not None and cancelled.is_set():
             raise RuntimeError("Translation cancelled.")
         self.refresh_if_changed()
@@ -114,7 +114,7 @@ class SearchEngine:
         requested_target = language_code(target) if target else None
         pair = tuple(language_code(code) for code in pair) if pair else None
         cache_key = (self.library.revision, text, source, foreign, translate, translator_key, requested_target, pair,
-                     morphology, context if morphology else None, exact_only, max_lookup_length)
+                     morphology, context if morphology else None, exact_only, max_lookup_length, romaji)
         if cache_key in self.cache:
             self.cache.move_to_end(cache_key)
             return self.cache[cache_key]
@@ -183,6 +183,23 @@ class SearchEngine:
                     suggestions = self.library.suggest(text, source)
             if not entries and not suggestions:
                 message = "No entry found."
+            if romaji and foreign == "ja" and (automatic_source or source == "ja"):
+                from meikipop.language.romaji import kana_candidates
+                converted = []
+                for kana in kana_candidates(text):
+                    converted.extend(self.library.lookup(kana, "ja") if exact_only else
+                                     self._japanese(kana, max_lookup_length, full_only=True))
+                if converted:
+                    if source == "ja" and matched_length < len(text):
+                        entries = ()
+                    if not entries:
+                        source, target = "ja", pair[1] if pair else "en"
+                    unique = {entry.id: entry for entry in entries}
+                    for entry in converted:
+                        unique.setdefault(entry.id, entry)
+                    entries = tuple(unique.values())
+                    suggestions, message = (), ""
+                    matched_length = len(text)
         translation = ""
         if translate and text:
             try:
@@ -293,7 +310,7 @@ class SearchEngine:
                 return entries, length
         return (), 0
 
-    def _japanese(self, text, max_lookup_length=25):
+    def _japanese(self, text, max_lookup_length=25, *, full_only=False):
         self._matched_length = 0
         from .deconjugator import Deconjugator
         from .kanji import kanji_characters
@@ -324,7 +341,7 @@ class SearchEngine:
             return lookups[surface]
 
         # Full dictionary matches are independent of the prefix scan budget.
-        lengths = ((len(text),) if len(text) > max_lookup_length and lookup(text)
+        lengths = ((len(text),) if full_only or len(text) > max_lookup_length and lookup(text)
                    else range(min(max_lookup_length, len(text)), 0, -1))
         for length in lengths:
             prefix = text[:length]

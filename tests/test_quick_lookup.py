@@ -1208,6 +1208,42 @@ class QuickLookupTests(unittest.TestCase):
         self.wait_until(lambda: self.window._result.translation)
         translator.translate.assert_called_once()
 
+    def test_manual_japanese_search_handles_romaji_and_english_translation(self):
+        from meikipop.dictionary.library import import_yomitan
+        from meikipop.dictionary.search import SearchEngine
+        archive = Path(self.temp.name) / "japanese-input.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("index.json", json.dumps(dict(title="Japanese", format=3, sourceLanguage="ja")))
+            zf.writestr("term_bank_1.json", json.dumps([
+                ["猫", "ねこ", "", "", 0, ["cat"], -1, ""],
+                ["おはようございます", "", "", "", 0, ["good morning"], -1, ""]]))
+        import_yomitan(archive, self.temp.name)
+        translator = Mock(last_model="fixture")
+        translator.translate.return_value = "水をください"
+        window = QuickLookupWindow(self.temp.name, lambda: SearchEngine(self.temp.name, translator), self.settings)
+        try:
+            for text, term in (("neko", "猫"), ("cat", "猫"), ("o hayou gozaimasu", "おはようございます")):
+                window.open_search(text)
+                self.wait_until(lambda: window._result is not None and window._result.text == text)
+                self.assertEqual([e.term for e in window._result.entries], [term])
+                self.assertEqual(window.search.text(), text)
+            translator.translate.assert_not_called()
+            window.open_search("I would like some water")
+            self.wait_until(lambda: window._result is not None and bool(window._result.translation))
+            translator.translate.assert_called_with("I would like some water", "en", "ja")
+            window.open_search("cat")
+            self.wait_until(lambda: window._result is not None and window._result.text == "cat")
+            window.submit(translate=True)
+            self.wait_until(lambda: window._result is not None and bool(window._result.translation))
+            translator.translate.assert_called_with("cat", "en", "ja")
+        finally:
+            window.shutdown()
+            window.worker._thread.join(timeout=2)
+            if window.translation_worker is not None:
+                window.translation_worker._thread.join(timeout=2)
+            window.hide()
+            window.deleteLater()
+
     def test_word_without_dictionary_hit_falls_back_to_translation_once(self):
         self.settings.setValue("profiles/ja/auto_translate_miss", False)
         original = self.engine.search

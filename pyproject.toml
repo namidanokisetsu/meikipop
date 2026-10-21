@@ -32,6 +32,7 @@ dependencies = [
     "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
     "lxml",
     "platformdirs",
+    "romkan2==0.1.1",
     "huggingface-hub>=2.1.1",
     "zeyrek==0.1.3",
 ]

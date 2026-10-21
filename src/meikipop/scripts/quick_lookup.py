@@ -59,6 +59,9 @@ def main(argv=None):
 
     if args.check_runtime:
         # Packaging smoke check; never creates a window or requests permissions.
+        from meikipop.language.romaji import kana_candidates
+        if "ねこ" not in kana_candidates("neko"):
+            raise RuntimeError("Romaji conversion is unavailable.")
         from meikipop.scripts.translation_server import server_command
         if "127.0.0.1" not in server_command("llama-server", "model.gguf"):
             raise RuntimeError("Local translation setup is incomplete.")

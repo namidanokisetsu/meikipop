@@ -42,6 +42,11 @@ installed frequency ranks, kana preference and deconjugation cost. The result
 limit applies to ranked groups, retaining their source records and dictionary order.
 Full dictionary matches precede prefix scanning; shared search and OCR use the
 existing maximum lookup length for that scan, including it in cache identity.
+Manual Japanese search adds offline romkan2 reading candidates without changing
+the input or OCR lookup. Fully converted readings must match the whole query;
+deconjugation and ranking reuse Japanese lookup. English results retain precedence
+and ambiguous romaji readings are appended. Phrase checks still require exact
+headwords; explicit English-to-Japanese translation uses the existing translator.
 Turkish uses Zeyrek 0.1.3, accent
 recovery and precomputed lexicon rankings; exact entries and imported forms
 retain precedence. Full morpheme paths remain attached to their analyses.

@@ -11,6 +11,71 @@ from meikipop.dictionary.search import SearchEngine
 
 
 class LibraryTests(unittest.TestCase):
+    def test_manual_japanese_search_accepts_scripts_and_romaji(self):
+        self.pack("Japanese", [self.row("猫", ["cat"], "ねこ"),
+                               self.row("食べる", ["eat"], "たべる", "v1"),
+                               self.row("東京", ["capital city"], "とうきょう"),
+                               self.row("コーヒー", ["coffee"]),
+                               self.row("新聞", ["newspaper"], "しんぶん"),
+                               self.row("信用", ["trust"], "しんよう")], "ja")
+        engine = SearchEngine(self.directory)
+        try:
+            cases = (("猫", "猫"), ("ねこ", "猫"), ("ネコ", "猫"), ("ﾈｺ", "猫"),
+                     ("neko", "猫"), ("NEKO", "猫"), ("ｎｅｋｏ", "猫"),
+                     ("tabemashita", "食べる"), ("食べmashita", "食べる"),
+                     ("Tōkyō", "東京"), ("toukyou", "東京"),
+                     ("kōhī", "コーヒー"), ("koohii", "コーヒー"), ("ko-hi-", "コーヒー"),
+                     ("shinbun", "新聞"), ("sinbun", "新聞"), ("shin’you", "信用"))
+            for text, expected in cases:
+                with self.subTest(text=text):
+                    result = engine.search(text, foreign="ja", pair=("ja", "en"), romaji=True)
+                    self.assertEqual([e.term for e in result.entries], [expected])
+                    self.assertEqual(result.text, text)
+                    self.assertEqual(result.matched_length, len(text))
+                    self.assertEqual((result.source, result.target), ("ja", "en"))
+            self.assertFalse(engine.search("neko", source="ja").entries)
+            self.assertFalse(engine.search("neko", source="en", romaji=True).entries)
+            self.assertFalse(engine.search("neko", foreign="tr", romaji=True).entries)
+        finally:
+            engine.close()
+
+    def test_romaji_keeps_english_results_and_rejects_partial_readings(self):
+        self.pack("Japanese", [self.row("目的", ["sake"]), self.row("酒", ["rice wine"], "さけ"),
+                               self.row("差", ["difference"], "さ"), self.row("猫", ["cat"], "ねこ")], "ja")
+        engine = SearchEngine(self.directory)
+        try:
+            result = engine.search("sake", romaji=True)
+            self.assertEqual([e.term for e in result.entries], ["目的", "酒"])
+            self.assertEqual((result.source, result.target), ("en", "ja"))
+            self.assertEqual([e.term for e in engine.search("sake", source="en", romaji=True).entries], ["目的"])
+            self.assertFalse(engine.search("sakura", romaji=True).entries)
+            self.assertFalse(engine.search("neko xyz", romaji=True).entries)
+            self.assertFalse(engine.search("neko").entries)
+            self.assertEqual([e.term for e in engine.search("neko", romaji=True).entries], ["猫"])
+            self.assertEqual([e.term for e in engine.search("cat", romaji=True).entries], ["猫"])
+        finally:
+            engine.close()
+
+    def test_romaji_phrase_headwords_and_english_translation_direction(self):
+        self.pack("Japanese", [self.row("おはようございます", ["good morning"]),
+                               self.row("食べる", ["eat"], "たべる", "v1")], "ja")
+        translator = Mock(last_model="fixture")
+        translator.translate.return_value = "日本語の訳"
+        engine = SearchEngine(self.directory, translator)
+        try:
+            result = engine.search("ohayou gozaimasu", exact_only=True, romaji=True)
+            self.assertEqual([e.term for e in result.entries], ["おはようございます"])
+            self.assertEqual(result.matched_length, len(result.text))
+            self.assertFalse(engine.search("tabemashita", exact_only=True, romaji=True).entries)
+            translator.translate.assert_not_called()
+            for text in ("eat", "good morning", "I would like some water"):
+                result = engine.search(text, source="en", foreign="ja", pair=("ja", "en"),
+                                       target="ja", translate=True, romaji=True)
+                self.assertEqual(result.translation, "日本語の訳")
+                translator.translate.assert_called_with(text, "en", "ja")
+        finally:
+            engine.close()
+
     def test_phrase_check_does_not_use_glosses_morphology_or_cached_word_results(self):
         self.pack("Turkish", [self.row("önünde", ["in front of"])])
         translator = Mock()

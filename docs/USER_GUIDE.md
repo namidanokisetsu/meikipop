@@ -24,6 +24,9 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
   shortcut opens selected text, or an empty input when nothing is selected.
   Select a word in the search input and press Enter to look it up with the
   surrounding sentence.
+  Japanese Search accepts kanji, hiragana, katakana and romaji such as `neko`,
+  `tabemashita` or `kōhī`. Romaji matches appear alongside English matches;
+  your input stays unchanged. English words find Japanese dictionary meanings.
 - **Read more:** pin the popup to show all definitions. Dictionary headings
   collapse or reopen a dictionary; its own detail links open examples and notes.
   **Back** returns to the previous lookup. **Copy sentence** copies the context.
@@ -106,6 +109,8 @@ reuses installed models. Each language can choose its model and translation pair
 **Translate** opens a separate view with the full source and translation.
 Click either language name to change it. **Back** returns to the dictionary
 with its selection and scroll position preserved.
+To translate an English word or phrase into Japanese, use **Translate** and
+choose **English → 日本語** when the automatic direction is ambiguous.
 With an automatic source, a target that matches the detected language switches
 to the other language in the pair.
 Typed phrases use exact dictionary entries when available. Sentences without

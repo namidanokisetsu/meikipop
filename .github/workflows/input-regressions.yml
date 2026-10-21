@@ -26,7 +26,7 @@ jobs:
           python-version: '3.12'
       - name: Install input and settings dependencies
         run: |
-          pip install PyQt6 pynput mss requests Pillow platformdirs lxml betterproto protobuf websockets numpy
+          pip install PyQt6 pynput mss requests Pillow platformdirs lxml betterproto protobuf websockets numpy romkan2==0.1.1
           pip install --no-deps -e .
       - name: Install macOS native bridges
         if: runner.os == 'macOS'
