@@ -18,7 +18,8 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
   the result. Escape or a click outside closes it. Change or disable shortcuts
   in **Settings → Lookup**.
 - **In a dialogue box:** enable **Hover scan** from the tray and select an area.
-  Point at words inside it without holding a key. The area lasts until you quit.
+  Point at words inside it without holding a key. The area is remembered between
+  sessions while the display layout and scaling match. Enable Hover scan each session.
 - **Typed or copied text:** open **Search** from the tray. The configurable text
   shortcut can also open selected text or clipboard text. Select a word in the
   search input and press Enter to look it up with the surrounding sentence.

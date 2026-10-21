@@ -363,6 +363,7 @@ class UnifiedOCR(QObject):
             window.dismiss_button.clicked.connect(self.dismiss)
         window.installEventFilter(self)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
+        self._restore_scan_area()
         self.reload_settings()
 
     @property
@@ -443,6 +444,22 @@ class UnifiedOCR(QObject):
             self.restore_capture_visibility()
             self.leave_timer.start()
 
+    def _restore_scan_area(self):
+        settings = getattr(self.window, "settings", None)
+        if settings is None:
+            return
+        region = settings.value("hover_scan/region")
+        screen_key = settings.value("hover_scan/screen", [])
+        if not isinstance(region, QRect) or region.width() < 2 or region.height() < 2:
+            return
+        if not isinstance(screen_key, (list, tuple)):
+            return
+        for screen in QApplication.screens():
+            if self._screen_key(screen) == tuple(screen_key) and screen.geometry().contains(region):
+                self.hover_region = QRect(region)
+                self.hover_screen = self._screen_key(screen)
+                return
+
     def select_scan_area(self):
         from meikipop.gui.region_selector import RegionSelector
         self.session.suspended = True
@@ -459,6 +476,10 @@ class UnifiedOCR(QObject):
                 return False
             self.hover_region = QRect(region)
             self.hover_screen = self._screen_key(screen)
+            settings = getattr(self.window, "settings", None)
+            if settings is not None:
+                settings.setValue("hover_scan/region", self.hover_region)
+                settings.setValue("hover_scan/screen", list(self.hover_screen))
             self.session.hover(False)
             return True
         finally:

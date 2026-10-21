@@ -4,11 +4,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from queue import Queue
 import threading
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from PyQt6.QtCore import QPoint, QRect, pyqtSignal
+from PyQt6.QtCore import QPoint, QRect, QSettings, pyqtSignal
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication, QCheckBox, QLineEdit, QToolButton, QWidget
 
@@ -418,6 +419,56 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.controller.hover_enabled = True
         self.controller.hover_region = QRect(50, 50, 300, 150)
         self.controller.hover_screen = self.controller._screen_key(QApplication.primaryScreen())
+
+    def test_scan_area_survives_settings_reload_and_hover_toggle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "settings.ini")
+            self.window.settings = QSettings(path, QSettings.Format.IniFormat)
+            screen = QApplication.primaryScreen()
+            region = QRect(screen.geometry().topLeft() + QPoint(20, 20), QRect(0, 0, 100, 50).size())
+            with patch("meikipop.gui.region_selector.RegionSelector.get_region", return_value=region):
+                self.assertTrue(self.controller.select_scan_area())
+            self.window.settings.sync()
+            window = FakeWindow()
+            window.settings = QSettings(path, QSettings.Format.IniFormat)
+            with patch.object(UnifiedOCR, "reload_settings"):
+                controller = UnifiedOCR(window)
+            try:
+                self.assertEqual(controller.hover_region, region)
+                self.assertEqual(controller.hover_screen, controller._screen_key(screen))
+                self.assertFalse(controller.hover_enabled)
+                with patch.object(controller, "reload_settings"), \
+                        patch("meikipop.gui.region_selector.RegionSelector.get_region", return_value=None) as selector:
+                    controller.set_hover_enabled(True)
+                    controller.set_hover_enabled(False)
+                    controller.set_hover_enabled(True)
+                    selector.assert_not_called()
+                with patch("meikipop.gui.region_selector.RegionSelector.get_region", return_value=None):
+                    self.assertFalse(controller.select_scan_area())
+                self.assertEqual(window.settings.value("hover_scan/region"), region)
+            finally:
+                controller.shutdown()
+                window.deleteLater()
+
+    def test_saved_scan_area_requires_valid_bounds_and_matching_display(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.window.settings = QSettings(os.path.join(directory, "settings.ini"), QSettings.Format.IniFormat)
+            screen = QApplication.primaryScreen()
+            key = list(self.controller._screen_key(screen))
+            region = QRect(screen.geometry().topLeft() + QPoint(20, 20), QRect(0, 0, 100, 50).size())
+            moved, scaled, removed = key.copy(), key.copy(), key.copy()
+            moved[1] += 1
+            scaled[-1] *= 2
+            removed[0] = "removed display"
+            for saved_region, saved_key in ((None, key), ("invalid", key), (QRect(0, 0, 1, 1), key),
+                                            (region, "invalid"), (region, moved), (region, scaled),
+                                            (region, removed), (screen.geometry().adjusted(-1, 0, 0, 0), key)):
+                with self.subTest(region=saved_region, screen=saved_key):
+                    self.window.settings.setValue("hover_scan/region", saved_region)
+                    self.window.settings.setValue("hover_scan/screen", saved_key)
+                    self.controller._restore_scan_area()
+                    self.assertIsNone(self.controller.hover_region)
+                    self.assertIsNone(self.controller.hover_screen)
 
     def test_hover_capture_requests_full_snapshot_with_area_for_recognition(self):
         from PyQt6.QtGui import QPixmap

@@ -89,6 +89,8 @@ glossary conversion and mapped media preparation. `glossary-first` uses the firs
 entry, `glossary` uses every returned entry, and `popup-selection-text` remains
 separate. Hover scanning retains the active monitor's full capture for Anki while
 OCR uses only the selected area, with both images taken from the same frame.
+The hover scan area persists globally with its screen geometry and scale;
+restore it only on a matching display. Hover scanning starts disabled.
 Completion only marks the submitted lookup as saved; its checkmark
 opens the saved note in Anki's browser. Sentence furigana uses exact dictionary
 headwords only, without deconjugation or full result preparation. Card glossaries
