@@ -101,6 +101,10 @@ opens the saved note in Anki's browser. Sentence furigana uses exact dictionary
 headwords only, without deconjugation or full result preparation. Card glossaries
 are left-aligned with compact source labels and native HTML ruby; popup rendering
 stays separate.
+Existing-note indicators use batched native `dupe:` searches and exact deck IDs,
+including original decks for filtered cards. Checks are worker-bound and keyed by
+lookup revision, headword groups and settings; stale results never mark new words.
+Unavailable Anki leaves mining usable. Allowing duplicates keeps the add action.
 `kanji-details` uses the captured Japanese lookup data in headword order and shares
 the full kanji content renderer, with card HTML independent of popup links and fonts.
 

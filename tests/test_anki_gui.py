@@ -43,6 +43,8 @@ class AnkiGuiTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.settings = QSettings(str(Path(self.temp.name) / "settings.ini"), QSettings.Format.IniFormat)
         self.widgets = []
+        self.existing_patch = patch("meikipop.anki.AnkiClient.existing_notes", return_value={})
+        self.existing_patch.start()
 
     def tearDown(self):
         for widget in reversed(self.widgets):
@@ -52,6 +54,9 @@ class AnkiGuiTests(unittest.TestCase):
             task = getattr(widget, "_task", None) or getattr(widget, "_anki_task", None)
             if task:
                 task.thread.join(2)
+            check = getattr(widget, "_anki_check_task", None)
+            if check:
+                check.thread.join(2)
             widget.hide()
             widget.deleteLater()
         self.app.processEvents()
@@ -59,6 +64,7 @@ class AnkiGuiTests(unittest.TestCase):
         self.settings.clear()
         self.settings.sync()
         self.temp.cleanup()
+        self.existing_patch.stop()
 
     def wait_until(self, predicate):
         deadline = time.monotonic() + 3
@@ -218,6 +224,50 @@ class AnkiGuiTests(unittest.TestCase):
         window = QuickLookupWindow(self.temp.name, FakeEngine, self.settings)
         self.widgets.append(window)
         return window
+
+    def test_existing_word_shows_saved_state_and_opens_all_matching_notes(self):
+        window = self.anki_window()
+        with patch("meikipop.anki.AnkiClient.existing_notes", return_value={"cat": (123, 456)}):
+            window.show_entries([Entry("1", "cat", "", "Words", "ja", ("cat",))], "cat")
+            self.wait_until(lambda: window._anki_check_task is None)
+        self.assertEqual(window.anki_button.property("action_name"), "anki_saved")
+        self.assertEqual(window.anki_button.toolTip(), "Show in Anki")
+        with patch("meikipop.anki.AnkiClient") as client:
+            window.anki_button.click()
+            self.wait_until(lambda: window._anki_browse_task is None)
+            client.return_value.call.assert_called_once_with("guiBrowse", query="nid:123,456")
+            client.return_value.add.assert_not_called()
+
+    def test_existing_word_can_still_be_mined_when_duplicates_are_allowed(self):
+        window = self.anki_window()
+        self.settings.setValue("profiles/ja/anki/duplicate_action", "allow")
+        with patch("meikipop.anki.AnkiClient.existing_notes", return_value={"cat": (123,)}):
+            window.show_entries([Entry("1", "cat", "", "Words", "ja", ("cat",))], "cat")
+            self.wait_until(lambda: window._anki_check_task is None)
+        self.assertEqual(window.anki_button.property("action_name"), "anki_saved")
+        self.assertEqual(window.anki_button.toolTip(), "Add another note")
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.add.return_value = 456
+            window.anki_button.click()
+            self.wait_until(lambda: window._anki_task is None)
+            client.return_value.add.assert_called_once()
+
+    def test_existing_note_check_discards_stale_results_and_checks_latest_word(self):
+        window = self.anki_window()
+        gate = threading.Event()
+        def find(words):
+            if words == ("cat",):
+                gate.wait(2)
+                return {"cat": (123,)}
+            return {}
+        with patch("meikipop.anki.AnkiClient.existing_notes", side_effect=find) as check:
+            window.show_entries([Entry("1", "cat", "", "Words", "ja", ("cat",))], "cat")
+            window.show_entries([Entry("2", "dog", "", "Words", "ja", ("dog",))], "dog")
+            gate.set()
+            self.wait_until(lambda: window._anki_check_task is None)
+            self.assertEqual(check.call_count, 2)
+        self.assertEqual(window.anki_button.toolTip(), "Add to Anki")
+        self.assertEqual(window._anki_existing_notes, {})
 
     def test_one_click_snapshots_all_entries_context_and_selection_without_a_dialog(self):
         from PyQt6.QtGui import QTextCursor

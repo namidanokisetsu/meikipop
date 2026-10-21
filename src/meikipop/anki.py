@@ -167,6 +167,52 @@ class AnkiClient:
             raise ValueError("Update AnkiConnect to support API version 6.")
         return self.names("deckNames"), self.names("modelNames")
 
+    def existing_notes(self, expressions):
+        """Find exact first-field duplicates with Anki's indexed native search."""
+        settings = self.settings
+        models = self.call("modelNamesAndIds")
+        if (not isinstance(models, dict) or settings.model not in models
+                or any(type(value) is not int or value <= 0 for value in models.values())):
+            raise ValueError("Invalid Anki note types.")
+        model_ids = tuple(models.values()) if settings.check_all_models else (models[settings.model],)
+        scope = ""
+        if settings.duplicate_scope != "collection":
+            decks = self.call("deckNamesAndIds")
+            if not isinstance(decks, dict) or any(type(value) is not int or value <= 0 for value in decks.values()):
+                raise ValueError("Invalid Anki decks.")
+            names = {settings.deck, *settings.duplicate_decks} if settings.duplicate_scope == "decks" else {settings.deck}
+            if settings.duplicate_scope == "deckroot":
+                root = settings.deck.split("::")[0]
+                names = {name for name in decks if name == root or name.startswith(root + "::")}
+            ids = [str(value) for name, value in decks.items() if name in names]
+            if not ids:
+                return {}
+            scope = "did:" + ",".join(ids) + " "
+        expressions = tuple(dict.fromkeys(expressions))
+        actions = []
+        for expression in expressions:
+            text = escape(expression).replace("\\", "\\\\").replace('"', '\\"')
+            query = scope + "(" + " or ".join(f'"dupe:{model_id},{text}"' for model_id in model_ids) + ")"
+            action = dict(action="findNotes", version=6, params=dict(query=query))
+            if settings.api_key:
+                action["key"] = settings.api_key
+            actions.append(action)
+        if not actions:
+            return {}
+        results = self.call("multi", actions=actions)
+        if not isinstance(results, list) or len(results) != len(expressions):
+            raise ValueError("Invalid Anki duplicate response.")
+        found = {}
+        for expression, result in zip(expressions, results):
+            if not isinstance(result, dict) or result.get("error") is not None:
+                raise ValueError("Anki duplicate lookup failed.")
+            ids = result.get("result")
+            if not isinstance(ids, list) or any(type(value) is not int or value <= 0 for value in ids):
+                raise ValueError("Invalid Anki note IDs.")
+            if ids:
+                found[expression] = tuple(dict.fromkeys(ids))
+        return found
+
     def _duplicate_options(self, deck=None, scope=None):
         settings = self.settings
         deck, scope = deck or settings.deck, scope or settings.duplicate_scope

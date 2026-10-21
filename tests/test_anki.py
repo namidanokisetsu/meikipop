@@ -130,6 +130,36 @@ class AnkiTests(unittest.TestCase):
                 else:
                     self.assertNotIn("deckName", details)
 
+    def test_existing_notes_use_exact_native_search_and_scoped_ids(self):
+        decks = {"Japanese": 1, "Japanese::Words": 2, "Other": 3}
+        for scope, expected in (("deck", "did:2 "), ("deckroot", "did:1,2 "),
+                                ("decks", "did:2,3 "), ("collection", "")):
+            with self.subTest(scope=scope):
+                options = replace(self.options, deck="Japanese::Words", duplicate_scope=scope,
+                                  duplicate_decks=("Other",))
+                client = AnkiClient(options)
+                responses = [{"Basic": 10, "Other type": 20}]
+                if scope != "collection":
+                    responses.append(decks)
+                responses.append([{"result": [123, 456], "error": None}, {"result": [], "error": None}])
+                with patch.object(client, "call", side_effect=responses) as call:
+                    self.assertEqual(client.existing_notes(['猫 "x"', "dog", "dog"]), {'猫 "x"': (123, 456)})
+                actions = call.call_args.kwargs["actions"]
+                self.assertEqual(actions[0]["params"]["query"], expected + '("dupe:10,猫 &quot;x&quot;")')
+                self.assertEqual([action["action"] for action in actions], ["findNotes", "findNotes"])
+                self.assertEqual(actions[0]["key"], "test-key")
+
+    def test_existing_notes_across_note_types_and_malformed_responses(self):
+        options = replace(self.options, duplicate_scope="collection", check_all_models=True, duplicate_action="allow")
+        client = AnkiClient(options)
+        with patch.object(client, "call", side_effect=[{"Basic": 10, "Other": 20}, [{"result": [123], "error": None}]]) as call:
+            self.assertEqual(client.existing_notes(["cat"]), {"cat": (123,)})
+        query = call.call_args.kwargs["actions"][0]["params"]["query"]
+        self.assertEqual(query, '("dupe:10,cat" or "dupe:20,cat")')
+        for result in ([{"result": [True], "error": None}], [{"result": [123], "error": "failure"}], []):
+            with patch.object(client, "call", side_effect=[{"Basic": 10}, result]), self.assertRaises(ValueError):
+                client.existing_notes(["cat"])
+
     def test_selected_decks_include_destination_once_and_block_before_media(self):
         options = replace(self.options, duplicate_scope="decks", duplicate_decks=("Other", "Japanese", "Other"))
         self.can_add = [{"canAdd": True}, {"canAdd": False, "error": "duplicate"}]
