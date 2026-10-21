@@ -79,7 +79,7 @@ class QuickLookupTests(unittest.TestCase):
             self.window.leaveEvent(leave)
             hide.assert_called_once_with()
 
-    def test_profile_removal_keeps_downloads_and_survives_library_refresh(self):
+    def test_profile_removal_cleans_language_data_and_survives_library_refresh(self):
         self.settings.setValue("profiles/tr/target", "en")
         self.window.update_languages(("ja", "tr"))
         self.window.set_mode("tr")
@@ -90,8 +90,11 @@ class QuickLookupTests(unittest.TestCase):
         dialog = SetupDialog(self.temp.name, self.settings, Mock(), self.window)
         try:
             dialog.sync_profile("tr")
-            with patch("meikipop.gui.dictionary_manager.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+            with patch("meikipop.gui.dictionary_manager.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+                    patch("meikipop.data_assets.remove_language_data") as remove:
                 dialog.remove_profile()
+                self.wait_until(lambda: dialog.operation is None)
+                self.assertEqual(remove.call_args.args[0], "tr")
             self.assertEqual(self.window.preferred_foreign, "ja")
             self.assertEqual(self.settings.value("profile"), "ja")
             self.assertFalse(self.settings.contains("profiles/tr/target"))

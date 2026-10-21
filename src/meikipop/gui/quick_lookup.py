@@ -821,6 +821,7 @@ class QuickLookupWindow(QDialog):
     mode_changed = pyqtSignal(str)
     ocr_enabled_changed = pyqtSignal(bool)
     scan_settings_changed = pyqtSignal()
+    models_changed = pyqtSignal()
     hotkey_requested = pyqtSignal()
     selection_requested = pyqtSignal()
     clipboard_requested = pyqtSignal()

@@ -49,6 +49,18 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(server._download("https://example.invalid", target,
                                              hashlib.sha256(target.read_bytes()).hexdigest()), target)
 
+    def test_runtime_only_setup_does_not_download_or_replace_models(self):
+        runtime = self.root / f"runtime-{server.RELEASE}-win-x64"
+        runtime.mkdir()
+        (runtime / "llama-server.exe").write_bytes(b"server")
+        models = {"quality": {"path": "models/existing.gguf", "size": 8}}
+        server._write_installation(self.root, dict(models=models))
+        with patch.object(server, "_platform_key", return_value="win-x64"), \
+                patch.object(server, "_download", side_effect=AssertionError("unexpected model download")):
+            result = server.install_model(directory=self.root, runtime_only=True)
+        self.assertEqual(result["models"], models)
+        self.assertEqual(result["executable"], runtime.name + "/llama-server.exe")
+
     def test_zip_cannot_escape_runtime_directory(self):
         archive = self.root / "bad.zip"
         with zipfile.ZipFile(archive, "w") as output:

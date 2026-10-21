@@ -48,6 +48,10 @@ class SearchEngine:
         self.library.refresh()
         self.cache.clear()
         self._analysis_errors.clear()
+        if self._analyzer is not None:
+            from meikipop.language.morphology import model_available
+            if not model_available(self._analyzer[0]):
+                self._analyzer = None
 
     def refresh_if_changed(self):
         if self.library.refresh_if_changed():

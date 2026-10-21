@@ -22,7 +22,8 @@ class SetupOperation(QObject):
     finished = pyqtSignal(str, bool)
     refresh = pyqtSignal()
 
-    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None, fonts=False):
+    def __init__(self, paths, directory, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None, fonts=False,
+                 asset=None, remove_language=None):
         super().__init__()
         self.paths = paths
         self.directory = directory
@@ -33,6 +34,7 @@ class SetupOperation(QObject):
         self.morphology = morphology
         self.ocr = ocr
         self.fonts = fonts
+        self.asset, self.remove_language = asset, remove_language
         self.installed_component = ""
         self.cancelled = threading.Event()
         self.thread = threading.Thread(target=self._run, name="dictionary-setup", daemon=True)
@@ -47,6 +49,15 @@ class SetupOperation(QObject):
             pass
 
     def _run(self):
+        if self.asset or self.remove_language:
+            try:
+                from meikipop.data_assets import remove_asset, remove_language_data
+                remove = remove_language_data if self.remove_language else remove_asset
+                remove(self.remove_language or self.asset, self.directory, lambda: self._emit(self.refresh), self.cancelled)
+                self._emit(self.finished, "Data removed.", True)
+            except Exception as error:
+                self._emit(self.finished, str(error), False)
+            return
         if self.fonts:
             try:
                 from meikipop.scripts.setup_stroke_order_font import install
@@ -109,8 +120,8 @@ class SetupOperation(QObject):
         if self.profile:
             try:
                 from meikipop.scripts.translation_server import install_model
-                install_model(profile=self.profile, progress=lambda value: self._emit(self.progress, value),
-                              cancelled=self.cancelled)
+                options = dict(runtime_only=True) if self.profile == "runtime" else dict(profile=self.profile)
+                install_model(progress=lambda value: self._emit(self.progress, value), cancelled=self.cancelled, **options)
                 self._emit(self.finished, "Model installed. Translate when ready.", True)
             except InterruptedError:
                 self._emit(self.finished, "Download cancelled.", False)
@@ -478,6 +489,9 @@ class SetupDialog(QDialog):
         self.audio_tab = add_page(audio, "Audio")
         self.translation_tab = add_page(translation, "Translation")
         self.anki_tab = add_page(self.anki, "Anki")
+        from meikipop.gui.data_manager import DataPanel
+        self.data = DataPanel(self)
+        self.data_tab = add_page(self.data, "Data")
         tabs.setCurrentWidget(self.lookup_tab)
         tabs.currentChanged.connect(lambda: self.resources.refresh())
         if translation_error:
@@ -616,16 +630,19 @@ class SetupDialog(QDialog):
         if self.operation is not None or not code or self.profile.count() < 2:
             return
         if QMessageBox.question(self, "Remove language",
-                                f"Remove {language_name(code)} and its settings?\nDictionaries and models will be kept.",
+                                f"Remove {language_name(code)}, its settings and language data?",
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
+        self.begin_operation([], remove_language=code)
+
+    def _forget_profile(self, code):
         removed = set(self.settings.value("removed_profiles", [], type=list))
         removed.add(code)
         self.settings.setValue("removed_profiles", sorted(removed))
         self.settings.remove(f"profiles/{code}")
         with QSignalBlocker(self.profile):
-            self.profile.removeItem(self.profile.currentIndex())
+            self.profile.removeItem(self.profile.findData(code))
         replacement = self.profile.currentData()
         self.settings.setValue("profile", replacement)
         window = self.parent()
@@ -818,6 +835,8 @@ class SetupDialog(QDialog):
             self.parent().set_mode(code)
         if hasattr(self, "resources"):
             self.resources.refresh()
+        if hasattr(self, "data") and self.data.isVisible():
+            self.data.refresh()
 
     def current_ocr_control(self):
         return {"ja": self.ja_ocr_provider, "tr": self.tr_ocr_provider}.get(self.profile.currentData(), self.other_ocr_provider)
@@ -917,13 +936,14 @@ class SetupDialog(QDialog):
             self.screenai_directory.setText(directory)
             self.autosave(self.save_scan_settings)
 
-    def choose_dictionaries(self):
+    def choose_dictionaries(self, *, language=None):
         paths, _ = QFileDialog.getOpenFileNames(self, "Import dictionaries", "", "Yomitan dictionaries (*.zip)")
         if not paths:
             return
-        language = self.language.currentData()
-        if self.language.currentIndex() < 0 or self.language.currentText() != self.language.itemText(self.language.currentIndex()):
-            language = self.language.currentText().strip().lower() or None
+        if language is None:
+            language = self.language.currentData()
+            if self.language.currentIndex() < 0 or self.language.currentText() != self.language.itemText(self.language.currentIndex()):
+                language = self.language.currentText().strip().lower() or None
         self.begin_operation(paths, language=language)
 
     def update_translation_controls(self, *_args, load=False):
@@ -1007,6 +1027,8 @@ class SetupDialog(QDialog):
             return False
 
     def set_operation_busy(self, busy):
+        if hasattr(self, "data"):
+            self.data.set_busy(busy)
         for control in (self.import_button, self.remove_button, self.profile, self.add_profile_button, self.remove_profile_button,
                         self.packs, self.up, self.down, self.language,
                         self.ja_ocr_provider, self.tr_ocr_provider, self.other_ocr_provider,
@@ -1015,10 +1037,12 @@ class SetupDialog(QDialog):
             control.setEnabled(not busy)
         self.remove_profile_button.setEnabled(not busy and self.profile.count() > 1)
 
-    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None, fonts=False):
+    def begin_operation(self, paths, language=None, profile=None, recommended=None, remove=None, morphology=None, ocr=None, fonts=False,
+                        asset=None, remove_language=None):
         if self.operation is not None:
             return
-        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology, ocr, fonts)
+        self.operation = SetupOperation(paths, self.directory, language, profile, recommended, remove, morphology, ocr, fonts,
+                                        asset, remove_language)
         self.operation.refresh.connect(self.dictionaries_changed)
         self.operation.progress.connect(self.status.setText)
         self.operation.finished.connect(self._finished)
@@ -1035,22 +1059,31 @@ class SetupDialog(QDialog):
             self.cancel_button.setEnabled(False)
 
     def _finished(self, status, changed):
+        removed_language = self.operation.remove_language if self.operation is not None else None
+        ocr_changed = changed and self.operation is not None and (
+            self.operation.ocr or self.operation.asset and self.operation.asset.startswith("ocr:"))
         font_installed = changed and self.operation is not None and self.operation.fonts
         component = self.operation.installed_component if self.operation is not None else ""
         if component:
             self.screenai_directory.setText(component)
             self.settings.setValue("screenai_directory", component)
         self.operation = None
+        if changed and removed_language:
+            self._forget_profile(removed_language)
         self.cancel_button.setVisible(False)
         self.set_operation_busy(False)
         self.update_translation_controls()
         self.update_ocr_controls()
         self.reload(preserve=True)
         self.resources.refresh()
+        if self.data.isVisible():
+            self.data.refresh()
         self.status.setText(status)
         if changed:
             self.dictionaries_changed.emit()
             if self.parent() is not None:
+                if ocr_changed:
+                    self.parent().models_changed.emit()
                 self.parent().scan_settings_changed.emit()
                 if font_installed:
                     self.parent()._render_identity = None

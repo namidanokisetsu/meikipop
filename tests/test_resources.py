@@ -3,6 +3,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import json
 from pathlib import Path
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -17,6 +19,77 @@ class ResourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_data_tab_reuses_rows_and_routes_downloads_and_dictionary_controls(self):
+        from meikipop.data_assets import DataAsset
+        from meikipop.dictionary.catalog import recommendations
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QListWidgetItem, QGroupBox
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
+            dialog = SetupDialog(directory, settings, Mock())
+            try:
+                self.assertFalse(any(group.title() == "All languages" for group in dialog.findChildren(QGroupBox)))
+                dialog.close_on_cursor_leave.setChecked(True)
+                self.assertTrue(settings.value("close_on_cursor_leave", False, bool))
+                asset = DataAsset("dictionary:fixture", "Words", "ja", "dictionary", "fixture", size=10, status="Enabled")
+                recommended = recommendations("ja")[0]
+                missing = DataAsset("recommended:fixture", recommended.title, "ja", "recommended", recommended, removable=False)
+                item = QListWidgetItem("Words")
+                item.setData(Qt.ItemDataRole.UserRole, "fixture")
+                with patch.object(dialog, "save_dictionaries"):
+                    dialog.packs.addItem(item)
+                    item.setCheckState(Qt.CheckState.Checked)
+                    dialog.data._update((asset, missing))
+                    row = dialog.data.rows[asset.key]
+                    self.assertTrue(row.enabled.isChecked())
+                    row.enabled.setChecked(False)
+                    self.assertEqual(item.checkState(), Qt.CheckState.Unchecked)
+                    dialog.data.sections["ja"][0].toggle.setChecked(False)
+                    dialog.data._update((asset, missing))
+                    self.assertIs(dialog.data.rows[asset.key], row)
+                    self.assertFalse(dialog.data.sections["ja"][0].toggle.isChecked())
+                with patch.object(dialog, "begin_operation") as start:
+                    dialog.data.rows[missing.key].download.click()
+                    start.assert_called_once_with([], recommended=recommended)
+                dialog.data.set_busy(True)
+                self.assertFalse(row.remove.isEnabled())
+                self.assertFalse(dialog.data.rows[missing.key].download.isEnabled())
+            finally:
+                dialog.deleteLater()
+                self.app.processEvents()
+
+    def test_data_inventory_runs_off_the_gui_thread(self):
+        from meikipop.data_assets import DataAsset
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            settings.setValue("profiles/ja/target", "en")
+            dialog = SetupDialog(directory, settings, Mock())
+            gate, started, threads = threading.Event(), threading.Event(), []
+            def scan(*args, **kwargs):
+                threads.append(threading.get_ident())
+                started.set()
+                gate.wait(2)
+                return (DataAsset("fixture", "Fixture", "ja", status="Built in", removable=False),)
+            try:
+                with patch("meikipop.gui.data_manager.inventory", side_effect=scan):
+                    dialog.data.refresh()
+                    self.assertTrue(started.wait(1))
+                    self.assertFalse(dialog.data.reload.isEnabled())
+                    self.assertNotEqual(threads[0], threading.get_ident())
+                    gate.set()
+                    deadline = time.monotonic() + 3
+                    while dialog.data._task is not None and time.monotonic() < deadline:
+                        self.app.processEvents()
+                    self.assertIsNone(dialog.data._task)
+                    self.assertIn("fixture", dialog.data.rows)
+            finally:
+                gate.set()
+                if dialog.data._task:
+                    dialog.data._task.thread.join(2)
+                dialog.deleteLater()
+                self.app.processEvents()
 
     def test_translation_ready_requires_shared_model_and_runtime_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -92,7 +165,7 @@ class ResourceTests(unittest.TestCase):
                 try:
                     resources = dialog.resources
                     self.assertEqual([dialog.tabs.tabText(i) for i in range(dialog.tabs.count())],
-                                     ["Lookup", "Dictionaries", "Appearance", "Audio", "Translation", "Anki"])
+                                     ["Lookup", "Dictionaries", "Appearance", "Audio", "Translation", "Anki", "Data"])
                     dialog.show_anki()
                     self.assertIs(dialog.tabs.currentWidget(), dialog.anki_tab)
                     dialog.show_audio()

@@ -41,7 +41,7 @@ Screen lookup freezes the image while Shift is held. For changing subtitles,
 release and press Shift again, or turn off **Freeze capture while holding the
 lookup key** in Lookup.
 Automatic lookup of selected text is separate and optional.
-**Lookup ? Close popup when cursor leaves** also closes pinned popups when you
+**Lookup → Close popup when cursor leaves** also closes pinned popups when you
 move away. It stays open while selecting text or using a menu.
 
 ## Dictionaries and appearance
@@ -51,8 +51,13 @@ recommended packs or use **Import ZIPs** for Yomitan dictionaries. Enable and
 reorder them there. For a bundle containing several dictionary ZIPs, extract
 the outer archive first. Japanese recommendations include definitions, kanji,
 frequency and pitch accent; available features depend on the installed packs.
-**Remove language** deletes its settings while keeping downloaded dictionaries
-and models. Keep at least one language; **Add language** restores access to its packs.
+**Data** lists shared models first, then dictionaries and models for each language.
+Download, repair, open or remove them there; dictionary checkboxes enable or disable
+packs. Built-in resources and linked external files are labeled separately.
+Removed files still in use are cleared after restarting Meikipop.
+**Remove language** deletes its settings, dictionaries and language-specific models
+after confirmation. Shared OCR and translation downloads remain available to other
+languages. Keep at least one language.
 
 Japanese word forms work through bundled rules; Turkish uses bundled Zeyrek.
 Other supported languages offer an optional **Download word-form support**
@@ -72,8 +77,8 @@ grammar, and screen lookup keeps available spelling suggestions.
 These include accent alternatives of recovered Turkish roots, shown as links
 without replacing the original analysis.
 Settings save immediately. The language selector also changes the active lookup
-language; most preferences belong to that language. **Lookup → All languages**
-contains the optional text shortcut and Windows startup setting. The text shortcut
+language; most preferences belong to that language. **Lookup** also contains
+the app-wide text shortcut and Windows startup setting. The text shortcut
 starts disabled. **First dictionary only** limits preview to the first matching
 dictionary; **Text scale** scales word, definition and sentence sizes together.
 

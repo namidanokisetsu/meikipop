@@ -128,6 +128,9 @@ def main(argv=None):
     instance = SingleInstance(paths.data_dir, app)
     if not instance.start(args.text, background):
         return 0
+    import threading
+    from meikipop.data_assets import cleanup_removed_data
+    threading.Thread(target=cleanup_removed_data, name="data-cleanup", daemon=True).start()
     app.aboutToQuit.connect(instance.shutdown)
     from meikipop.gui.first_run import FirstLanguage, complete_first_setup, needs_setup, offer_resources
     settings = QSettings("Meikipop", "QuickLookup")

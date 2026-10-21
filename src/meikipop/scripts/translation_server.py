@@ -202,7 +202,7 @@ def _write_installation(root, registry):
         Path(temporary).unlink(missing_ok=True)
 
 
-def install_model(profile="quality", directory=None, progress=None, cancelled=None, downloads=None):
+def install_model(profile="quality", directory=None, progress=None, cancelled=None, downloads=None, *, runtime_only=False):
     """Explicit setup only. Optional bootstrap files are copied and hash-checked."""
     if profile not in MODELS:
         raise ValueError("Choose quality or lightweight translation.")
@@ -235,12 +235,15 @@ def install_model(profile="quality", directory=None, progress=None, cancelled=No
         executables = list(runtime_path.rglob(executable_name))
         if len(executables) != 1:
             raise RuntimeError("Translation runtime is incomplete. Reinstall its runtime folder.")
+        registry.update(release=RELEASE, platform=platform_key,
+                        executable=executables[0].relative_to(root).as_posix())
+        if runtime_only:
+            _write_installation(root, registry)
+            return registry
         model = MODELS[profile]
         url = f'https://huggingface.co/tencent/{model["repo"]}/resolve/{model["revision"]}/{model["file"]}'
         model_path = _download(url, root / "models" / model["file"], model["sha256"], progress,
                                cancelled, Path(downloads) / model["file"] if downloads else None, model["size"])
-        registry.update(release=RELEASE, platform=platform_key,
-                        executable=executables[0].relative_to(root).as_posix())
         if not isinstance(registry.get("models"), dict):
             registry["models"] = {}
         registry["models"][profile] = dict(path=model_path.relative_to(root).as_posix(),

@@ -53,6 +53,7 @@ class ScanWorker(threading.Thread):
         self._stopped = threading.Event()
         self._generation = None
         self._frozen = None
+        self._reset_models = threading.Event()
 
     def invalidate(self, generation):
         self._generation = generation
@@ -68,6 +69,10 @@ class ScanWorker(threading.Thread):
 
     def refresh(self):
         self.queue.put("refresh")
+
+    def refresh_models(self):
+        self._reset_models.set()
+        self.queue.put("models")
 
     def _emit(self, *args):
         if self._stopped.is_set():
@@ -88,9 +93,17 @@ class ScanWorker(threading.Thread):
                 job = self.queue.get()
                 if job is None or self._stopped.is_set():
                     return
+                if self._reset_models.is_set():
+                    providers.clear()
+                    caches.clear()
+                    scanners.clear()
+                    self._frozen = None
+                    self._reset_models.clear()
                 if job == "refresh":
                     if engine:
                         engine.refresh()
+                    continue
+                if job == "models":
                     continue
                 generation, pixels, point, language, *options = job
                 capture_request = pixels if isinstance(pixels, CaptureRequest) else (
@@ -354,6 +367,8 @@ class UnifiedOCR(QObject):
         window.ocr_enabled_changed.connect(self.set_enabled)
         window.mode_changed.connect(lambda _: self.invalidate())
         window.dictionaries_changed.connect(self.refresh_library)
+        if hasattr(window, "models_changed"):
+            window.models_changed.connect(self.refresh_models)
         window.search.textChanged.connect(lambda _: self.invalidate())
         if hasattr(window, "scan_settings_changed"):
             window.scan_settings_changed.connect(self.reload_settings)
@@ -640,6 +655,11 @@ class UnifiedOCR(QObject):
         self.invalidate()
         if self.hit_worker:
             self.hit_worker.refresh()
+
+    def refresh_models(self):
+        self.invalidate()
+        if self.worker:
+            self.worker.refresh_models()
 
     def _capture_bounds(self, point, geometry, screen_key):
         if self.session.hovering:

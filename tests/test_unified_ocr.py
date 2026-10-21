@@ -63,6 +63,16 @@ class ScanWorkerTests(unittest.TestCase):
         self.assertEqual([call.args[2].text for call in sink.emit.call_args_list], ["kitap ev", "kitap ev"])
         engine.refresh.assert_not_called()
 
+    def test_model_reset_survives_a_replaced_queue_marker(self):
+        image = image_bytes()
+        worker, sink = self.make_worker([(1, image, (.2, .5), "tr"), (2, image, (.2, .5), "tr"), None])
+        sink.emit.side_effect = lambda revision, *_: worker.refresh_models() if revision == 1 else None
+        with patch("meikipop.dictionary.search.SearchEngine"), \
+                patch.object(worker, "provider", return_value=Mock(return_value=recognized())) as factory:
+            worker.run()
+        self.assertEqual(factory.call_count, 2)
+        self.assertFalse(worker._reset_models.is_set())
+
     def test_paddle_profiles_share_model_but_keep_language_frame_caches(self):
         image = image_bytes()
         worker, sink = self.make_worker([

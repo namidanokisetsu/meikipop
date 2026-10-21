@@ -31,6 +31,7 @@ Paths below are relative to `src/meikipop/`.
 | Dictionary library | `dictionary/library.py`, `dictionary/search.py` | Indexed local Yomitan packs; atomic imports, explicit ordering and removal; cache invalidation follows library revisions. |
 | Language handling | `language/profiles.py`, `language/support.py`, `language/*_analyzer.py` | Preserve text offsets and dictionary-supported alternatives. Keep language-specific analysis separate. |
 | Results and settings | `gui/quick_lookup.py`, `gui/dictionary_manager.py` | Shared renderer; retain source labels, independent expansion, selection and Back. |
+| Installed data | `data_assets.py`, `gui/data_manager.py` | Worker inventory and sizes; shared models precede per-language downloads. Reuse setup jobs and dictionary removal; never delete linked external data. |
 | Screen lookup | `gui/unified_ocr.py`, `gui/lookup_session.py`, `ocr/` | Capture/OCR and lookup run off the UI thread. Reject stale results; pinning freezes the current result. |
 | Translation | `dictionary/translation.py` | Explicit model setup; lazy local inference, cancellation and loopback-only custom servers. |
 
@@ -83,6 +84,16 @@ dictionary packs, generated assets and environments stay outside Git.
 Settings save screen, pin and text shortcuts independently. OCR component
 validation only gates provider setup; rejected choices restore the saved controls.
 Setup jobs share one control list for disabling and restoring their inputs.
+Cursor-leave dismissal is an app-wide opt-in, including pinned popups; geometry,
+active selection, menus and Settings prevent unintended dismissal.
+Data removal validates owned paths before deletion. Removing a language deletes
+its packs, Stanza data and Japanese font, while shared OCR/translation data stays.
+Paddle's shared download retains its existing `languages/tr/paddle` storage path.
+Mapped files remain visible as pending removals and are collected on a startup worker.
+Model changes invalidate OCR caches on their worker; dictionary refresh drops only
+Stanza analyzers whose models were removed. Runtime-only translation setup preserves
+installed models. Automatic translation reverses the pair when a saved target
+matches the detected source; explicit manual directions retain validation.
 
 Anki's popup action snapshots the lookup and saves once on a worker, including
 glossary conversion and mapped media preparation. Native Anki duplicate checks
