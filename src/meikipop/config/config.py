@@ -56,6 +56,7 @@ class Config:
             'theme_name': 'Dark',
             'font_family': '',
             'font_size_definitions': 14,
+            'font_size_sentence': 14,
             'font_size_header': 18,
             'compact_mode': True,
             'show_all_glosses': False,

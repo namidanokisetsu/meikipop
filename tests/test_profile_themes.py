@@ -26,6 +26,32 @@ def contrast(a, b):
 
 
 class ProfileThemeTests(unittest.TestCase):
+    def test_buttons_are_independent_per_profile_and_preview_grammar_defaults_off(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = QSettings(str(Path(folder) / 'settings.ini'), QSettings.Format.IniFormat)
+            profile = ['ja']
+            widget = ProfileAppearance(settings, lambda: profile[0], Mock())
+            try:
+                self.assertFalse(widget.preview_grammar.isChecked())
+                self.assertTrue(widget.pinned_grammar.isChecked())
+                widget.controls['font_size_sentence'].setValue(22)
+                widget.save()
+                widget.reload()
+                self.assertEqual(widget.controls['font_size_sentence'].value(), 22)
+                for control in widget.action_controls.values():
+                    self.assertTrue(control.isChecked())
+                widget.action_controls['audio_sentence'].setChecked(False)
+                widget.action_controls['close'].setChecked(False)
+                widget.reload()
+                self.assertFalse(widget.action_controls['audio_sentence'].isChecked())
+                self.assertFalse(widget.action_controls['close'].isChecked())
+                self.assertTrue(widget.action_controls['audio'].isChecked())
+                profile[0] = 'tr'
+                widget.reload()
+                self.assertTrue(all(control.isChecked() for control in widget.action_controls.values()))
+            finally:
+                widget.deleteLater()
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

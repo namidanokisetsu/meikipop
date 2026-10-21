@@ -3,6 +3,10 @@ from PyQt6.QtCore import QByteArray, Qt
 from PyQt6.QtGui import QIcon, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 
+POPUP_ACTIONS = (("anki", "Add to Anki"), ("audio_sentence", "Sentence audio"),
+                 ("audio", "Word audio"), ("translate", "Translate"),
+                 ("copy", "Copy"), ("close", "Close"), ("back", "Back"))
+
 
 _SHAPES = {
     "anki": '<circle cx="12" cy="12" r="10"/><path d="M7 12h10M12 7v10"/>',

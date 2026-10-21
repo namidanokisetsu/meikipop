@@ -8,8 +8,9 @@ from meikipop.config.config import config
 from meikipop.gui.themes import THEMES, theme_name
 from meikipop.gui.settings_section import SettingsSection
 from meikipop.gui.typography import default_family
+from meikipop.gui.action_icons import POPUP_ACTIONS
 
-KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions",
+KEYS = ("theme_name", "font_family", "font_size_header", "font_size_definitions", "font_size_sentence",
         "color_background", "color_foreground", "color_highlight_word", "color_highlight_reading",
         "background_opacity", "pitch_colors", "kanji_stroke_order")
 DEFAULTS = {key: getattr(config, key) for key in KEYS}
@@ -60,7 +61,13 @@ class ProfileAppearance(QWidget):
         self._preview_timer.timeout.connect(self._apply_preview)
         self._loading = True
         layout = QVBoxLayout(self)
-        general, preview, pinned = QWidget(), QWidget(), QWidget()
+        general, preview, pinned, actions = QWidget(), QWidget(), QWidget(), QWidget()
+        actions_form = QFormLayout(actions)
+        self.action_controls = {}
+        for name, label in POPUP_ACTIONS:
+            control = QCheckBox(label)
+            self.action_controls[name] = control
+            actions_form.addRow(control)
         form = self.form = self.detail_form = QFormLayout(general)
         detail_form = form
         preview_form = self.preview_form = QFormLayout(preview)
@@ -110,6 +117,7 @@ class ProfileAppearance(QWidget):
         for key, label, minimum, maximum in (
                 ("font_size_header", "Word size", 10, 72),
                 ("font_size_definitions", "Definition size", 10, 48),
+                ("font_size_sentence", "Sentence size", 10, 48),
                 ("furigana_scale", "Furigana size", 30, 100),
                 ("scale", "Text scale", 70, 200), ("background_opacity", "Background opacity", 0, 100)):
             widget = QSpinBox()
@@ -118,7 +126,7 @@ class ProfileAppearance(QWidget):
                 widget.setSuffix("%")
             self.controls[key] = widget
             if key == "scale":
-                widget.setToolTip("Scales word and definition sizes together")
+                widget.setToolTip("Scales word, definition and sentence sizes together")
             (form if key in ("scale", "background_opacity") else detail_form).addRow(label, widget)
         for key, label in (("color_background", "Background"), ("color_foreground", "Text"),
                            ("color_highlight_word", "Word"), ("color_highlight_reading", "Reading")):
@@ -129,7 +137,8 @@ class ProfileAppearance(QWidget):
         self.general_section = SettingsSection("General", general)
         self.preview_section = SettingsSection("Preview", preview)
         self.pinned_section = SettingsSection("Pinned", pinned)
-        for section in (self.general_section, self.preview_section, self.pinned_section):
+        self.actions_section = SettingsSection("Buttons", actions)
+        for section in (self.general_section, self.preview_section, self.pinned_section, self.actions_section):
             layout.addWidget(section)
         self.general_section.toggle.setChecked(True)
         layout.addStretch()
@@ -148,6 +157,8 @@ class ProfileAppearance(QWidget):
         self.compact_preview.toggled.connect(self.save)
         self.pinned_sentence.toggled.connect(self.save)
         self.snap_scrolling.toggled.connect(self.save)
+        for control in self.action_controls.values():
+            control.toggled.connect(self.save)
         for key, widget in self.controls.items():
             if not key.startswith("color"):
                 widget.valueChanged.connect(self.save)
@@ -160,7 +171,9 @@ class ProfileAppearance(QWidget):
         prefix = f"profiles/{self.profile()}/"
         self.preview_frequency.setChecked(self.settings.value(prefix + "preview_frequency", True, bool))
         self.preview_pitch.setChecked(self.settings.value(prefix + "preview_pitch", True, bool))
-        self.preview_grammar.setChecked(self.settings.value(prefix + "preview_grammar", True, bool))
+        self.preview_grammar.setChecked(self.settings.value(prefix + "preview_grammar", False, bool))
+        for name, control in self.action_controls.items():
+            control.setChecked(self.settings.value(prefix + "buttons/" + name, True, bool))
         for name in ("pinned_frequency", "pinned_pitch", "pinned_grammar"):
             getattr(self, name).setChecked(self.settings.value(prefix + name, True, bool))
         self.preview_definitions.setValue(self.settings.value(prefix + "preview_definitions", 1, int))
@@ -230,6 +243,8 @@ class ProfileAppearance(QWidget):
         self.settings.setValue(prefix + "compact_preview", self.compact_preview.isChecked())
         self.settings.setValue(prefix + "preview_frequency", self.preview_frequency.isChecked())
         self.settings.setValue(prefix + "preview_pitch", self.preview_pitch.isChecked())
+        for name, control in self.action_controls.items():
+            self.settings.setValue(prefix + "buttons/" + name, control.isChecked())
         for name in ("preview_grammar", "pinned_frequency", "pinned_pitch", "pinned_grammar"):
             self.settings.setValue(prefix + name, getattr(self, name).isChecked())
         self.settings.setValue(prefix + "preview_definitions", self.preview_definitions.value())
