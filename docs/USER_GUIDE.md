@@ -110,7 +110,11 @@ It includes the word's kanji readings, meanings, examples and components availab
 in your dictionaries, even when collapsed in the popup; missing data stays blank.
 Sentence, screenshot and available word recordings are included when mapped.
 Hover scan screenshots include the full active screen.
-Existing notes are not overwritten. If saving times out, check Anki before retrying.
+**Anki → Duplicates** can prevent or allow duplicate words. Checks can cover the
+current deck, its top-level deck and subdecks, selected decks, or the collection,
+optionally across all note types. Selected decks always include the destination.
+Duplicates are checked before preparing definitions and media. Existing notes are
+not overwritten. If saving times out, check Anki before retrying.
 
 For source installation, custom OCR and release procedures, see
 [development notes](DEVELOPMENT.md).

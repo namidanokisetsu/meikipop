@@ -13,8 +13,12 @@ from urllib.parse import urlsplit
 
 from meikipop.dictionary.metadata import harmonic_rank
 from meikipop.dictionary.pitch import morae, render_pitches
+from meikipop.utils.timing import mark
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:8765"
+DUPLICATE_ACTIONS = {"prevent": "Prevent", "allow": "Allow"}
+DUPLICATE_SCOPES = {"deck": "Current deck", "deckroot": "Deck tree", "decks": "Selected decks",
+                    "collection": "Collection"}
 FIELD_SOURCES = {
     "": "Skip", "expression": "Word", "reading": "Reading",
     "glossary-first": "glossary-first", "glossary": "glossary",
@@ -74,6 +78,10 @@ class AnkiSettings:
     model: str = ""
     fields: dict = field(default_factory=dict)
     tags: tuple = ("meikipop",)
+    duplicate_action: str = "prevent"
+    duplicate_scope: str = "deck"
+    duplicate_decks: tuple = ()
+    check_all_models: bool = False
 
 
 def load_settings(settings, profile):
@@ -84,11 +92,20 @@ def load_settings(settings, profile):
             fields = {}
     except (ValueError, TypeError):
         fields = {}
+    try:
+        decks = json.loads(settings.value(prefix + "duplicate_decks", "[]"))
+        if not isinstance(decks, list) or not all(isinstance(deck, str) for deck in decks):
+            decks = []
+    except (ValueError, TypeError):
+        decks = []
     return AnkiSettings(settings.value(prefix + "enabled", False, bool),
                         settings.value(prefix + "endpoint", DEFAULT_ENDPOINT),
                         settings.value(prefix + "api_key", ""), settings.value(prefix + "deck", ""),
                         settings.value(prefix + "model", ""), fields,
-                        tuple(settings.value(prefix + "tags", "meikipop").split()))
+                        tuple(settings.value(prefix + "tags", "meikipop").split()),
+                        settings.value(prefix + "duplicate_action", "prevent"),
+                        settings.value(prefix + "duplicate_scope", "deck"), tuple(decks),
+                        settings.value(prefix + "check_all_models", False, bool))
 
 
 def endpoint_address(endpoint):
@@ -108,8 +125,10 @@ class AnkiClient:
     def __init__(self, settings):
         self.settings = settings
         self.address = endpoint_address(settings.endpoint)
+        self._checked_expression = None
 
     def call(self, action, **params):
+        mark("anki_request_begin", action=action)
         body = dict(action=action, version=6, params=params)
         if self.settings.api_key:
             body["key"] = self.settings.api_key
@@ -131,6 +150,7 @@ class AnkiClient:
             raise ValueError("Cannot reach AnkiConnect. Open Anki and check the add-on and address.") from error
         finally:
             connection.close()
+            mark("anki_request_end", action=action)
         if result["error"] is not None:
             raise ValueError(f'Anki: {result["error"]}')
         return result["result"]
@@ -147,12 +167,34 @@ class AnkiClient:
             raise ValueError("Update AnkiConnect to support API version 6.")
         return self.names("deckNames"), self.names("modelNames")
 
-    def add(self, values):
+    def _duplicate_options(self, deck=None, scope=None):
+        settings = self.settings
+        deck, scope = deck or settings.deck, scope or settings.duplicate_scope
+        options = dict(allowDuplicate=settings.duplicate_action == "allow",
+                       duplicateScope="collection" if scope == "collection" else "deck",
+                       duplicateScopeOptions=dict(checkAllModels=settings.check_all_models))
+        if scope != "collection":
+            options["duplicateScopeOptions"].update(
+                deckName=deck.split("::")[0] if scope == "deckroot" else deck,
+                checkChildren=scope == "deckroot")
+        return options
+
+    def _note(self, values):
+        settings = self.settings
+        return dict(deckName=settings.deck, modelName=settings.model,
+                    fields={name: values.get(source, "") for name, source in settings.fields.items() if source},
+                    tags=list(settings.tags), options=self._duplicate_options())
+
+    def check(self, expression):
+        """Validate the mapping and duplicates before preparing definitions or media."""
+        self._checked_expression = None
         settings = self.settings
         if not settings.enabled:
             raise ValueError("Enable Anki in Settings first.")
         if not settings.deck or not settings.model:
             raise ValueError("Choose an Anki deck and note type.")
+        if settings.duplicate_action not in DUPLICATE_ACTIONS or settings.duplicate_scope not in DUPLICATE_SCOPES:
+            raise ValueError("Choose valid Anki duplicate settings.")
         fields = self.names("modelFieldNames", modelName=settings.model)
         if not fields or settings.fields.get(fields[0]) != "expression":
             raise ValueError("Map the first Anki field to Word for duplicate checks.")
@@ -160,12 +202,34 @@ class AnkiClient:
             raise ValueError("Anki fields changed. Reload them in Settings.")
         if any(source not in FIELD_SOURCES for source in settings.fields.values()):
             raise ValueError("Choose valid Anki field mappings in Settings.")
-        note = dict(deckName=settings.deck, modelName=settings.model,
-                    fields={name: values.get(source, "") for name, source in settings.fields.items() if source},
-                    tags=list(settings.tags), options=dict(allowDuplicate=False, duplicateScope="deck",
-                    duplicateScopeOptions=dict(deckName=settings.deck, checkChildren=False, checkAllModels=False)))
-        if not note["fields"].get(fields[0]):
+        if not expression:
             raise ValueError("Choose a word to add.")
+        if settings.duplicate_action == "prevent":
+            decks = tuple(dict.fromkeys((settings.deck, *settings.duplicate_decks))) if settings.duplicate_scope == "decks" else (settings.deck,)
+            notes = []
+            for deck in decks:
+                note = self._note({"expression": expression})
+                note.update(deckName=deck, options=self._duplicate_options(deck, "deck")
+                            if settings.duplicate_scope == "decks" else self._duplicate_options())
+                notes.append(note)
+            results = self.call("canAddNotesWithErrorDetail", notes=notes)
+            if (not isinstance(results, list) or len(results) != len(notes)
+                    or any(not isinstance(item, dict) or type(item.get("canAdd")) is not bool for item in results)):
+                raise ValueError("Invalid Anki duplicate-check response.")
+            for deck, result in zip(decks, results):
+                if not result["canAdd"]:
+                    detail = result.get("error") or "Cannot add this note."
+                    location = f" ({deck})" if settings.duplicate_scope == "decks" else ""
+                    raise ValueError(f"Anki{location}: {detail}")
+        self._checked_expression = expression
+
+    def add(self, values):
+        expression = values.get("expression", "")
+        if self._checked_expression != expression:
+            self.check(expression)
+        self._checked_expression = None
+        settings = self.settings
+        note = self._note(values)
         # Store media explicitly so a media error cannot silently become card text.
         for source, media in values.get("_media", {}).items():
             targets = [name for name, mapped in settings.fields.items() if mapped == source]

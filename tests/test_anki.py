@@ -27,6 +27,7 @@ class AnkiTests(unittest.TestCase):
     def setUp(self):
         self.requests = []
         self.error = None
+        self.can_add = None
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -36,8 +37,12 @@ class AnkiTests(unittest.TestCase):
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 owner.requests.append(body)
-                result = {"version": 6, "deckNames": ["Japanese"], "modelNames": ["Basic"],
-                          "modelFieldNames": ["Front", "Back", "Sentence", "Pitch"], "addNote": 123}[body["action"]]
+                if body["action"] == "canAddNotesWithErrorDetail":
+                    result = owner.can_add if owner.can_add is not None else [
+                        dict(canAdd=True) for _ in body["params"]["notes"]]
+                else:
+                    result = {"version": 6, "deckNames": ["Japanese"], "modelNames": ["Basic"],
+                              "modelFieldNames": ["Front", "Back", "Sentence", "Pitch"], "addNote": 123}[body["action"]]
                 raw = json.dumps(dict(result=result, error=owner.error)).encode()
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(raw)))
@@ -94,14 +99,63 @@ class AnkiTests(unittest.TestCase):
     def test_media_uploads_to_mapped_fields_before_one_note_write(self):
         options = replace(self.options, fields={"Front": "expression", "Back": "picture"})
         client = AnkiClient(options)
-        with patch.object(client, "call", side_effect=[["Front", "Back"], "image.png", 123]) as call:
+        with patch.object(client, "call", side_effect=[["Front", "Back"], [{"canAdd": True}], "image.png", 123]) as call:
             client.add({"expression": "cat", "_media": {"picture": {"filename": "image.png", "data": b"png"}}})
-        self.assertEqual([item.args[0] for item in call.call_args_list], ["modelFieldNames", "storeMediaFile", "addNote"])
+        self.assertEqual([item.args[0] for item in call.call_args_list],
+                         ["modelFieldNames", "canAddNotesWithErrorDetail", "storeMediaFile", "addNote"])
         self.assertEqual(call.call_args.kwargs["note"]["fields"]["Back"], '<img src="image.png">')
-        with patch.object(client, "call", side_effect=[["Front", "Back"], ValueError("Media failed")]) as call:
+        with patch.object(client, "call", side_effect=[["Front", "Back"], [{"canAdd": True}], ValueError("Media failed")]) as call:
             with self.assertRaisesRegex(ValueError, "Media failed"):
                 client.add({"expression": "cat", "_media": {"picture": {"filename": "image.png", "data": b"png"}}})
         self.assertNotIn("addNote", [item.args[0] for item in call.call_args_list])
+
+    def test_duplicate_scopes_use_native_anki_options(self):
+        for scope, expected in (("deck", ("Japanese::Words", False)), ("deckroot", ("Japanese", True)),
+                                ("collection", None)):
+            with self.subTest(scope=scope):
+                self.requests.clear()
+                options = replace(self.options, deck="Japanese::Words", duplicate_scope=scope, check_all_models=True)
+                client = AnkiClient(options)
+                client.check("cat")
+                client.add({"expression": "cat"})
+                self.assertEqual([request["action"] for request in self.requests],
+                                 ["modelFieldNames", "canAddNotesWithErrorDetail", "addNote"])
+                checked = self.requests[1]["params"]["notes"][0]["options"]
+                self.assertEqual(checked, self.requests[-1]["params"]["note"]["options"])
+                self.assertEqual(checked["duplicateScope"], "collection" if scope == "collection" else "deck")
+                details = checked["duplicateScopeOptions"]
+                self.assertTrue(details["checkAllModels"])
+                if expected:
+                    self.assertEqual((details["deckName"], details["checkChildren"]), expected)
+                else:
+                    self.assertNotIn("deckName", details)
+
+    def test_selected_decks_include_destination_once_and_block_before_media(self):
+        options = replace(self.options, duplicate_scope="decks", duplicate_decks=("Other", "Japanese", "Other"))
+        self.can_add = [{"canAdd": True}, {"canAdd": False, "error": "duplicate"}]
+        with self.assertRaisesRegex(ValueError, "Other.*duplicate"):
+            AnkiClient(options).add({"expression": "cat", "_media": {"picture": {"data": b"png"}}})
+        self.assertEqual([request["action"] for request in self.requests],
+                         ["modelFieldNames", "canAddNotesWithErrorDetail"])
+        notes = self.requests[-1]["params"]["notes"]
+        self.assertEqual([note["deckName"] for note in notes], ["Japanese", "Other"])
+        self.assertEqual([note["options"]["duplicateScopeOptions"]["deckName"] for note in notes], ["Japanese", "Other"])
+
+    def test_allow_duplicates_skips_check_and_each_new_save_revalidates(self):
+        client = AnkiClient(replace(self.options, duplicate_action="allow"))
+        for _ in range(2):
+            client.add({"expression": "cat"})
+        self.assertEqual([request["action"] for request in self.requests],
+                         ["modelFieldNames", "addNote", "modelFieldNames", "addNote"])
+        self.assertTrue(self.requests[-1]["params"]["note"]["options"]["allowDuplicate"])
+
+    def test_invalid_duplicate_response_never_writes(self):
+        for response in ([], [True], [{"canAdd": "true"}], [{"canAdd": False}]):
+            with self.subTest(response=response):
+                self.can_add = response
+                with self.assertRaises(ValueError):
+                    AnkiClient(self.options).add({"expression": "cat"})
+        self.assertNotIn("addNote", [request["action"] for request in self.requests])
 
     def test_unmapped_content_is_not_rendered(self):
         from unittest.mock import Mock

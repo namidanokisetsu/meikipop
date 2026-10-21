@@ -9,14 +9,15 @@ from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QTextDocument
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLineEdit,
-    QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QMenu, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from meikipop.anki import (AnkiClient, FIELD_SOURCES, load_settings, media_value, note_values,
+from meikipop.anki import (AnkiClient, DUPLICATE_ACTIONS, DUPLICATE_SCOPES, FIELD_SOURCES, load_settings, media_value, note_values,
                            sentence_readings, suggest_fields)
 from meikipop.gui.shortcut_edit import ShortcutEdit
 from meikipop.gui.quick_lookup import _GlossConverter
 from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
+from meikipop.utils.timing import mark
 
 
 class _AnkiGlossConverter(_GlossConverter):
@@ -95,6 +96,7 @@ class AnkiSettingsPanel(QWidget):
         self._loading, self._task, self._generation = True, None, 0
         self._refresh_pending = False
         self._field_controls, self._maps = {}, {}
+        self._duplicate_deck_names, self._known_decks = set(), []
         layout = QVBoxLayout(self)
         self.enabled = QCheckBox("Enable Anki")
         layout.addWidget(self.enabled)
@@ -119,6 +121,22 @@ class AnkiSettingsPanel(QWidget):
         connection_form.addRow("Address", self.endpoint)
         connection_form.addRow("API key", self.api_key)
         options_layout.addWidget(SettingsSection("Connection", connection))
+        duplicates = QWidget()
+        self.duplicate_form = QFormLayout(duplicates)
+        self.duplicate_action, self.duplicate_scope = QComboBox(), QComboBox()
+        for control, choices in ((self.duplicate_action, DUPLICATE_ACTIONS), (self.duplicate_scope, DUPLICATE_SCOPES)):
+            for value, label in choices.items():
+                control.addItem(label, value)
+        self.duplicate_scope.setToolTip("Deck tree includes the top-level deck and all its subdecks")
+        self.duplicate_decks = QPushButton("Choose…")
+        self.duplicate_decks.setToolTip("The destination deck is always included")
+        self.duplicate_decks.setMenu(QMenu(self.duplicate_decks))
+        self.check_all_models = QCheckBox("All note types")
+        self.duplicate_form.addRow("Action", self.duplicate_action)
+        self.duplicate_form.addRow("Check in", self.duplicate_scope)
+        self.duplicate_form.addRow("Also check", self.duplicate_decks)
+        self.duplicate_form.addRow(self.check_all_models)
+        options_layout.addWidget(SettingsSection("Duplicates", duplicates))
         self.reload = QPushButton("Refresh")
         self.reload.setToolTip("Open Anki with AnkiConnect installed")
         self.auto_map = QPushButton("Match fields")
@@ -145,8 +163,11 @@ class AnkiSettingsPanel(QWidget):
         self.options.hide()
         self.enabled.toggled.connect(self.options.setVisible)
         self.enabled.toggled.connect(self._enabled_changed)
-        self.deck.currentIndexChanged.connect(self._save)
+        self.deck.currentIndexChanged.connect(self._deck_changed)
         self.model.currentIndexChanged.connect(self._model_changed)
+        self.duplicate_action.currentIndexChanged.connect(self._duplicates_changed)
+        self.duplicate_scope.currentIndexChanged.connect(self._duplicates_changed)
+        self.check_all_models.toggled.connect(self._save)
         for control in (self.endpoint, self.api_key):
             control.editingFinished.connect(self._connection_changed)
         self.tags.editingFinished.connect(self._save)
@@ -164,10 +185,17 @@ class AnkiSettingsPanel(QWidget):
         self.endpoint.setText(options.endpoint)
         self.api_key.setText(options.api_key)
         self.tags.setText(" ".join(options.tags))
+        self.duplicate_action.setCurrentIndex(max(0, self.duplicate_action.findData(options.duplicate_action)))
+        self.duplicate_scope.setCurrentIndex(max(0, self.duplicate_scope.findData(options.duplicate_scope)))
+        self.check_all_models.setChecked(options.check_all_models)
+        self._duplicate_deck_names = set(options.duplicate_decks)
+        self._known_decks = [options.deck] if options.deck else []
         for control, value in ((self.deck, options.deck), (self.model, options.model)):
             control.clear()
             if value:
                 control.addItem(value)
+        self._update_duplicate_menu()
+        self._duplicates_changed()
         try:
             self._maps = json.loads(self.settings.value(self._prefix + "field_maps", "{}"))
             if not isinstance(self._maps, dict):
@@ -237,6 +265,10 @@ class AnkiSettingsPanel(QWidget):
                       api_key=self.api_key.text(), deck=self.deck.currentText(), model=model,
                       tags=self.tags.text(), fields=json.dumps(fields, ensure_ascii=False),
                       field_maps=json.dumps(self._maps, ensure_ascii=False),
+                      duplicate_action=self.duplicate_action.currentData(),
+                      duplicate_scope=self.duplicate_scope.currentData(),
+                      duplicate_decks=json.dumps(sorted(self._duplicate_deck_names), ensure_ascii=False),
+                      check_all_models=self.check_all_models.isChecked(),
                       shortcut=shortcut if self.shortcut.enabled.isChecked() else "",
                       shortcut_preset=shortcut)
         for key, value in values.items():
@@ -244,6 +276,43 @@ class AnkiSettingsPanel(QWidget):
                 self._generation += 1
             self.settings.setValue(self._prefix + key, value)
         self.changed.emit()
+
+    def _duplicates_changed(self, *_):
+        checking = self.duplicate_action.currentData() == "prevent"
+        self.duplicate_scope.setEnabled(checking)
+        self.check_all_models.setEnabled(checking)
+        self.duplicate_decks.setEnabled(checking)
+        self.duplicate_form.setRowVisible(self.duplicate_decks, self.duplicate_scope.currentData() == "decks")
+        self._save()
+
+    def _deck_changed(self, *_):
+        if not self._loading:
+            self._update_duplicate_menu()
+            self._save()
+
+    def _update_duplicate_menu(self):
+        menu = self.duplicate_decks.menu()
+        menu.clear()
+        destination = self.deck.currentText()
+        for deck in dict.fromkeys((*self._known_decks, destination, *sorted(self._duplicate_deck_names))):
+            if not deck:
+                continue
+            action = menu.addAction(deck)
+            action.setCheckable(True)
+            action.setChecked(deck == destination or deck in self._duplicate_deck_names)
+            action.setEnabled(deck != destination)
+            action.toggled.connect(lambda checked, name=deck: self._duplicate_deck_changed(name, checked))
+        count = len(self._duplicate_deck_names - {destination})
+        self.duplicate_decks.setText(f"{count} selected" if count else "Choose…")
+
+    def _duplicate_deck_changed(self, deck, checked):
+        if checked:
+            self._duplicate_deck_names.add(deck)
+        else:
+            self._duplicate_deck_names.discard(deck)
+        count = len(self._duplicate_deck_names - {self.deck.currentText()})
+        self.duplicate_decks.setText(f"{count} selected" if count else "Choose…")
+        self._save()
 
     def _model_changed(self):
         if self._loading:
@@ -296,12 +365,14 @@ class AnkiSettingsPanel(QWidget):
             return
         self._loading = True
         if kind == "catalog":
+            self._known_decks = value[0]
             for control, names in zip((self.deck, self.model), value):
                 saved = control.currentText()
                 control.clear()
                 control.addItems(names)
                 if saved in names:
                     control.setCurrentText(saved)
+            self._update_duplicate_menu()
             self._set_fields([], {})
         else:
             mapping = self._maps.get(model, {})
@@ -317,6 +388,10 @@ class AnkiSettingsPanel(QWidget):
 def export_note(entries, sentence, selection, options, *, translation="", screenshot=None,
                 directory=None, audio_clip=None, kanji=()):
     """Prepare and save a captured lookup on an AnkiTask worker."""
+    mark("anki_check_begin")
+    client = AnkiClient(options)
+    client.check(escape(entries[0].term))
+    mark("anki_prepare_begin")
     mapped = set(options.fields.values())
     furigana = None
     if entries[0].language == "ja" and sentence and "sentence_furigana" in mapped:
@@ -345,4 +420,7 @@ def export_note(entries, sentence, selection, options, *, translation="", screen
         if suffix in ("mp3", "ogg", "wav", "m4a", "flac", "opus"):
             media["word_audio"] = media_value(audio_clip.data, suffix)
     values["_media"] = media
-    return AnkiClient(options).add(values)
+    mark("anki_commit_begin")
+    note_id = client.add(values)
+    mark("anki_saved")
+    return note_id

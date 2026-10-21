@@ -109,6 +109,57 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertEqual(panel.deck.currentText(), "Japanese")
         self.assertEqual(panel.model.currentText(), "Basic")
 
+    def test_duplicate_controls_preserve_decks_and_profiles(self):
+        prefix = "profiles/ja/anki/"
+        self.settings.setValue(prefix + "deck", "Japanese")
+        self.settings.setValue(prefix + "duplicate_decks", json.dumps(["Other"]))
+        self.settings.setValue(prefix + "duplicate_scope", "decks")
+        panel = AnkiSettingsPanel(self.settings)
+        self.widgets.append(panel)
+        panel.load("ja")
+        with patch("meikipop.gui.anki.AnkiClient") as client:
+            client.return_value.catalog.return_value = (["Japanese", "Other", "New"], ["Basic"])
+            client.return_value.names.return_value = ["Front", "Back"]
+            panel.refresh()
+            self.wait_until(lambda: panel.status.text() == "Connected.")
+        actions = {action.text(): action for action in panel.duplicate_decks.menu().actions()}
+        self.assertTrue(actions["Japanese"].isChecked())
+        self.assertFalse(actions["Japanese"].isEnabled())
+        self.assertTrue(actions["Other"].isChecked())
+        actions["New"].setChecked(True)
+        panel.check_all_models.setChecked(True)
+        panel.duplicate_action.setCurrentIndex(panel.duplicate_action.findData("allow"))
+        self.assertFalse(panel.duplicate_scope.isEnabled())
+        self.assertFalse(panel.duplicate_decks.isEnabled())
+        options = load_settings(self.settings, "ja")
+        self.assertEqual(options.duplicate_decks, ("New", "Other"))
+        self.assertEqual(options.duplicate_action, "allow")
+        self.assertTrue(options.check_all_models)
+        panel.load("tr")
+        self.assertEqual(panel.duplicate_action.currentData(), "prevent")
+        self.assertEqual(panel.duplicate_scope.currentData(), "deck")
+        self.assertFalse(panel.check_all_models.isChecked())
+        panel.load("ja")
+        self.assertEqual(panel.duplicate_scope.currentData(), "decks")
+        self.assertEqual(panel.duplicate_decks.text(), "2 selected")
+
+    def test_duplicate_rejection_skips_all_note_preparation(self):
+        from unittest.mock import Mock
+        entry = Entry("1", "cat & dog", "", "Words", "ja", ("definition",))
+        options = AnkiSettings(True, fields={"Front": "expression", "Back": "glossary", "Image": "picture",
+                                            "Sentence": "sentence_furigana"})
+        screenshot = Mock()
+        with patch("meikipop.gui.anki.AnkiClient") as client, patch("meikipop.gui.anki._AnkiGlossConverter") as converter, \
+                patch("meikipop.dictionary.library.Library") as library:
+            client.return_value.check.side_effect = ValueError("duplicate")
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                export_note([entry], "cat here", "", options, screenshot=screenshot)
+            client.return_value.check.assert_called_once_with("cat &amp; dog")
+            client.return_value.add.assert_not_called()
+            converter.assert_not_called()
+            library.assert_not_called()
+            screenshot.image.assert_not_called()
+
     def test_connection_error_can_be_reloaded(self):
         panel = AnkiSettingsPanel(self.settings)
         self.widgets.append(panel)

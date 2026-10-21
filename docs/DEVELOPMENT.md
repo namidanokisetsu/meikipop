@@ -85,7 +85,12 @@ validation only gates provider setup; rejected choices restore the saved control
 Setup jobs share one control list for disabling and restoring their inputs.
 
 Anki's popup action snapshots the lookup and saves once on a worker, including
-glossary conversion and mapped media preparation. `glossary-first` uses the first
+glossary conversion and mapped media preparation. Native Anki duplicate checks
+precede preparation, with prevent/allow policies and deck, deck-tree, selected-deck
+or collection scopes per profile. Selected decks are checked in one request and
+always include the destination; the final save retains Anki's native scope guard.
+Only mapped glossaries, furigana and pitch are prepared; screenshots use fast,
+lossless PNG encoding. `glossary-first` uses the first
 entry, `glossary` uses every returned entry, and `popup-selection-text` remains
 separate. Hover scanning retains the active monitor's full capture for Anki while
 OCR uses only the selected area, with both images taken from the same frame.
@@ -121,7 +126,8 @@ Use small fixtures for lookup, rendering, cancellation and import changes.
 Real-model checks are for analysis changes or specific failures, not routine
 documentation work. OCR accuracy, global input, exclusive fullscreen, display
 scaling and clean-machine installation still need platform acceptance.
-`MEIKIPOP_TIMING=1` enables stage timings without logging text, pixels or paths.
+`MEIKIPOP_TIMING=1` enables stage timings, including Anki preparation and requests,
+without logging text, pixels or paths.
 
 ## OCR providers
 
@@ -196,6 +202,8 @@ Turkish analyzer fixes/context preferences and Persian spelling recovery were
 adapted from [Anki Miner](https://github.com/0xzerolight/anki_miner/tree/808b5208bf93d919b3f18ea3aba66db5fd7fd0ea/anki_miner/languages).
 Shared word/sentence policies were independently implemented with its registry
 design as a reference. Pitch, input and Anki integration drew on
-[Chibipop](https://github.com/stellarie/chibipop); the Screen AI adapter follows
+[Chibipop](https://github.com/stellarie/chibipop). Anki duplicate scopes and
+preparation ordering follow [Mangatan](https://github.com/1Selxo/Mangatan/tree/6022576909b2cbc9a97286822f801d316b30371b/lib/services/mining).
+The Screen AI adapter follows
 [Meikikai's native bridge](https://github.com/hectahertz/meikikai/tree/50efb401/src/meikikai/ocr/providers/chrome_screen_ai).
 Licenses and attributions ship in `src/meikipop/resources/licenses/`.
