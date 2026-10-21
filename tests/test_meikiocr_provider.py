@@ -28,8 +28,7 @@ class MeikiPixelTests(unittest.TestCase):
         self.assertTrue(all(call.kwargs["local_files_only"] for call in download.call_args_list))
 
     def test_colored_rgb_image_is_sent_as_contiguous_opencv_bgr(self):
-        with patch.dict(sys.modules, {"meikiocr": SimpleNamespace(MeikiOCR=Mock())}):
-            from meikipop.ocr.providers.meikiocr.provider import MeikiOcrProvider
+        from meikipop.ocr.providers.meikiocr.provider import MeikiOcrProvider
         provider = MeikiOcrProvider.__new__(MeikiOcrProvider)
         provider.ocr_client = Mock()
         provider.ocr_client.run_ocr.return_value = []
