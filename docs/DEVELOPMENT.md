@@ -87,7 +87,9 @@ Setup jobs share one control list for disabling and restoring their inputs.
 Anki's popup action snapshots the lookup and saves once on a worker, including
 glossary conversion and mapped media preparation. `glossary-first` uses the first
 entry, `glossary` uses every returned entry, and `popup-selection-text` remains
-separate. Completion only marks the submitted lookup as saved; its checkmark
+separate. Hover scanning retains the active monitor's full capture for Anki while
+OCR uses only the selected area, with both images taken from the same frame.
+Completion only marks the submitted lookup as saved; its checkmark
 opens the saved note in Anki's browser. Sentence furigana uses exact dictionary
 headwords only, without deconjugation or full result preparation. Card glossaries
 are left-aligned with compact source labels and native HTML ruby; popup rendering

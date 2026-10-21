@@ -116,6 +116,63 @@ class ScanWorkerTests(unittest.TestCase):
         self.assertEqual(order, ["capture", "model"])
         capture.close.assert_called_once()
 
+    def test_hover_retains_full_screen_for_anki_while_reusing_area_recognition(self):
+        from dataclasses import replace
+        from io import BytesIO
+        from PIL import Image
+        from meikipop.anki import AnkiSettings
+        from meikipop.dictionary.library import Entry
+        from meikipop.gui.anki import export_note
+        from meikipop.utils.capture import CaptureRequest, PixelFrame
+
+        request = CaptureRequest(1, "fixture", (-20, 0, 40, 20), (-10, 5, 10, 5), 2, 1,
+                                 full_snapshot=True)
+        for native in (True, False):
+            with self.subTest(native=native):
+                snapshots, jobs = [], []
+                for revision, color in enumerate(("red", "blue"), 1):
+                    current = replace(request, revision=revision)
+                    image = Image.new("RGB", (80, 40), color)
+                    image.paste((0, 255, 0), (20, 10, 40, 20))
+                    snapshots.append(PixelFrame(replace(current, crop=current.geometry), image.size,
+                                                image.tobytes(), revision, physical_crop=(-20, 0, 80, 40)))
+                    pixels = current if native else QImage(
+                        image.tobytes(), 80, 40, 80 * 3, QImage.Format.Format_RGB888).copy()
+                    jobs.append((1, pixels, (.2, .5), "tr", ("paddle", ""), False, current, revision))
+                worker, _ = self.make_worker([*jobs, None])
+                worker.frames = SimpleNamespace(emit=Mock())
+                capture = Mock()
+                capture.capture.side_effect = snapshots
+                provider = Mock(return_value=recognized())
+                with patch("meikipop.gui.unified_ocr.RegionCapture", return_value=capture), \
+                        patch.object(worker, "provider", return_value=provider):
+                    worker.run()
+                frames = [call.args[1] for call in worker.frames.emit.call_args_list]
+                self.assertEqual(len(frames), 2)
+                provider.assert_called_once()
+                self.assertEqual(provider.call_args.args[0].size, (20, 10))
+                self.assertEqual(provider.call_args.args[0].getpixel((0, 0)), (0, 255, 0))
+                for frame, color, timestamp in zip(frames, ((255, 0, 0), (0, 0, 255)), (1, 2)):
+                    self.assertEqual(frame.request.crop, request.crop)
+                    self.assertEqual(frame.pixel_size, (20, 10))
+                    self.assertEqual(frame.snapshot.image().size, (80, 40))
+                    self.assertEqual(frame.snapshot.image().getpixel((79, 39)), color)
+                    self.assertEqual(frame.captured_at, frame.snapshot.captured_at)
+                    self.assertEqual(frame.captured_at, timestamp)
+                if native:
+                    self.assertEqual(capture.capture.call_count, 2)
+                    self.assertTrue(all(call.args[0].crop == request.geometry
+                                        for call in capture.capture.call_args_list))
+                    self.assertEqual(frames[-1].physical_crop, (0, 10, 20, 10))
+                entry = Entry("1", "kitap", "", "Words", "tr", ("book",))
+                with patch("meikipop.gui.anki.AnkiClient") as client:
+                    export_note([entry], "kitap ev", "", AnkiSettings(True, fields={"Image": "picture"}),
+                                screenshot=frames[-1].snapshot)
+                picture = client.return_value.add.call_args.args[0]["_media"]["picture"]["data"]
+                exported = Image.open(BytesIO(picture))
+                self.assertEqual(exported.size, (80, 40))
+                self.assertEqual(exported.getpixel((79, 39)), (0, 0, 255))
+
     def test_stop_during_model_loading_skips_inference(self):
         worker, sink = self.make_worker([(1, image_bytes(), (.2, .5), "tr"), None])
         provider = Mock(return_value=recognized())
@@ -361,6 +418,37 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
         self.controller.hover_enabled = True
         self.controller.hover_region = QRect(50, 50, 300, 150)
         self.controller.hover_screen = self.controller._screen_key(QApplication.primaryScreen())
+
+    def test_hover_capture_requests_full_snapshot_with_area_for_recognition(self):
+        from PyQt6.QtGui import QPixmap
+        from meikipop.utils.capture import CaptureRequest
+
+        self.enable_hover()
+        point = QPoint(100, 100)
+        screen = QApplication.primaryScreen()
+        geometry = screen.geometry()
+        pixmap = QPixmap(geometry.size())
+        pixmap.fill()
+        self.controller.worker = SimpleNamespace(queue=Queue(), stop=Mock(), join=Mock())
+        for native in (True, False):
+            with self.subTest(native=native), \
+                    patch("meikipop.gui.unified_ocr.sys.platform", "win32"), \
+                    patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=point), \
+                    patch.object(QApplication, "activeWindow", return_value=None), \
+                    patch.object(type(screen), "grabWindow", return_value=pixmap):
+                self.controller._capture_excluded = native
+                self.controller._update_hover(point)
+                self.controller.capture(self.controller.generation, point)
+                job = self.controller.worker.queue.get_nowait()
+                pixels, request = job[1], job[-2]
+                request = pixels if native else request
+                self.assertTrue(request.full_snapshot)
+                self.assertFalse(request.frozen)
+                self.assertEqual(QRect(*request.crop), self.controller.hover_region)
+                if native:
+                    self.assertIsInstance(pixels, CaptureRequest)
+                else:
+                    self.assertEqual(pixels.size(), geometry.size())
 
     def test_hover_refreshes_stationary_area_every_half_second_without_overlapping_jobs(self):
         self.enable_hover()

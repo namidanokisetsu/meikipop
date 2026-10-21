@@ -97,6 +97,7 @@ class ScanWorker(threading.Thread):
                     pixels.request if isinstance(pixels, PixelFrame) else options[2] if len(options) > 2 else None)
                 mark("ocr_dequeue", capture_request.revision if capture_request else generation)
                 capture_phase = False
+                snapshot = None
                 try:
                     if self._obsolete(generation):
                         self.frames.emit(generation, None, "")
@@ -128,6 +129,9 @@ class ScanWorker(threading.Thread):
                                         continue
                                     self._frozen = frozen = (key, snapshot)
                                 pixels = frozen[1].cropped(pixels)
+                            elif pixels.full_snapshot:
+                                snapshot = capture.capture(replace(pixels, crop=pixels.geometry))
+                                pixels = snapshot.cropped(pixels)
                             else:
                                 pixels = capture.capture(pixels)
                             capture_phase = False
@@ -136,9 +140,17 @@ class ScanWorker(threading.Thread):
                             image = pixels.image()
                         else:
                             pixels = pixels.convertToFormat(QImage.Format.Format_RGB888)
-                            image = Image.frombytes("RGB", (pixels.width(), pixels.height()),
-                                                    pixels.constBits().asstring(pixels.sizeInBytes()),
-                                                    "raw", "RGB", pixels.bytesPerLine())
+                            if capture_request is not None and capture_request.full_snapshot:
+                                snapshot = PixelFrame(replace(capture_request, crop=capture_request.geometry),
+                                                      (pixels.width(), pixels.height()),
+                                                      pixels.constBits().asstring(pixels.sizeInBytes()), options[3],
+                                                      stride=pixels.bytesPerLine())
+                                pixels = snapshot.cropped(capture_request)
+                                image = pixels.image()
+                            else:
+                                image = Image.frombytes("RGB", (pixels.width(), pixels.height()),
+                                                        pixels.constBits().asstring(pixels.sizeInBytes()),
+                                                        "raw", "RGB", pixels.bytesPerLine())
                         mark("pixels_ready", generation)
                     if self._stopped.is_set():
                         return
@@ -171,8 +183,9 @@ class ScanWorker(threading.Thread):
                     if self.frames is not None:
                         request = pixels.request if isinstance(pixels, PixelFrame) else options[2]
                         captured_at = pixels.captured_at if isinstance(pixels, PixelFrame) else options[3]
-                        snapshot = pixels if isinstance(pixels, PixelFrame) else PixelFrame(
-                            request, image.size, image.tobytes(), captured_at)
+                        if snapshot is None:
+                            snapshot = pixels if isinstance(pixels, PixelFrame) else PixelFrame(
+                                request, image.size, image.tobytes(), captured_at)
                         if request.frozen and isinstance(pixels, PixelFrame) and self._frozen is not None:
                             snapshot = self._frozen[1]
                         frame = RecognizedFrame(request, tuple(replace(p, words=tuple(p.words)) for p in paragraphs or ()),
@@ -808,7 +821,7 @@ class UnifiedOCR(QObject):
             request = CaptureRequest(self._capture_revision, screen.name(),
                                      (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
                                      (region.x(), region.y(), region.width(), region.height()), scale, generation,
-                                     self.freeze_capture)
+                                     self.freeze_capture, full_snapshot=self.session.hovering)
             if sys.platform == "win32" and not self._fallback_capture and self._capture_excluded:
                 self._queue_scan(generation, point, request, region)
                 self._last_capture_at = monotonic()
@@ -823,9 +836,9 @@ class UnifiedOCR(QObject):
                 if self.freeze_capture:
                     self._frozen_pixels = (snapshot, captured_at)
             scale_x, scale_y = snapshot.width() / geometry.width(), snapshot.height() / geometry.height()
-            pixels = snapshot.copy(round((region.x() - geometry.x()) * scale_x),
-                                           round((region.y() - geometry.y()) * scale_y),
-                                           round(region.width() * scale_x), round(region.height() * scale_y))
+            pixels = snapshot if request.full_snapshot else snapshot.copy(
+                round((region.x() - geometry.x()) * scale_x), round((region.y() - geometry.y()) * scale_y),
+                round(region.width() * scale_x), round(region.height() * scale_y))
             self._queue_scan(generation, point, pixels, region, request, captured_at)
             self._last_capture_at = monotonic()
         except Exception as error:

@@ -13,6 +13,7 @@ class CaptureRequest:
     scale: float
     generation: int
     frozen: bool = False
+    full_snapshot: bool = False
 
     def physical_crop(self, physical_geometry):
         x, y, width, height = self.crop

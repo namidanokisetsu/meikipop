@@ -108,6 +108,7 @@ in your Anki card template (for example, `{{Kanji}}` for a field named Kanji).
 It includes the word's kanji readings, meanings, examples and components available
 in your dictionaries, even when collapsed in the popup; missing data stays blank.
 Sentence, screenshot and available word recordings are included when mapped.
+Hover scan screenshots include the full active screen.
 Existing notes are not overwritten. If saving times out, check Anki before retrying.
 
 For source installation, custom OCR and release procedures, see
