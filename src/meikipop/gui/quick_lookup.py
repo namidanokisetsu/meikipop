@@ -1535,6 +1535,8 @@ class QuickLookupWindow(QDialog):
             else:
                 result = replace(base, message=result.message)
         self._display(result, remember=self._remember_request)
+        if not self._last_request_translate:
+            self._autoplay_lookup()
         if self._last_request_translate and self._translation_base is not None:
             self._result_screenshot = screenshot
         if self._pending_context and self._pending_context[0] == revision:
@@ -1649,9 +1651,6 @@ class QuickLookupWindow(QDialog):
         self.update_anki()
         self._place_actions()
         self.sentence_audio_button.setEnabled(bool(result.text))
-        autoplay = audio_autoplay_mode(self.settings, self.preferred_foreign)
-        if (self._peek or self._selection_lookup) and (result.entries or result.translation) and autoplay == "lookup":
-            self._autoplay()
 
     def _render(self, static=False, *, preserve_scroll=False):
         self._render_kanji_panel()
@@ -2233,6 +2232,12 @@ class QuickLookupWindow(QDialog):
             return entry.language, entry.term, entry.reading or ""
         return result.source, result.text, ""
 
+    def _autoplay_lookup(self):
+        if (self._result is not None and self._result.entries
+                and (self._peek or self._selection_lookup)
+                and audio_autoplay_mode(self.settings, self.preferred_foreign) == "lookup"):
+            self._autoplay()
+
     def _autoplay(self):
         if self._result is None:
             return
@@ -2392,6 +2397,7 @@ class QuickLookupWindow(QDialog):
         self.translate.setEnabled(bool(text) and self.translation_available())
         self._set_peek(peek)
         self._display(result)
+        self._autoplay_lookup()
         self.set_context("")
         self.status.setText("")
         self.status.hide()

@@ -1402,6 +1402,45 @@ class QuickLookupTests(unittest.TestCase):
         self.window.audio.play.assert_not_called()
         self.window.audio.play_text.assert_not_called()
 
+    def test_translation_and_back_do_not_replay_word_audio(self):
+        self.window.audio = Mock()
+        for mode in ("lookup", "pin", "off"):
+            with self.subTest(mode=mode):
+                self.settings.setValue("profiles/ja/audio_autoplay_mode", mode)
+                self.window.pin.setChecked(False)
+                self.window.show_entries((entry(),), "猫", peek=True)
+                self.window.pin.setChecked(True)
+                self.window.set_context("猫がいる。")
+                self.window.audio.reset_mock()
+                with patch.object(self.window, "translation_worker", Mock()):
+                    self.window.translate.setEnabled(True)
+                    QTest.mouseClick(self.window.translate, Qt.MouseButton.LeftButton)
+                    self.window.deliver(self.window.revision, SearchResult(
+                        "猫がいる。", "ja", "en", translation="There is a cat."))
+                    self.window.go_back()
+                self.window._display(SearchResult("犬", "ja", "en", (entry("犬"),)))
+                self.window.go_back()
+                self.window.audio.play.assert_not_called()
+                self.window.audio.play_text.assert_not_called()
+
+    def test_audio_buttons_play_only_the_requested_audio_with_autoplay_off(self):
+        self.window.audio = Mock()
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        self.window.audio.play.assert_not_called()
+        self.window.audio.play_text.assert_not_called()
+        QTest.mouseClick(self.window.audio_button, Qt.MouseButton.LeftButton)
+        self.window.audio.play.assert_called_once()
+        self.window.audio.play_text.assert_not_called()
+        QTest.mouseClick(self.window.sentence_audio_button, Qt.MouseButton.LeftButton)
+        self.window.audio.play.assert_called_once()
+        self.window.audio.play_text.assert_called_once()
+        QTest.mouseClick(self.window.copy_button, Qt.MouseButton.LeftButton)
+        self.window.audio.play.assert_called_once()
+        self.window.audio.play_text.assert_called_once()
+
     def test_ocr_translation_keeps_source_when_input_is_hidden(self):
         self.settings.setValue("profiles/ja/pinned_sentence", True)
         self.window.show_entries((entry(),), "猫", peek=True)

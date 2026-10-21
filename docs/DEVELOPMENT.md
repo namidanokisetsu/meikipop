@@ -58,6 +58,8 @@ Translation uses a separate reading surface and the existing worker; returning
 keeps the dictionary document, selection and scroll intact. Sentence links use
 the full captured context, never the compact display text. Preview clicks only
 pin; their mouse release never activates links exposed by the pinned layout.
+Lookup autoplay runs on new lookup results, never on translation completion,
+history restoration or rendering. Pin autoplay follows its separate preference.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;
