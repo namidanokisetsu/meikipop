@@ -52,7 +52,8 @@ Popup actions share the first visible sentence or headword line, reserving their
 measured width. Button visibility and sentence size are saved per profile.
 Translation uses a separate reading surface and the existing worker; returning
 keeps the dictionary document, selection and scroll intact. Sentence links use
-the full captured context, never the compact display text.
+the full captured context, never the compact display text. Preview clicks only
+pin; their mouse release never activates links exposed by the pinned layout.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;

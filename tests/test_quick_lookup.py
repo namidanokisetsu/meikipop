@@ -1030,6 +1030,43 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.translation_worker.request.call_args.args[1], "This is the original sentence.")
         self.assertTrue(self.window._translation_view)
 
+    def test_preview_word_click_only_pins_even_when_sentence_moves_under_pointer(self):
+        self.settings.setValue("profiles/ja/pinned_sentence", True)
+        self.window.show_entries((entry(),), "cat", peek=True)
+        self.window.set_context("The original sentence.")
+        self.app.processEvents()
+        browser = self.window.browser
+        point = browser.cursorRect(QTextCursor(browser.document())).center()
+        self.assertFalse(browser.anchorAt(point))
+        self.window.translation_worker = Mock()
+        QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+        self.app.processEvents()
+        self.assertTrue(self.window.is_pinned)
+        self.assertFalse(self.window._translation_view)
+        self.window.translation_worker.request.assert_not_called()
+        cursor = browser.document().find("original")
+        cursor.setPosition(cursor.selectionStart() + 1)
+        point = browser.cursorRect(cursor).center()
+        self.assertEqual(browser.anchorAt(point), "sentence:translate")
+        QTest.mouseClick(browser.viewport(), Qt.MouseButton.LeftButton, pos=point)
+        self.app.processEvents()
+        self.assertTrue(self.window._translation_view)
+        self.window.translation_worker.request.assert_called_once()
+
+    def test_preview_cannot_follow_sentence_link_and_reading_stack_has_no_frame(self):
+        self.window.show_entries((entry(),), "cat", peek=True)
+        self.window.set_context("The original sentence.")
+        self.window.translation_worker = Mock()
+        self.window._link(QUrl("sentence:translate"))
+        self.assertFalse(self.window._translation_view)
+        self.window.translation_worker.request.assert_not_called()
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        self.assertEqual(self.window.content_stack.frameWidth(), 0)
+        self.window._link(QUrl("sentence:translate"))
+        self.app.processEvents()
+        self.assertEqual(self.window.content_stack.frameWidth(), 0)
+
     def test_jitendex_preview_reduces_nesting_and_separates_tags(self):
         self.settings.setValue("profiles/ja/preview_grammar", False)
         self.settings.setValue("profiles/ja/expanded_dictionaries", ['Dictionary'])

@@ -1132,6 +1132,7 @@ class QuickLookupWindow(QDialog):
                 selection-color:{config.color_background};}}
             QLineEdit {{border-bottom:1px solid {colors['border']};}}
             QTextBrowser {{border-radius:0;padding:0;}}
+            QStackedWidget {{background:transparent;border:0;border-radius:0;}}
             QComboBox QAbstractItemView {{background:{config.color_background};color:{config.color_foreground};}}
             QPushButton,QToolButton {{background:transparent;color:{config.color_foreground};
                 border:0;border-radius:4px;padding:3px 5px;}}
@@ -1828,7 +1829,8 @@ class QuickLookupWindow(QDialog):
             self._pin_anchor_click = False
             return  # The first click already expanded the complete peek.
         if url.scheme() == "sentence" and url.path() == "translate":
-            self.submit(translate=True, context=bool(self._context))
+            if not self._peek or self.is_pinned:
+                self.submit(translate=True, context=bool(self._context))
             return
         if url.scheme() == "headkanji":
             group, separator, character = url.path().partition(":")
@@ -2467,9 +2469,12 @@ class QuickLookupWindow(QDialog):
             self._engage_press = None
             if distance < QApplication.startDragDistance() and not self.browser.selected_text():
                 self.browser.selecting = False
-                self._pin_anchor_click = bool(self.browser.anchorAt(event.position().toPoint()))
+                self._pin_anchor_click = True
                 self.pin.setChecked(True)
                 QTimer.singleShot(0, lambda: setattr(self, "_pin_anchor_click", False))
+                # Pinning changes the document under the pointer; this release
+                # must not activate a link that appeared after the press.
+                return True
         elif event.type() == QEvent.Type.MouseButtonRelease and self._pin_anchor_click:
             QTimer.singleShot(0, lambda: setattr(self, "_pin_anchor_click", False))
         if watched is self.title:
