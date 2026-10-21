@@ -1158,19 +1158,26 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(self.window.preferred_foreign, "en")
         self.assertEqual(self.settings.value("profile"), "en")
 
-    def test_selected_sentence_checks_exact_entry_then_translates(self):
-        self.window.lookup_selected("昨日は朝ご飯を食べなかった。")
-        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+    def test_selected_sentence_waits_for_explicit_translation(self):
+        self.window.lookup_selected("Yesterday I skipped breakfast.")
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertEqual([call[3] for call in self.engine.calls], [False])
+        self.assertIsNone(self.window.translation_worker)
+        self.window.submit(translate=True)
+        self.wait_until(lambda: bool(self.window._result.translation))
         self.assertEqual([call[3] for call in self.engine.calls], [False, True])
-        self.assertEqual(self.window._result.entries, ())
-        self.assertNotIn("No entry", self.window.browser.toPlainText())
 
-    def test_short_typed_sentence_translates_despite_old_disabled_setting(self):
-        self.settings.setValue("profiles/ja/auto_translate_sentence", False)
-        self.window.open_search("Cats sleep.")
-        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
-        self.assertEqual([call[3] for call in self.engine.calls], [False, True])
-        self.assertEqual(self.window._result.translation, "translated")
+    def test_short_typed_sentence_never_translates_while_typing(self):
+        self.settings.setValue("profiles/ja/auto_translate_miss", True)
+        self.window.open_search()
+        for text in ("Cats", "Cats sleep.", "Cats sleep. Sometimes for hours."):
+            self.window.search.setText(text)
+            self.wait_until(lambda: self.window._result is not None and self.window._result.text == text)
+            self.assertFalse(self.window._result.translation)
+            self.assertFalse(self.window._translation_view)
+            self.assertTrue(self.window.search.isEnabled())
+        self.assertTrue(all(not call[3] for call in self.engine.calls))
+        self.assertIsNone(self.window.translation_worker)
 
     def test_typed_phrases_use_installed_entries_before_translation(self):
         from meikipop.dictionary.library import import_yomitan
@@ -1229,6 +1236,9 @@ class QuickLookupTests(unittest.TestCase):
                 self.assertEqual(window.search.text(), text)
             translator.translate.assert_not_called()
             window.open_search("I would like some water")
+            self.wait_until(lambda: window._result is not None and window._result.text == "I would like some water")
+            translator.translate.assert_not_called()
+            window.submit(translate=True)
             self.wait_until(lambda: window._result is not None and bool(window._result.translation))
             translator.translate.assert_called_with("I would like some water", "en", "ja")
             window.open_search("cat")
@@ -1244,19 +1254,24 @@ class QuickLookupTests(unittest.TestCase):
             window.hide()
             window.deleteLater()
 
-    def test_word_without_dictionary_hit_falls_back_to_translation_once(self):
+    def test_word_miss_keeps_suggestions_until_explicit_translation(self):
         self.settings.setValue("profiles/ja/auto_translate_miss", False)
         original = self.engine.search
         def missing(text, **options):
             result = original(text, **options)
-            return result if options.get("translate") else replace(result, entries=(), message="No entry found.")
+            return result if options.get("translate") else replace(result, entries=(), suggestions=("known",))
         self.engine.search = missing
         self.window.open_search("unknown")
-        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertEqual(self.window._result.suggestions, ("known",))
+        self.assertIn("known", self.window.browser.toPlainText())
+        self.assertIsNone(self.window.translation_worker)
+        self.window.submit(translate=True)
+        self.wait_until(lambda: bool(self.window._result.translation))
         self.assertEqual([call[3] for call in self.engine.calls], [False, True])
         self.assertNotIn("No entry", self.window.browser.toPlainText())
 
-    def test_incidental_turkish_gloss_matches_fall_back_to_translation(self):
+    def test_incidental_turkish_gloss_matches_require_explicit_translation(self):
         from meikipop.dictionary.library import import_yomitan
         from meikipop.dictionary.search import SearchEngine
         archive = Path(self.temp.name) / "fixture.zip"
@@ -1277,20 +1292,23 @@ class QuickLookupTests(unittest.TestCase):
         self.engine.search = search
         self.window.set_mode("tr")
         self.window.open_search("my house")
-        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
+        self.wait_until(lambda: self.window._result is not None)
+        translator.translate.assert_not_called()
+        self.window.submit(translate=True)
+        self.wait_until(lambda: bool(self.window._result.translation))
         self.assertEqual(self.engine.calls, [("my house", False), ("my house", True)])
         translator.translate.assert_called_once_with("my house", "en", "tr")
         self.assertFalse(self.window._result.entries)
         self.assertEqual(self.window._result.translation, "benim evim")
 
-    def test_short_japanese_sentence_does_not_stop_at_first_dictionary_word(self):
+    def test_partial_japanese_match_remains_available_without_translation(self):
         original = self.engine.search
         self.engine.search = lambda text, **options: replace(original(text, **options), matched_length=1)
         self.window.open_search("猫がいる")
-        self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
-        self.assertEqual([call[3] for call in self.engine.calls], [False, True])
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertEqual([call[3] for call in self.engine.calls], [False])
 
-    def test_dictionary_free_lookup_translates_and_model_failure_does_not_loop(self):
+    def test_dictionary_free_lookup_requires_translation_and_failure_is_retryable(self):
         from meikipop.dictionary.search import SearchEngine
         self.settings.setValue("profiles/ja/auto_translate_miss", False)
         def search(text, **options):
@@ -1304,8 +1322,10 @@ class QuickLookupTests(unittest.TestCase):
                 engine.close()
         self.engine.search = search
         self.window.open_search("hello")
-        self.wait_until(lambda: self.window._result is not None and
-                        self.window._result.message == "Install translation model.")
+        self.wait_until(lambda: self.window._result is not None)
+        self.assertEqual(self.engine.calls, [("hello", False)])
+        self.window.submit(translate=True)
+        self.wait_until(lambda: self.window._result.message == "Install translation model.")
         self.assertEqual(self.engine.calls, [("hello", False), ("hello", True)])
         self.assertTrue(self.window.translate.isEnabled())
 

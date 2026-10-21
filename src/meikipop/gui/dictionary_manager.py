@@ -239,12 +239,6 @@ class SetupDialog(QDialog):
         self.translation_warm = QCheckBox("Keep model warm")
         self.translation_warm.setToolTip("Retains model memory after use. Changes apply on the next translation.")
         advanced_form.addRow(self.translation_warm)
-        self.translation_routing = {}
-        for key, label in (("auto_translate_miss", "Translate partial dictionary matches"),):
-            control = QCheckBox(label)
-            self.translation_routing[key] = control
-            advanced_form.addRow(control)
-            control.toggled.connect(lambda _: self.autosave(self.save_translation_routing))
         translation_layout.addLayout(translation_form)
         self.translation_advanced = QCheckBox("Advanced")
         self.translation_advanced.toggled.connect(self.translation_advanced_widget.setVisible)
@@ -852,9 +846,6 @@ class SetupDialog(QDialog):
             self.freeze_while_held.setChecked(self.settings.value(f"profiles/{code}/freeze_while_held", True, bool))
         with QSignalBlocker(self.selection_lookup):
             self.selection_lookup.setChecked(self.settings.value(f"profiles/{code}/selection_lookup", False, bool))
-        for key, control in self.translation_routing.items():
-            with QSignalBlocker(control):
-                control.setChecked(self.settings.value(f"profiles/{code}/{key}", False, bool))
         self.status.clear()
         with QSignalBlocker(self.combine_frequencies):
             self.combine_frequencies.setChecked(self.settings.value(f"profiles/{code}/combine_frequencies", True, bool))
@@ -947,12 +938,6 @@ class SetupDialog(QDialog):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/selection_lookup", self.selection_lookup.isChecked())
         if self.parent() is not None:
             self.parent().browser.selection_lookup = self.selection_lookup.isChecked()
-
-    def save_translation_routing(self):
-        for key, control in self.translation_routing.items():
-            self.settings.setValue(f"profiles/{self.profile.currentData()}/{key}", control.isChecked())
-        if self.parent() is not None:
-            self.parent()._edited()
 
     def save_frequency_display(self, enabled):
         self.settings.setValue(f"profiles/{self.profile.currentData()}/combine_frequencies", enabled)

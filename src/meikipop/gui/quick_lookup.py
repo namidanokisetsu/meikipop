@@ -871,7 +871,6 @@ class QuickLookupWindow(QDialog):
         self._pending_context = None
         self._translation_busy = False
         self._last_request_translate = False
-        self._sentence_lookup = False
         self._translation_base = None
         self._translation_previous = None
         self._partial_translation = False
@@ -1487,8 +1486,7 @@ class QuickLookupWindow(QDialog):
         self.debounce.stop()
         if not text:
             return
-        self._sentence_lookup = translate is None and not selected
-        exact_only = self._sentence_lookup and is_sentence(text)
+        exact_only = translate is None and not selected and is_sentence(text)
         if translate is None:
             translate = False
         self._invalidate()
@@ -1568,17 +1566,6 @@ class QuickLookupWindow(QDialog):
         self._set_translation_busy(False)
         if self._last_request_translate and self._translation_view:
             self._translation_content = result
-        partial_japanese = result.source == "ja" and 0 < result.matched_length < len(result.text)
-        sentence_fallback = self._sentence_lookup and partial_japanese
-        if (not self._peek and not self._last_request_translate and not result.translation
-                and (not result.entries or sentence_fallback or partial_japanese and self.settings.value(
-                    f"profiles/{self.preferred_foreign}/auto_translate_miss", False, bool))):
-            remember = self._remember_request
-            context = self._pending_context[1] if self._pending_context else result.text
-            self._display(result, remember=remember)
-            self.set_context(context)
-            self.submit(translate=True, context=True, remember=False)
-            return
         if self._last_request_translate and self._translation_base is not None:
             base = self._translation_base
             screenshot = self._result_screenshot

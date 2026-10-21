@@ -113,8 +113,9 @@ To translate an English word or phrase into Japanese, use **Translate** and
 choose **English → 日本語** when the automatic direction is ambiguous.
 With an automatic source, a target that matches the detected language switches
 to the other language in the pair.
-Typed phrases use exact dictionary entries when available. Sentences without
-an exact entry and manual word misses use translation; hovering does not.
+Typing searches dictionaries and offers available spelling suggestions.
+Translation starts only when you choose **Translate**, including for sentences
+and words without dictionary matches.
 The first request loads the model. **Keep model warm** avoids later reloads
 but keeps its memory allocated.
 

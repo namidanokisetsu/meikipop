@@ -125,7 +125,7 @@ class PendingTests(QuickLookupTests):
             self.window._flush_translation()
             self.assertNotIn("late", self.window.translation_browser.toPlainText())
 
-    def test_disabled_routing_never_starts_translation_and_fallback_keeps_entries(self):
+    def test_manual_search_never_translates_and_explicit_failure_keeps_entries(self):
         from dataclasses import replace
         self.window.search.setText("猫です")
         partial = SearchResult("猫です", "ja", "en", (entry(),), matched_length=1)
@@ -134,7 +134,7 @@ class PendingTests(QuickLookupTests):
         self.settings.setValue("profiles/ja/auto_translate_miss", True)
         with patch.object(self.window, "submit") as submit:
             self.window.deliver(self.window.revision, partial)
-            submit.assert_called_once_with(translate=True, context=True, remember=False)
+            submit.assert_not_called()
         self.assertIn("cat", self.window.browser.toPlainText())
         self.window._last_request_translate = True
         self.window._translation_base = partial
