@@ -100,6 +100,9 @@ class ProfileAppearance(QWidget):
         self.snap_scrolling = QCheckBox("Snap scrolling")
         self.snap_scrolling.setToolTip("Scroll between dictionary sections")
         pinned_form.addRow(self.snap_scrolling)
+        self.side_button_scrolling = QCheckBox("Side-button scrolling")
+        self.side_button_scrolling.setToolTip("Back and Forward turn pages over the popup")
+        pinned_form.addRow(self.side_button_scrolling)
         self.font = QFontComboBox()
         detail_form.addRow("Font", self.font)
         self.headword_furigana = QCheckBox("Headword furigana")
@@ -157,6 +160,7 @@ class ProfileAppearance(QWidget):
         self.compact_preview.toggled.connect(self.save)
         self.pinned_sentence.toggled.connect(self.save)
         self.snap_scrolling.toggled.connect(self.save)
+        self.side_button_scrolling.toggled.connect(self.save)
         for control in self.action_controls.values():
             control.toggled.connect(self.save)
         for key, widget in self.controls.items():
@@ -187,6 +191,7 @@ class ProfileAppearance(QWidget):
         self.compact_preview.setChecked(self.settings.value(f"profiles/{self.profile()}/compact_preview", True, bool))
         self.pinned_sentence.setChecked(self.settings.value(f"profiles/{self.profile()}/pinned_sentence", False, bool))
         self.snap_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/snap_scrolling", False, bool))
+        self.side_button_scrolling.setChecked(self.settings.value(f"profiles/{self.profile()}/side_button_scrolling", True, bool))
         self.font.setCurrentFont(QFont(self.settings.value(f"profiles/{self.profile()}/font_family",
                                                          _configured_font or default_family(self.profile()))))
         self.headword_furigana.setChecked(self.settings.value("profiles/ja/headword_furigana", False, bool))
@@ -250,6 +255,7 @@ class ProfileAppearance(QWidget):
         self.settings.setValue(prefix + "preview_definitions", self.preview_definitions.value())
         self.settings.setValue(prefix + "pinned_sentence", self.pinned_sentence.isChecked())
         self.settings.setValue(prefix + "snap_scrolling", self.snap_scrolling.isChecked())
+        self.settings.setValue(prefix + "side_button_scrolling", self.side_button_scrolling.isChecked())
         self.settings.setValue(prefix + "font_family", self.font.currentFont().family())
         if self.profile() == "ja":
             self.settings.setValue(prefix + "headword_furigana", self.headword_furigana.isChecked())

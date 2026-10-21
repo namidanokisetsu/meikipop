@@ -595,6 +595,11 @@ class UnifiedOCR(QObject):
         self._sync_timer()
 
     def _sync_pin_ready(self):
+        if self.input:
+            self.input.navigation_source = (getattr(self.window, "_previous_foreground", None)
+                if (getattr(self.window, "_fullscreen_overlay", False) and self.window.is_pinned
+                    and self.window.isVisible() and QApplication.activeModalWidget() is None
+                    and QApplication.activePopupWidget() is None) else None)
         if self.input and hasattr(self.input, "hover_active"):
             active = self.session.hovering and self.session.scanning(self.window.is_pinned)
             (self.input.hover_active.set if active else self.input.hover_active.clear)()
@@ -604,6 +609,9 @@ class UnifiedOCR(QObject):
                      (self.window.isVisible() or self._capture_hidden) and getattr(self.window, "_peek", False) and
                      not self.window.is_pinned and not self.input.pin_pending.is_set())
             (self.input.pin_ready.set if ready else self.input.pin_ready.clear)()
+
+    def navigate_overlay(self, virtual_key):
+        self.window.navigate_overlay(virtual_key)
 
     def pin_requested(self):
         # The native hook already checked the trigger state at mouse-down.
@@ -705,6 +713,7 @@ class UnifiedOCR(QObject):
                 self.input.dismissed.connect(self.dismiss)
                 self.input.clicked.connect(self.outside_click)
                 self.input.pin_requested.connect(self.pin_requested)
+                self.input.navigation_requested.connect(self.navigate_overlay)
                 if self.window.isVisible():
                     self.input.visible.set()
                 else:

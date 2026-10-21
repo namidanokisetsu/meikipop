@@ -35,6 +35,35 @@ class ScanGestureTests(unittest.TestCase):
         self.input.pin_ready.set()
         self.input.pin_gesture = gesture
 
+    def test_fullscreen_navigation_consumes_only_source_scrolling_keys(self):
+        navigated = Mock()
+        self.input.navigation_requested.connect(navigated)
+        self.input.navigation_source = 42
+        self.input.visible.set()
+        user32 = Mock()
+        user32.GetForegroundWindow.return_value = 42
+        user32.GetAsyncKeyState.return_value = 0
+        down, up = 0x100, 0x101
+        key = SimpleNamespace(vkCode=0x22)
+        with patch("ctypes.WinDLL", return_value=user32, create=True):
+            self.assertFalse(self.input.filter_key(down, key))
+            self.assertFalse(self.input.filter_key(down, key))
+            self.assertEqual(navigated.call_count, 2)
+            user32.GetForegroundWindow.return_value = 99
+            self.assertFalse(self.input.filter_key(up, key))
+            self.input.filter_key(down, key)
+            self.assertEqual(navigated.call_count, 2)
+            user32.GetForegroundWindow.return_value = 42
+            user32.GetAsyncKeyState.return_value = 0x8000
+            self.input.filter_key(down, key)
+            self.assertEqual(navigated.call_count, 2)
+            user32.GetAsyncKeyState.return_value = 0
+            self.input.filter_key(down, SimpleNamespace(vkCode=0x41))
+            self.assertEqual(navigated.call_count, 2)
+            self.input.navigation_source = None
+            self.input.filter_key(down, key)
+            self.assertEqual(navigated.call_count, 2)
+
     def test_hover_preview_consumes_pin_gesture_without_a_held_key(self):
         self.input.hover_active.set()
         self.input.visible.set()

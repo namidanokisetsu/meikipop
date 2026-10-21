@@ -56,6 +56,11 @@ dictionary viewport. Selection replaces its contents without rebuilding the
 dictionary document. A compact vertical splitter remembers the kanji height share.
 Without a saved split, its position fits the rendered glyph block and pane header,
 subject to available space. Opening and closing kanji never resize the popup.
+Lookup prepares kanji data for every returned headword in result order.
+Sticky headings retain the ruby and pitch object renderers and forward links
+without navigating their own document.
+Snap scrolling keeps its section clipping during progress-bar dragging and maps
+the pointer to the nearest reading stop without changing selection.
 Kanji summaries merge exact duplicate values across available sources, retain
 source attribution and show conflicting stroke counts separately. More appends
 source-specific reference fields without rebuilding the summary. Unstructured
@@ -77,8 +82,13 @@ pin; their mouse release never activates links exposed by the pinned layout.
 Lookup autoplay runs on new lookup results, never on translation completion,
 history restoration or rendering. Pin autoplay follows its separate preference.
 Windows OCR popups over a fullscreen source expand without activation and reject
-mouse activation, keeping the source foreground and its taskbar hidden. Keyboard
-input stays with the source; manual search retains normal focus behavior.
+mouse activation, keeping the source foreground and its taskbar hidden. The
+existing Windows input hook routes unmodified arrows, Page Up/Down and Home/End
+to the pinned popup only while its source remains foreground; matching releases
+are consumed even after dismissal. Other keyboard input stays with the source.
+Manual search retains normal focus behavior. Borderless fullscreen uses the same
+native monitor-bounds check. Side buttons page while over the popup and can be
+disabled per profile.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;

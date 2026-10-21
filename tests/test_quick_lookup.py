@@ -1800,6 +1800,32 @@ class QuickLookupTests(unittest.TestCase):
             self.assertFalse(self.window._fullscreen_overlay)
             self.assertFalse(self.window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating))
 
+    def test_fullscreen_keyboard_and_side_buttons_navigate_snap_stops(self):
+        self.settings.setValue("profiles/ja/snap_scrolling", True)
+        self.window.reload_appearance()
+        with patch("meikipop.utils.window_focus.foreground_is_fullscreen", return_value=True):
+            self.window.show_entries((entry(definitions=("Meaning\n" * 100,)),), "cat", peek=True)
+            self.window.pin.setChecked(True)
+        self.app.processEvents()
+        browser = self.window.browser
+        scroller = browser.section_scroll
+        scroller.animation_enabled = False
+        bar = browser.verticalScrollBar()
+        self.window.navigate_overlay(0x22)
+        self.assertEqual(bar.value(), scroller.stops()[1])
+        self.window.navigate_overlay(0x24)
+        self.assertEqual(bar.value(), 0)
+        QTest.mouseClick(browser.viewport(), Qt.MouseButton.ForwardButton)
+        self.assertEqual(bar.value(), scroller.stops()[1])
+        QTest.mouseClick(browser.viewport(), Qt.MouseButton.BackButton)
+        self.assertEqual(bar.value(), 0)
+        self.settings.setValue("profiles/ja/side_button_scrolling", False)
+        QTest.mouseClick(browser.viewport(), Qt.MouseButton.ForwardButton)
+        self.assertEqual(bar.value(), 0)
+        self.window.hide()
+        self.window.navigate_overlay(0x22)
+        self.assertEqual(bar.value(), 0)
+
     def test_escape_hides_and_invalidates_pending_results(self):
         self.window.open_search()
         self.window.search.setText("猫")
@@ -2218,6 +2244,33 @@ class QuickLookupTests(unittest.TestCase):
         self.assertIn("Strokes 11", self.window.kanji_browser.toPlainText())
         self.window._link(QUrl("kanji:%E7%8C%AB"))
         self.assertTrue(self.window.kanji_panel.isHidden())
+
+    def test_later_headword_kanji_clicks_work_with_snap_and_sticky_ruby(self):
+        self.settings.setValue("profiles/ja/snap_scrolling", True)
+        for ruby in (False, True):
+            with self.subTest(ruby=ruby):
+                self.settings.setValue("profiles/ja/headword_furigana", ruby)
+                self.window.reload_appearance()
+                entries = (replace(entry("猫", definitions=("Meaning\n" * 30,)), reading="ねこ"),
+                           replace(entry("犬", definitions=("Meaning\n" * 30,)), reading="いぬ"))
+                self.window.show_entries(entries, "かな", kanji=(KanjiEntry("猫"), KanjiEntry("犬")))
+                self.app.processEvents()
+                browser = self.window.browser
+                scroller = browser.section_scroll
+                bar = browser.verticalScrollBar()
+                bar.setValue(scroller._top(scroller._headings[1]) + 5)
+                header = scroller.header
+                self.assertTrue(header.isVisible())
+                points = [QPoint(x, y) for y in range(header.viewport().height())
+                          for x in range(min(80, header.viewport().width()))
+                          if QUrl(header.anchorAt(QPoint(x, y))).path() == "1:犬"]
+                self.assertTrue(points)
+                point = QPoint((min(p.x() for p in points) + max(p.x() for p in points)) // 2,
+                               (min(p.y() for p in points) + max(p.y() for p in points)) // 2)
+                QTest.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=point)
+                self.app.processEvents()
+                self.assertIn("犬", self.window.kanji_browser.toPlainText())
+                self.assertTrue(self.window.kanji_panel.isVisible())
 
     def test_headword_kanji_opens_pane_without_rebuilding_or_widening(self):
         kanji = (KanjiEntry("猫", source="Kanji A", meanings=("cat",), stats=(("strokes", 11),)),)

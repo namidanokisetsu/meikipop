@@ -66,7 +66,11 @@ Settings shows the available choices for your language.
 
 **Appearance** controls fonts, themes and readings, with separate options for
 preview and pinned results. Scrolling is continuous by default; enable
-**Snap scrolling** to move between sections.
+**Snap scrolling** to move between sections. Drag the progress bar to jump
+between reading positions. Mouse Back/Forward buttons turn pages over the popup;
+**Side-button scrolling** disables this per profile. Over fullscreen Windows
+apps, a pinned popup accepts arrows, Page Up/Down and Home/End while the source
+keeps focus.
 **Buttons** controls each popup action independently. **Sentence size** controls
 sentence and translation text. Click the compact sentence to read it in full.
 Tokyo Night and Dracula use darker, high-contrast palettes. Background opacity

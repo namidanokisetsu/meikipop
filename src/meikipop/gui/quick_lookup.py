@@ -10,7 +10,7 @@ import threading
 import unicodedata
 
 from PyQt6.QtCore import QObject, QEvent, QLocale, QPointF, QSettings, QSignalBlocker, QSize, Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeySequence, QShortcut, QTextBlockFormat, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
+from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeyEvent, QKeySequence, QShortcut, QTextBlockFormat, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QSizePolicy, QSplitter, QStackedWidget, QToolButton, QToolTip, QVBoxLayout, QWidget,
@@ -2752,6 +2752,14 @@ class QuickLookupWindow(QDialog):
         self.render_timer.stop()
         self._render(preserve_scroll=True)
 
+    def navigate_overlay(self, virtual_key):
+        keys = {0x21: Qt.Key.Key_PageUp, 0x22: Qt.Key.Key_PageDown, 0x23: Qt.Key.Key_End,
+                0x24: Qt.Key.Key_Home, 0x26: Qt.Key.Key_Up, 0x28: Qt.Key.Key_Down}
+        if (virtual_key in keys and self._fullscreen_overlay and self.is_pinned and self.isVisible()
+                and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None):
+            event = QKeyEvent(QEvent.Type.KeyPress, keys[virtual_key], Qt.KeyboardModifier.NoModifier)
+            QApplication.sendEvent(self.browser, event)
+
     def nativeEvent(self, event_type, message):
         if getattr(self, "_fullscreen_overlay", False) and event_type == b"windows_generic_MSG":
             import ctypes
@@ -2762,6 +2770,18 @@ class QuickLookupWindow(QDialog):
         return super().nativeEvent(event_type, message)
 
     def eventFilter(self, watched, event):
+        if (event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease)
+                and event.button() in (Qt.MouseButton.BackButton, Qt.MouseButton.ForwardButton)
+                and self.settings.value(f"profiles/{self.preferred_foreign}/side_button_scrolling", True, bool)
+                and (not self._peek or self.is_pinned)):
+            if event.type() == QEvent.Type.MouseButtonPress:
+                direction = -1 if event.button() == Qt.MouseButton.BackButton else 1
+                if self.browser.section_scroll.enabled:
+                    self.browser.section_scroll.advance(direction)
+                else:
+                    bar = self.browser.verticalScrollBar()
+                    bar.setValue(bar.value() + direction * bar.pageStep())
+            return True
         if (event.type() == QEvent.Type.MouseButtonPress and isinstance(watched, QWidget)
                 and watched.inherits("QSizeGrip")):
             self._reading_size_custom = True

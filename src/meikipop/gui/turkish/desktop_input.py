@@ -51,6 +51,7 @@ class DesktopInput(QObject):
     clipboard_requested = pyqtSignal()
     search_requested = pyqtSignal()
     pin_requested = pyqtSignal()
+    navigation_requested = pyqtSignal(int)
 
     def __init__(self, bindings, clipboard_hotkey, search_hotkey, double_click_ms, parent=None):
         super().__init__(parent)
@@ -69,6 +70,8 @@ class DesktopInput(QObject):
         self._pin_hotkey = None
         self._pin_native = None
         self._consumed_pin_keys = set()
+        self.navigation_source = None
+        self._consumed_navigation_keys = set()
         self._last_click = None
         self._press_point = None
         self.double_click_seconds = double_click_ms / 1000
@@ -151,6 +154,23 @@ class DesktopInput(QObject):
                 self._consumed_pin_keys.discard(data.vkCode)
             self.keys.suppress_event()
             return False
+        if (data.vkCode in (0x21, 0x22, 0x23, 0x24, 0x26, 0x28)
+                and (self.navigation_source or data.vkCode in self._consumed_navigation_keys)):
+            import ctypes
+            user32 = ctypes.WinDLL("user32")
+            user32.GetForegroundWindow.restype = ctypes.c_void_p
+            active = (self.navigation_source and self.visible.is_set()
+                      and user32.GetForegroundWindow() == self.navigation_source
+                      and not any(user32.GetAsyncKeyState(key) & 0x8000
+                                  for key in (0x10, 0x11, 0x12, 0x5B, 0x5C)))
+            if down and active:
+                self._consumed_navigation_keys.add(data.vkCode)
+                self.navigation_requested.emit(data.vkCode)
+            if data.vkCode in self._consumed_navigation_keys:
+                if not down:
+                    self._consumed_navigation_keys.discard(data.vkCode)
+                self.keys.suppress_event()
+                return False
         if data.vkCode == 0x1B and (self.visible.is_set() or self._escape_down):
             if down and not self._escape_down:
                 self.dismissed.emit()
@@ -246,6 +266,7 @@ class DesktopInput(QObject):
                 self.selected.emit()
 
     def shutdown(self):
+        self.navigation_source = None
         self.hover_active.clear()
         self.pin_ready.clear()
         self.pin_pending.clear()
