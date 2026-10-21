@@ -691,7 +691,7 @@ class QuickLookupTests(unittest.TestCase):
         self.assertTrue(self.window.translate.isEnabled())
         self.assertTrue(self.engine.calls[0][3])
         self.assertNotEqual(threading.get_ident(), self.engine.calls[0][4])
-        self.assertIn("translated", self.window.browser.toPlainText())
+        self.assertIn("translated", self.window.translation_browser.toPlainText())
         self.window.search.returnPressed.emit()
         self.wait_until(lambda: len(self.engine.calls) == 2)
         self.assertFalse(self.engine.calls[1][3])
@@ -968,6 +968,67 @@ class QuickLookupTests(unittest.TestCase):
         self.window.search.setText("manual")
         self.assertTrue(self.window.translate.isEnabled())
         self.assertEqual(self.window._context, "")
+
+    def test_translation_screen_languages_and_back_preserve_dictionary_document(self):
+        sentence = ("The full original sentence. " * 12).strip()
+        self.window.show_entries((entry(definitions=("dictionary definition " * 100,)),), "cat", peek=True)
+        self.window.set_context(sentence)
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        browser = self.window.browser
+        cursor = browser.document().find("dictionary definition")
+        browser.setTextCursor(cursor)
+        selection = browser.selected_text()
+        scroll = browser.verticalScrollBar().value()
+        geometry = self.window.geometry()
+        self.window.translation_worker = Mock()
+        with patch.object(browser, "setHtml", wraps=browser.setHtml) as render:
+            self.window.translate.click()
+            self.assertTrue(self.window._translation_view)
+            self.assertIs(self.window.content_stack.currentWidget(), self.window.translation_browser)
+            self.assertIn(sentence, self.window.translation_browser.toPlainText())
+            self.assertNotIn("dictionary definition", self.window.translation_browser.toPlainText())
+            revision = self.window.revision
+            self.window.deliver(revision, SearchResult(sentence, "ja", "en", translation="Full translated sentence."))
+            self.assertIn("English", self.window.translation_browser.toPlainText())
+            self.assertIn("Full translated sentence.", self.window.translation_browser.toPlainText())
+            self.assertIn('href="language:source"', self.window.translation_browser.toHtml())
+            self.assertIn('href="language:target"', self.window.translation_browser.toHtml())
+            self.window._set_translation_language("target", "tr")
+            self.assertEqual(self.window.translation_worker.request.call_args.kwargs["target"], "tr")
+            self.assertEqual(self.window.translation_worker.request.call_args.args[1], sentence)
+            self.window._set_translation_language("source", "de")
+            self.assertEqual(self.window.translation_worker.request.call_args.args[2], "de")
+            stale = self.window.revision
+            self.window.go_back()
+            render.assert_not_called()
+            self.assertFalse(self.window._translation_view)
+            self.assertIs(self.window.content_stack.currentWidget(), browser)
+            self.assertEqual(browser.selected_text(), selection)
+            self.assertEqual(browser.verticalScrollBar().value(), scroll)
+            self.assertEqual(self.window.geometry(), geometry)
+            self.window.deliver(stale, SearchResult(sentence, "de", "tr", translation="stale"))
+            self.assertEqual(self.window._result.text, "cat")
+
+    def test_pinned_sentence_shares_its_line_with_actions(self):
+        self.settings.setValue("profiles/ja/pinned_sentence", True)
+        self.window.show_entries((entry(),), "cat", peek=True)
+        self.window.set_context("This is the original sentence.")
+        self.window.pin.setChecked(True)
+        self.app.processEvents()
+        block = self.window._action_heading
+        self.assertIn("original sentence", block.text().replace("\u2028", " "))
+        browser = self.window.browser
+        rect = browser.document().documentLayout().blockBoundingRect(block)
+        controls = self.window.audio_actions.geometry()
+        self.assertLessEqual(rect.right(), controls.left())
+        self.assertLess(controls.top(), browser.document().documentLayout().blockBoundingRect(block.next()).top())
+        self.assertFalse(self.window.header.isVisible())
+
+        self.window.translation_worker = Mock()
+        self.window._link(QUrl("sentence:translate"))
+        self.assertEqual(self.window.translation_worker.request.call_args.args[1], "This is the original sentence.")
+        self.assertTrue(self.window._translation_view)
 
     def test_jitendex_preview_reduces_nesting_and_separates_tags(self):
         self.settings.setValue("profiles/ja/preview_grammar", False)
@@ -1394,9 +1455,9 @@ class QuickLookupTests(unittest.TestCase):
         self.window.set_context("公園で猫が寝ている。")
         self.window.pin.setChecked(True)
         self.assertTrue(self.window.audio_button.isVisible())
-        self.assertTrue(self.window.header.isVisible())
+        self.assertFalse(self.window.header.isVisible())
         self.assertTrue(self.window.search.isHidden())
-        self.assertEqual(self.window.audio_actions.parentWidget(), self.window.header)
+        self.assertEqual(self.window.audio_actions.parentWidget(), self.window.browser.viewport())
         self.assertEqual(self.window.actions_row.layout().indexOf(self.window.translate), 2)
         self.assertEqual(self.window.audio_actions.layout().indexOf(self.window.sentence_audio_button), 1)
         self.assertEqual(self.window.audio_actions.layout().indexOf(self.window.audio_button), 2)
@@ -1423,6 +1484,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window.audio.play.assert_called_once()
 
     def test_turkish_grammar_is_compact_and_preserves_qualifiers(self):
+        self.settings.setValue(f"profiles/{self.window.preferred_foreign}/preview_grammar", True)
         result = SearchResult("oğlum", "tr", "en", (replace(entry("oğul", language="tr"),
                                                             inflection=("my (possessive)",)),))
         self.window.show_entries(result.entries, result.text, "tr", peek=True)
@@ -2044,10 +2106,10 @@ class QuickLookupTests(unittest.TestCase):
             top = self.window.browser.geometry().top()
             self.window.pin.setChecked(True)
             self.app.processEvents()
-            self.assertTrue(self.window.header.isVisible())
-            self.assertGreater(self.window.browser.geometry().top(), top)
+            self.assertFalse(self.window.header.isVisible())
+            self.assertEqual(self.window.browser.geometry().top(), top)
             self.assertTrue(self.window.audio_actions.isVisible())
-            self.assertEqual(self.window.audio_actions.parentWidget(), self.window.header)
+            self.assertEqual(self.window.audio_actions.parentWidget(), self.window.browser.viewport())
             cursor = self.window.browser.textCursor()
             cursor.select(QTextCursor.SelectionType.Document)
             self.window.browser.setTextCursor(cursor)
@@ -2064,6 +2126,47 @@ class QuickLookupTests(unittest.TestCase):
             self.assertTrue(self.window.header.isVisible())
             self.assertTrue(self.window.search.isVisible())
             self.assertEqual(self.window.audio_actions.parentWidget(), self.window.header)
+
+    def test_inline_actions_share_heading_geometry_and_visibility_preserves_selection(self):
+        self.settings.setValue("profiles/ja/anki/enabled", True)
+        self.window.show_entries((entry(definitions=("Long definition. " * 100,)),), "cat", peek=True)
+        self.window.pin.setChecked(True)
+        for width in (340, 600):
+            self.window.resize(width, 340)
+            self.app.processEvents()
+            browser = self.window.browser
+            block = self.window._action_heading
+            heading = browser.document().documentLayout().blockBoundingRect(block)
+            controls = self.window.audio_actions
+            self.assertFalse(self.window.header.isVisible())
+            self.assertTrue(controls.isVisible())
+            self.assertGreaterEqual(controls.y(), heading.top())
+            following = browser.document().documentLayout().blockBoundingRect(block.next())
+            self.assertLess(controls.geometry().bottom(), following.top())
+            self.assertLessEqual(heading.right(), controls.x())
+            for button in (self.window.anki_button, self.window.sentence_audio_button, self.window.audio_button):
+                self.assertEqual(button.size(), self.window.copy_button.size())
+                self.assertEqual(button.iconSize(), self.window.copy_button.iconSize())
+                self.assertEqual(button.styleSheet(), self.window.copy_button.styleSheet())
+        cursor = browser.document().find("Long definition.")
+        browser.setTextCursor(cursor)
+        selected = browser.selected_text()
+        geometry = self.window.geometry()
+        for name in self.window._popup_actions:
+            self.settings.setValue(f"profiles/ja/buttons/{name}", False)
+        self.window.reload_appearance()
+        self.app.processEvents()
+        self.assertEqual(browser.selected_text(), selected)
+        self.assertFalse(self.window.audio_actions.isVisible())
+        self.assertFalse(self.window.actions_row.isVisible())
+        self.assertEqual(self.window._action_clearance(), 0)
+        self.assertEqual(self.window.geometry(), geometry)
+        self.settings.setValue("profiles/ja/buttons/audio", True)
+        self.window.reload_appearance()
+        self.app.processEvents()
+        self.assertTrue(self.window.audio_button.isVisible())
+        self.assertFalse(self.window.sentence_audio_button.isVisible())
+        self.assertFalse(self.window.anki_button.isVisible())
 
     def test_pinned_translation_controls_stay_outside_text_when_resized(self):
         self.window.show_entries((entry(),), "猫", peek=True)

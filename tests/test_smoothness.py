@@ -75,25 +75,23 @@ class PendingTests(QuickLookupTests):
     def test_stream_chunks_are_batched_and_cancel_restores_useful_result(self):
         self.window.show_entries((entry(),), "猫")
         original = self.window._result
-        with patch.object(self.window.worker, "request"):
-            self.window.submit(translate=False)
-        self.window._translation_busy = True
-        self.window._translation_base = original
-        self.window._translation_previous = original
+        self.window.translation_worker = Mock()
+        self.window.submit(translate=True)
         revision = self.window.revision
-        with patch.object(self.window.browser, "setHtml", wraps=self.window.browser.setHtml) as render:
+        with patch.object(self.window.translation_browser, "setHtml", wraps=self.window.translation_browser.setHtml) as render:
             for text in ("a", "ab", "abc"):
                 self.window._translation_progress(revision, SearchResult("猫", "ja", "en", translation=text))
             render.assert_not_called()
             self.window._flush_translation()
             render.assert_called_once()
-            self.assertIn("abc", self.window.browser.toPlainText())
+            self.assertIn("abc", self.window.translation_browser.toPlainText())
+            self.assertNotIn("cat", self.window.translation_browser.toPlainText())
             self.assertIn("cat", self.window.browser.toPlainText())
             self.window._translate_clicked()
             self.assertEqual(self.window._result, original)
             self.window._translation_progress(revision, SearchResult("猫", "ja", "en", translation="late"))
             self.window._flush_translation()
-            self.assertNotIn("late", self.window.browser.toPlainText())
+            self.assertNotIn("late", self.window.translation_browser.toPlainText())
 
     def test_disabled_routing_never_starts_translation_and_fallback_keeps_entries(self):
         from dataclasses import replace

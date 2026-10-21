@@ -49,9 +49,11 @@ Settings shows the available choices for your language.
 **Appearance** controls fonts, themes and readings, with separate options for
 preview and pinned results. Scrolling is continuous by default; enable
 **Snap scrolling** to move between sections.
+**Buttons** controls each popup action independently. **Sentence size** controls
+sentence and translation text. Click the compact sentence to read it in full.
 Tokyo Night and Dracula use darker, high-contrast palettes. Background opacity
 defaults to 98%; changing themes keeps your chosen opacity.
-Preview shows one definition by default; change **Definitions** or select **All**.
+Preview shows one definition without grammar labels by default; change **Definitions** or select **All**.
 Pinned results have no definition limit. Turkish misses can still show the analyzed root and
 grammar, and screen lookup keeps available spelling suggestions.
 These include accent alternatives of recovered Turkish roots, shown as links
@@ -60,7 +62,7 @@ Settings save immediately. The language selector also changes the active lookup
 language; most preferences belong to that language. **Lookup → All languages**
 contains the optional text shortcut and Windows startup setting. The text shortcut
 starts disabled. **First dictionary only** limits preview to the first matching
-dictionary; **Text scale** scales word and definition sizes together.
+dictionary; **Text scale** scales word, definition and sentence sizes together.
 
 ## Audio and translation
 
@@ -74,7 +76,9 @@ In **Translation**, download **Lightweight** (Hy-MT2 1.8B, about 2 GB) or
 **Quality** (7B, about 8 GB). These are download sizes; running a model needs
 additional memory. Models are shared across languages; new-language setup
 reuses installed models. Each language can choose its model and translation pair.
-**Translate** uses the selected model and sentence context.
+**Translate** opens a separate view with the full source and translation.
+Click either language name to change it. **Back** returns to the dictionary
+with its selection and scroll position preserved.
 Typed phrases use exact dictionary entries when available. Sentences without
 an exact entry and manual word misses use translation; hovering does not.
 The first request loads the model. **Keep model warm** avoids later reloads
