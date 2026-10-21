@@ -2252,16 +2252,29 @@ class QuickLookupTests(unittest.TestCase):
         geometry = self.window.geometry()
         self.window._link(QUrl("headkanji:0:猫"))
         self.app.processEvents()
-        self.assertEqual(self.window.width(), geometry.width())
-        self.assertGreater(self.window.height(), geometry.height())
-        sizes = self.window.kanji_splitter.sizes()
-        self.assertLessEqual(abs(sizes[0] - sizes[1]), 1)
-        self.assertLessEqual(self.window.kanji_browser.document().size().height(),
-                             self.window.kanji_browser.viewport().height())
+        self.assertEqual(self.window.geometry(), geometry)
         self.assertTrue(self.window.kanji_panel.isVisible())
         self.window.kanji_close.click()
         self.app.processEvents()
         self.assertEqual(self.window.geometry(), geometry)
+
+    def test_default_kanji_split_fits_glyph_without_fitting_long_meanings(self):
+        for height in (340, 500):
+            self.window.show_entries((entry(),),
+                                     kanji=(KanjiEntry("?", meanings=("long meaning " * 500,)),))
+            self.window._reading_size_custom = True
+            self.window.resize(480, height)
+            self.app.processEvents()
+            geometry = self.window.geometry()
+            self.window._select_kanji("?")
+            self.app.processEvents()
+            self.assertEqual(self.window.geometry(), geometry)
+            self.assertGreaterEqual(self.window.kanji_browser.viewport().height(),
+                                    self.window._kanji_glyph_height())
+            self.assertGreater(self.window.kanji_browser.verticalScrollBar().maximum(), 0)
+            self.window._close_kanji()
+            self.app.processEvents()
+            self.assertEqual(self.window.geometry(), geometry)
 
     def test_kanji_divider_remembers_share_and_keeps_manual_window_size(self):
         self.window.show_entries((entry(),), kanji=(KanjiEntry("猫", meanings=("cat",)),))
@@ -2309,7 +2322,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window._place_actions()
         self.assertTrue(second_row.isHidden())
 
-    def test_kanji_summary_growth_is_bounded_by_available_screen(self):
+    def test_kanji_long_summary_keeps_window_geometry(self):
         self.window.show_entries((entry(),), peek=True,
                                  kanji=(KanjiEntry("猫", meanings=("Long meaning " * 500,)),))
         self.window.pin.setChecked(True)
@@ -2319,7 +2332,7 @@ class QuickLookupTests(unittest.TestCase):
         self.app.processEvents()
         area = self.app.screenAt(self.window.geometry().center()).availableGeometry()
         self.assertTrue(area.contains(self.window.geometry()))
-        self.assertEqual(self.window.width(), geometry.width())
+        self.assertEqual(self.window.geometry(), geometry)
         self.assertGreater(self.window.kanji_browser.verticalScrollBar().maximum(), 0)
         self.window._close_kanji()
         self.app.processEvents()

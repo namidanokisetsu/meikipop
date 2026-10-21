@@ -13,7 +13,7 @@ from PyQt6.QtCore import QObject, QEvent, QLocale, QPointF, QSettings, QSignalBl
 from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeySequence, QShortcut, QTextBlockFormat, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QMenu, QSplitter, QStackedWidget, QToolButton, QToolTip, QVBoxLayout, QWidget,
+    QLineEdit, QMenu, QSizePolicy, QSplitter, QStackedWidget, QToolButton, QToolTip, QVBoxLayout, QWidget,
 )
 
 from meikipop.config.config import config
@@ -1038,11 +1038,16 @@ class QuickLookupWindow(QDialog):
         self.content_stack.addWidget(self.translation_browser)
         self.kanji_splitter = QSplitter(Qt.Orientation.Vertical)
         self.kanji_splitter.setChildrenCollapsible(False)
+        self.kanji_splitter.setHandleWidth(2)
+        self.content_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self.content_stack.setMinimumHeight(self.browser.fontMetrics().height())
         self.kanji_splitter.addWidget(self.content_stack)
         layout.addWidget(self.kanji_splitter, 1)
         self.kanji_panel = QWidget()
         kanji_layout = QVBoxLayout(self.kanji_panel)
         kanji_layout.setContentsMargins(0, 0, 0, 0)
+        kanji_layout.setSpacing(2)
+        self.kanji_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         kanji_header = QHBoxLayout()
         kanji_header.addWidget(QLabel("Kanji"))
         kanji_header.addStretch()
@@ -1067,8 +1072,6 @@ class QuickLookupWindow(QDialog):
         self.kanji_splitter.setStretchFactor(1, 1)
         self.kanji_splitter.handle(1).setToolTip("Resize kanji pane")
         self.kanji_splitter.splitterMoved.connect(self._save_kanji_split)
-        self._kanji_base_geometry = None
-        self._kanji_auto_geometry = None
         self.kanji_panel.hide()
         self._kanji_html = ""
         self._kanji_extra_html = ""
@@ -1889,15 +1892,9 @@ class QuickLookupWindow(QDialog):
         from meikipop.gui.section_scroll import ReadingPosition
         position = ReadingPosition(self.browser)
         self.fit_timer.stop()
-        if visible:
-            self._kanji_base_geometry = self.geometry()
         self.kanji_panel.setVisible(visible)
         self.layout().activate()
         if visible:
-            ratio = self.settings.value("profiles/ja/kanji_height_ratio", .5, float)
-            if not 0 < ratio < 1:
-                ratio = .5
-            self.kanji_splitter.setSizes([round(1000 * (1 - ratio)), round(1000 * ratio)])
             document = self.kanji_browser.document()
             document.setTextWidth(self.kanji_browser.viewport().width())
             layout = self.kanji_panel.layout()
@@ -1906,20 +1903,28 @@ class QuickLookupWindow(QDialog):
             pane_chrome = (layout.itemAt(0).sizeHint().height() + layout.spacing()
                            + margins.top() + margins.bottom()
                            + browser_margins.top() + browser_margins.bottom())
-            pane_height = math.ceil(document.size().height()) + pane_chrome
-            chrome = (self.height() - self.kanji_splitter.contentsRect().height()
-                      + self.kanji_splitter.handleWidth())
-            height = max(self.height(), math.ceil(pane_height / ratio) + chrome)
-            self._resize_expanded(QSize(self.width(), height))
-            self.layout().activate()
-            self.kanji_splitter.setSizes([round(1000 * (1 - ratio)), round(1000 * ratio)])
-            self._kanji_auto_geometry = self.geometry()
-        else:
-            if (self._kanji_base_geometry is not None and self._kanji_auto_geometry is not None
-                    and self.geometry() == self._kanji_auto_geometry):
-                self.setGeometry(self._kanji_base_geometry)
-            self._kanji_base_geometry = self._kanji_auto_geometry = None
+            available = self.kanji_splitter.contentsRect().height() - self.kanji_splitter.handleWidth()
+            ratio = self.settings.value("profiles/ja/kanji_height_ratio", 0., float)
+            pane_height = round(available * ratio) if 0 < ratio < 1 else (
+                self._kanji_glyph_height() + pane_chrome)
+            self.kanji_splitter.setSizes([max(self.content_stack.minimumHeight(), available - pane_height),
+                                         min(pane_height, available - self.content_stack.minimumHeight())])
         position.restore(self.browser, preserve_scroll=True)
+
+    def _kanji_glyph_height(self):
+        document = self.kanji_browser.document()
+        block = document.begin()
+        while block.isValid():
+            names = set(block.charFormat().anchorNames())
+            fragment = block.begin()
+            while not fragment.atEnd():
+                names.update(fragment.fragment().charFormat().anchorNames())
+                fragment += 1
+            if any(name.startswith("kanji-detail-") for name in names):
+                return math.ceil(document.documentLayout().blockBoundingRect(block).bottom()
+                                 + document.documentMargin())
+            block = block.next()
+        return math.ceil(document.size().height())
 
     def _select_kanji(self, character):
         self._kanji_details = set() if character in self._kanji_details else {character}
@@ -2145,8 +2150,7 @@ class QuickLookupWindow(QDialog):
 
     def _set_peek(self, peek):
         if peek and not self._peek and (self._reading_size_custom or self.size() != self._auto_fit_size):
-            self._normal_size = (self._kanji_base_geometry.size()
-                                 if self._kanji_auto_geometry == self.geometry() else self.size())
+            self._normal_size = self.size()
         elif not peek and self._peek and not self.is_pinned:
             self.setMinimumHeight(190)
             self._resize_expanded()
@@ -2678,8 +2682,7 @@ class QuickLookupWindow(QDialog):
                     self.setMinimumHeight(190)
                     self._resize_expanded()
             elif self._reading_size_custom or self.size() != self._auto_fit_size:
-                self._normal_size = (self._kanji_base_geometry.size()
-                                     if self._kanji_auto_geometry == self.geometry() else self.size())
+                self._normal_size = self.size()
         if checked:
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
             from meikipop.utils.window_focus import focus_pinned_popup
