@@ -47,7 +47,9 @@ keeps stable per-language scan callbacks so unchanged pixels reuse OCR.
 Disclosure preserves the scroll offset; streaming text retains its text anchor.
 Japanese headword and compact-card kanji links share one detail pane below the
 dictionary viewport. Selection replaces its contents without rebuilding the
-dictionary document; the layout shares available height without resizing the window.
+dictionary document. A vertical splitter remembers the kanji height share (half
+by default). Opening it measures the summary at the current width and grows only
+the popup height, bounded by the screen; closing restores unchanged popup geometry.
 Kanji summaries merge exact duplicate values across available sources, retain
 source attribution and show conflicting stroke counts separately. More appends
 source-specific reference fields without rebuilding the summary. Unstructured

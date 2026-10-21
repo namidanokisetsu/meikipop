@@ -28,6 +28,9 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
 - **Kanji:** click a character in the headword or bottom cards to open its detail
   pane. Another character replaces it. Click the same character again or use
   the pane's close button to hide it.
+  Drag the divider to resize the panes; the split is remembered. Kanji starts
+  with half the height, and the popup grows vertically if needed to fit the summary,
+  within the screen. Closing restores the previous size unless you resized it.
   The pane combines shared meanings and readings from your dictionaries;
   **More** reveals reference fields and tags, grouped by source.
 
