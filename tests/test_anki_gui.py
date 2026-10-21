@@ -21,6 +21,20 @@ from test_quick_lookup import FakeEngine
 
 
 class AnkiGuiTests(unittest.TestCase):
+    def test_card_glossary_uses_ruby_and_compact_left_aligned_definitions(self):
+        from meikipop.gui.anki import _AnkiGlossConverter
+        from meikipop.anki import note_values
+        definition = {"type": "structured-content", "content": {
+            "tag": "ul", "content": [{"tag": "li", "content": {
+                "tag": "ruby", "content": ["猫", {"tag": "rt", "content": "ねこ"}]}}]}}
+        entry = Entry("1", "猫", "ねこ", "Words", "ja", (definition,))
+        values = note_values([entry], converter=_AnkiGlossConverter())
+        for name in ("glossary", "glossary-first"):
+            self.assertIn("text-align:left", values[name])
+            self.assertIn("padding-left:1.2em", values[name])
+            self.assertIn("<ruby>猫<rt>ねこ</rt></ruby>", values[name])
+        self.assertNotIn("<b>Words</b>", values["glossary"])
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -182,7 +196,10 @@ class AnkiGuiTests(unittest.TestCase):
             window.browser.setHtml("changed selection")
             gate.set()
             self.wait_until(lambda: window._anki_task is None)
-            window.add_to_anki()
+            with patch("meikipop.anki.AnkiClient") as browser_client:
+                window.add_to_anki()
+                self.wait_until(lambda: window._anki_browse_task is None)
+                browser_client.return_value.call.assert_called_once_with("guiBrowse", query="nid:123")
         client.return_value.add.assert_called_once()
         values = client.return_value.add.call_args.args[0]
         self.assertEqual(values["sentence"], "A cat &lt;here&gt;.")
@@ -194,8 +211,8 @@ class AnkiGuiTests(unittest.TestCase):
             self.assertIn(content, values["glossary"])
         self.assertNotIn("chosen", values["glossary"])
         self.assertNotEqual(threads[0], threading.get_ident())
-        self.assertEqual(window.anki_button.toolTip(), "Added to Anki")
-        self.assertFalse(window.anki_button.isEnabled())
+        self.assertEqual(window.anki_button.toolTip(), "Show in Anki")
+        self.assertTrue(window.anki_button.isEnabled())
 
     def test_export_completion_does_not_mark_a_new_lookup_saved(self):
         window = self.anki_window()
@@ -225,7 +242,7 @@ class AnkiGuiTests(unittest.TestCase):
             client.return_value.add.return_value = 123
             window.anki_button.click()
             self.wait_until(lambda: window._anki_task is None)
-        self.assertEqual(window.anki_button.toolTip(), "Added to Anki")
+        self.assertEqual(window.anki_button.toolTip(), "Show in Anki")
         self.assertEqual(client.return_value.add.call_count, 2)
 
     def test_export_includes_captured_pixels_translation_and_only_mapped_audio(self):
@@ -342,8 +359,8 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertEqual(window.anki_button.toolTip(), "Add to Anki")
         self.assertFalse(window.anki_button.icon().isNull())
         self.assertEqual(window.anki_button.size(), window.copy_button.size())
-        layout = window.actions_row.layout()
-        self.assertEqual(layout.indexOf(window.anki_button), 2)
+        layout = window.audio_actions.layout()
+        self.assertEqual(layout.indexOf(window.anki_button), 0)
         window._set_peek(True)
         self.assertFalse(window.anki_button.isVisible())
         window.pin.setChecked(True)

@@ -190,16 +190,19 @@ def note_values(entries, sentence="", selection="", translation="", furigana=Non
     glossaries = ["".join(f"<div>{gloss}</div>" for gloss in
                          (converter.extract_glosses(list(item.definitions)) if converter else item.glosses()))
                  for item in entries]
-    glossary = "".join(f"<div><b>{escape(item.source)}</b>{gloss}</div>"
+    glossary = "".join(f'<div style="margin:0 0 .5em"><div style="font-size:.75em;'
+                       f'font-weight:normal;opacity:.65">{escape(item.source)}</div>{gloss}</div>'
                        for item, gloss in zip(entries, glossaries))
+    def aligned(content):
+        return f'<div class="meikipop-glossary" style="text-align:left;line-height:1.5">{content}</div>'
     rank = harmonic_rank(f for item in entries for f in item.frequencies)
     pitches = tuple(dict.fromkeys(p for item in entries for p in item.pitches if p.reading == entry.reading))
     positions = tuple(dict.fromkeys(p.position for p in pitches if type(p.position) is int))
     categories = tuple(dict.fromkeys("heiban" if p == 0 else "atamadaka" if p == 1 else
                                     "odaka" if p == len(morae(entry.reading)) else "nakadaka" for p in positions))
-    return dict({"glossary-first": glossaries[0],
+    return dict({"glossary-first": aligned(glossaries[0]),
                  "popup-selection-text": escape(selection).replace("\n", "<br>")},
-                expression=escape(entry.term), reading=escape(entry.reading), glossary=glossary,
+                expression=escape(entry.term), reading=escape(entry.reading), glossary=aligned(glossary),
                 sentence=escape(sentence).replace("\n", "<br>"), source=escape(entry.source),
                 sentence_furigana=furigana if furigana is not None else sentence_readings(sentence, entries),
                 sentence_translation=escape(translation).replace("\n", "<br>"),
@@ -208,7 +211,7 @@ def note_values(entries, sentence="", selection="", translation="", furigana=Non
                 pitch=render_pitches((p for item in entries for p in item.pitches), native=False))
 
 
-def sentence_readings(sentence, entries=(), engine=None):
+def sentence_readings(sentence, entries=(), library=None):
     """Anki's base[reading] syntax, using local dictionary matches only."""
     parts, index = [], 0
     while index < len(sentence):
@@ -216,14 +219,13 @@ def sentence_readings(sentence, entries=(), engine=None):
         candidates = [entry for entry in entries if entry.language == "ja" and rest.startswith(entry.term)]
         candidate = max(candidates, key=lambda e: len(e.term), default=None)
         length = len(candidate.term) if candidate else 0
-        if engine is not None and any("\u3400" <= c <= "\u9fff" or "\U00020000" <= c <= "\U000323af" for c in rest[:1]):
-            result = engine.search(rest[:25], source="ja", foreign="ja")
-            if result.entries:
-                match = result.entries[0]
-                matched = result.matched_length
-                # Inflected forms need a tokenizer to derive the inflected reading.
-                if matched and rest[:matched] == match.term:
-                    candidate, length = match, matched
+        if library is not None and any("\u3400" <= c <= "\u9fff" or "\U00020000" <= c <= "\U000323af" for c in rest[:1]):
+            # Only literal headwords can supply readings without an inflection tokenizer.
+            for matched in range(min(25, len(rest)), length, -1):
+                matches = library.lookup(rest[:matched], "ja", limit=1, tolerant=False)
+                if matches and matches[0].term == rest[:matched]:
+                    candidate, length = matches[0], matched
+                    break
         if candidate is not None:
             base, reading = sentence[index:index + length], candidate.reading
             has_kanji = any("\u3400" <= c <= "\u9fff" or "\U00020000" <= c <= "\U000323af" for c in base)

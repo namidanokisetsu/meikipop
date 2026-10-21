@@ -57,7 +57,11 @@ dictionary packs, generated assets and environments stay outside Git.
 Anki's popup action snapshots the lookup and saves once on a worker, including
 glossary conversion and mapped media preparation. `glossary-first` uses the first
 entry, `glossary` uses every returned entry, and `popup-selection-text` remains
-separate. Completion only marks the submitted lookup as saved.
+separate. Completion only marks the submitted lookup as saved; its checkmark
+opens the saved note in Anki's browser. Sentence furigana uses exact dictionary
+headwords only, without deconjugation or full result preparation. Card glossaries
+are left-aligned with compact source labels and native HTML ruby; popup rendering
+stays separate.
 `kanji-details` uses the captured Japanese lookup data in headword order and shares
 the full kanji content renderer, with card HTML independent of popup links and fonts.
 

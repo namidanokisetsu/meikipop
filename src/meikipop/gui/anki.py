@@ -20,7 +20,15 @@ from meikipop.scripts.import_yomitan_dict_html import StructuredContentConverter
 
 
 class _AnkiGlossConverter(_GlossConverter):
-    _ruby_to_html = StructuredContentConverter._ruby_to_html
+    def _ruby_to_html(self, content):
+        parts = []
+        for child in content if isinstance(content, list) else [content]:
+            tag = child.get("tag") if isinstance(child, dict) else None
+            if tag == "rt":
+                parts.append(f'<rt>{self._node_to_html(child.get("content"))}</rt>')
+            elif tag != "rp":
+                parts.append(self._node_to_html(child))
+        return '<ruby>' + ''.join(parts) + '</ruby>'
 
     def __init__(self):
         super().__init__(expanded=True)
@@ -31,6 +39,15 @@ class _AnkiGlossConverter(_GlossConverter):
             return super()._node_to_html(node)
         if self._is_tag(node):
             return self._tags_to_html((node,))
+        if isinstance(node, dict) and node.get("tag") in ("ul", "ol", "li", "div"):
+            node = dict(node)
+            style = dict(node.get("style", {}))
+            if node["tag"] in ("ul", "ol"):
+                style.update(marginTop="0", marginBottom="0", marginLeft="0", paddingLeft="1.2em")
+            else:
+                for key in ("marginLeft", "paddingLeft", "textIndent"):
+                    style.pop(key, None)
+            node["style"] = style
         # Cards retain full definitions; only the popup's semantic tags are shared.
         return StructuredContentConverter._node_to_html(self, node)
 
@@ -303,12 +320,12 @@ def export_note(entries, sentence, selection, options, *, translation="", screen
     mapped = set(options.fields.values())
     furigana = None
     if entries[0].language == "ja" and sentence and "sentence_furigana" in mapped:
-        from meikipop.dictionary.search import SearchEngine
-        engine = SearchEngine(directory)
+        from meikipop.dictionary.library import Library
+        library = Library(directory)
         try:
-            furigana = sentence_readings(sentence, entries, engine)
+            furigana = sentence_readings(sentence, entries, library)
         finally:
-            engine.close()
+            library.close()
     values = note_values(entries, sentence, selection, translation, furigana,
                          converter=_AnkiGlossConverter())
     values["kanji-details"] = ""

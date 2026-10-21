@@ -12,6 +12,18 @@ from meikipop.dictionary.pitch import Pitch
 
 
 class AnkiTests(unittest.TestCase):
+    def test_sentence_readings_use_literal_headwords_without_full_search(self):
+        from unittest.mock import Mock
+        from meikipop.anki import sentence_readings
+        library = Mock()
+        cat = Entry("1", "猫", "ねこ", "Words", "ja", ("cat",))
+        museum = Entry("2", "博物館", "はくぶつかん", "Words", "ja", ("museum",))
+        library.lookup.side_effect = lambda text, *args, **kwargs: (museum,) if text == museum.term else ()
+        self.assertEqual(sentence_readings("猫と博物館", [cat], library), " 猫[ねこ]と 博物館[はくぶつかん]")
+        library.search.assert_not_called()
+        self.assertTrue(all(call.kwargs == {"limit": 1, "tolerant": False}
+                            for call in library.lookup.call_args_list))
+
     def setUp(self):
         self.requests = []
         self.error = None
@@ -135,7 +147,8 @@ class AnkiTests(unittest.TestCase):
         entry = Entry("1", "ışık", "", "Türkçe", "tr", ("light",))
         values = note_values([entry], "Işık <parlak>.", "chosen <sense>\nexample")
         self.assertEqual(values["popup-selection-text"], "chosen &lt;sense&gt;<br>example")
-        self.assertEqual(values["glossary-first"], "<div>light</div>")
+        self.assertIn("<div>light</div>", values["glossary-first"])
+        self.assertIn("text-align:left", values["glossary-first"])
         self.assertIn("<div>light</div>", values["glossary"])
         self.assertNotIn("chosen", values["glossary"])
         self.assertEqual(values["pitch"], "")
