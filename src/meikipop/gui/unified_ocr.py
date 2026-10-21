@@ -467,10 +467,14 @@ class UnifiedOCR(QObject):
         screen_key = settings.value("hover_scan/screen", [])
         if not isinstance(region, QRect) or region.width() < 2 or region.height() < 2:
             return
-        if not isinstance(screen_key, (list, tuple)):
+        if not isinstance(screen_key, (list, tuple)) or len(screen_key) != 6:
+            return
+        try:
+            screen_key = (screen_key[0], *(int(value) for value in screen_key[1:5]), float(screen_key[5]))
+        except (TypeError, ValueError, OverflowError):
             return
         for screen in QApplication.screens():
-            if self._screen_key(screen) == tuple(screen_key) and screen.geometry().contains(region):
+            if self._screen_key(screen) == screen_key and screen.geometry().contains(region):
                 self.hover_region = QRect(region)
                 self.hover_screen = self._screen_key(screen)
                 return

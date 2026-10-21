@@ -4,6 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from queue import Queue
 import threading
 import sys
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -479,6 +480,25 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
                     self.controller._restore_scan_area()
                     self.assertIsNone(self.controller.hover_region)
                     self.assertIsNone(self.controller.hover_screen)
+
+    def test_scan_area_restores_from_another_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "settings.ini")
+            screen = QApplication.primaryScreen()
+            key = self.controller._screen_key(screen)
+            region = QRect(screen.geometry().topLeft() + QPoint(20, 20), QRect(0, 0, 100, 50).size())
+            subprocess.run([sys.executable, "-c", "\n".join((
+                "from PyQt6.QtCore import QRect, QSettings",
+                "import sys",
+                "settings = QSettings(sys.argv[1], QSettings.Format.IniFormat)",
+                f"settings.setValue('hover_scan/region', QRect{region.getRect()!r})",
+                f"settings.setValue('hover_scan/screen', {list(key)!r})",
+                "settings.sync()",
+            )), path], check=True, capture_output=True, text=True)
+            self.window.settings = QSettings(path, QSettings.Format.IniFormat)
+            self.controller._restore_scan_area()
+            self.assertEqual(self.controller.hover_region, region)
+            self.assertEqual(self.controller.hover_screen, key)
 
     def test_hover_capture_requests_full_snapshot_with_area_for_recognition(self):
         from PyQt6.QtGui import QPixmap
