@@ -1,9 +1,9 @@
 """Optional section navigation with a persistent lexical heading."""
 from bisect import bisect_left, bisect_right
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSignalBlocker, QTimer, Qt, pyqtSlot
+from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSignalBlocker, QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QColor, QPainter, QRegion, QTextCursor, QTextFormat
-from PyQt6.QtWidgets import QApplication, QProgressBar
+from PyQt6.QtWidgets import QApplication, QSlider
 
 from meikipop.gui.ruby import RubyBrowser
 
@@ -97,25 +97,55 @@ class StickyHeading(RubyBrowser):
         super().paintEvent(event)
 
 
-class ReadingProgress(QProgressBar):
+class ReadingProgress(QSlider):
+    seek_requested = pyqtSignal(float)
+
     def __init__(self, parent):
         super().__init__(parent)
         self.setRange(0, 1000)
         self.setValue(0)
         self.setOrientation(Qt.Orientation.Vertical)
-        self.setTextVisible(False)
         self.setAccessibleName("Reading progress")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Drag to scroll")
+        self.sliderMoved.connect(lambda value: self.seek_requested.emit(value / self.maximum()))
         self.hide()
+
+    def _seek_at(self, event):
+        self.setSliderPosition(round(max(0, min(1, event.position().y() / max(1, self.height() - 1)))
+                                     * self.maximum()))
+        event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setSliderDown(True)
+            self._seek_at(event)
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.isSliderDown():
+            self._seek_at(event)
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.isSliderDown():
+            self._seek_at(event)
+            self.setSliderDown(False)
+        else:
+            super().mouseReleaseEvent(event)
 
     def paintEvent(self, event):
         from meikipop.config.config import config
         from meikipop.gui.popup_style import surface_colors
         colors = surface_colors(config.color_background, config.color_foreground)
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(colors["border"]))
-        painter.fillRect(0, 0, self.width(), round(self.height() * self.value() / 1000),
+        inset = self.width() // 3
+        track = self.rect().adjusted(inset, 0, -inset, 0)
+        painter.fillRect(track, QColor(colors["border"]))
+        painter.fillRect(track.left(), 0, track.width(), round(self.height() * self.value() / 1000),
                          QColor(config.color_highlight_word))
 
 
@@ -148,11 +178,15 @@ class SectionScroller(QObject):
         self.header.setFrameShape(self.header.Shape.NoFrame)
         self.header.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.header.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self.header.setOpenLinks(False)
+        self.header.setOpenExternalLinks(False)
         self.header.anchorClicked.connect(browser.anchorClicked)
         self.header.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.header.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.header.hide()
         self.progress = ReadingProgress(browser)
+        self.progress.seek_requested.connect(self.seek_fraction)
+        self.progress.installEventFilter(self)
         self._viewport_margins = browser.viewportMargins()
         self.header.viewport().installEventFilter(self)
         browser.installEventFilter(self)
@@ -318,14 +352,27 @@ class SectionScroller(QObject):
         start, end = boundaries[index:index + 2]
         return (index + (value - start) / (end - start)) / (len(boundaries) - 1)
 
+    def seek_fraction(self, fraction):
+        self.cancel()
+        self._reset_gesture()
+        bar = self.browser.verticalScrollBar()
+        boundaries = sorted({0, bar.maximum(), *(min(bar.maximum(), top) for top in self.section_starts())})
+        position = max(0, min(1, fraction)) * (len(boundaries) - 1)
+        index = min(int(position), len(boundaries) - 2)
+        if index < 0:
+            return
+        target = boundaries[index] + (position - index) * (boundaries[index + 1] - boundaries[index])
+        bar.setValue(min(self.stops(), key=lambda stop: abs(stop - target)))
+
     def _update_progress(self):
         visible = self.enabled and self.browser.verticalScrollBar().maximum() > 0
         self.progress.setVisible(visible)
         if visible:
             viewport = self.browser.viewport().geometry()
-            self.progress.setGeometry(viewport.right() + 3, viewport.top() + 4,
-                                      2, max(1, viewport.height() - 8))
-            self.progress.setValue(round(1000 * self.progress_fraction()))
+            self.progress.setGeometry(viewport.right() + 1, viewport.top(),
+                                      self.browser.contentsRect().right() - viewport.right(), viewport.height())
+            with QSignalBlocker(self.progress):
+                self.progress.setValue(round(1000 * self.progress_fraction()))
             self.progress.raise_()
             self.progress.update()
 
@@ -352,6 +399,9 @@ class SectionScroller(QObject):
         # BlockUnderCursor includes the preceding paragraph's separator/format.
         cursor.setPosition(block.position() + block.length() - 1, QTextCursor.MoveMode.KeepAnchor)
         document = self.header.document()
+        if self.browser._pitch_object is not None and self.header._pitch_object is None:
+            from meikipop.dictionary.pitch import install_pitch_renderer
+            self.header._pitch_object = install_pitch_renderer(document, self.header)
         document.clear()
         # The source reaches y=0 before becoming sticky. Retaining its document
         # top margin would move the copied baseline down on the first scroll.

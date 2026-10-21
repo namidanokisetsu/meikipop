@@ -79,6 +79,29 @@ class SectionScrollTests(unittest.TestCase):
         self.assertEqual(self.browser.viewportMargins().right(), 0)
         self.assertEqual(self.browser.verticalScrollBarPolicy(), Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
+    def test_dragging_progress_jumps_between_stops_and_preserves_selection(self):
+        self.render(lines=20)
+        self.scroller.set_enabled(True)
+        self.app.processEvents()
+        self.browser.setTextCursor(self.browser.document().find("Definition"))
+        selected = self.browser.selected_text()
+        progress = self.scroller.progress
+        QTest.mousePress(progress, Qt.MouseButton.LeftButton, pos=QPoint(progress.width() // 2, 0))
+        values = []
+        for fraction in (.25, .5, .75, 1, .5, 0):
+            point = QPoint(progress.width() // 2, round((progress.height() - 1) * fraction))
+            QTest.mouseMove(progress, point)
+            values.append(self.bar.value())
+            self.assertIn(self.bar.value(), self.scroller.stops())
+            self.assertIsNone(self.scroller._target)
+        QTest.mouseRelease(progress, Qt.MouseButton.LeftButton, pos=QPoint(progress.width() // 2, 0))
+        self.assertFalse(progress.isSliderDown())
+        self.assertEqual(values[3], self.bar.maximum())
+        self.assertEqual(values[-1], 0)
+        self.assertEqual(values[:4], sorted(values[:4]))
+        self.assertGreater(len(set(values)), 3)
+        self.assertEqual(self.browser.selected_text(), selected)
+
     def test_default_uses_normal_wheel_scrolling(self):
         self.assertFalse(self.scroller.enabled)
         self.wheel()
@@ -298,6 +321,33 @@ class SectionScrollTests(unittest.TestCase):
         self.finish_animation()
         self.assertEqual(self.bar.value(), 0)
         self.assertEqual(self.browser.selected_text(), selected)
+
+    def test_sticky_headword_keeps_pitch_renderer_and_reading(self):
+        from meikipop.dictionary.pitch import PITCH_OBJECT, Pitch
+        entries = (Entry("cat", "猫", "ねこ", "Source", "ja", ("Meaning\n" * 30,),
+                         pitches=(Pitch("Pitch", "ねこ", 1),)),)
+        self.browser.setHtml(render_result(SearchResult("猫", "ja", "en", entries), expanded=("Source",)))
+        self.app.processEvents()
+        self.scroller.set_enabled(True)
+        self.bar.setValue(50)
+        header = self.scroller.header
+        self.assertTrue(header.isVisible())
+        self.assertIn("ねこ", header.toPlainText())
+        self.assertIsNotNone(header._pitch_object)
+        self.assertIsNotNone(header.document().documentLayout().handlerForObject(PITCH_OBJECT))
+        block = header.document().begin()
+        pitches = []
+        while block.isValid():
+            iterator = block.begin()
+            while not iterator.atEnd():
+                fragment = iterator.fragment()
+                if fragment.charFormat().objectType() == PITCH_OBJECT:
+                    pitches.append(fragment)
+                iterator += 1
+            block = block.next()
+        self.assertEqual(len(pitches), 1)
+        self.assertGreater(header._pitch_object.intrinsicSize(header.document(), pitches[0].position(),
+                                                            pitches[0].charFormat()).width(), 0)
 
     def test_sticky_headword_follows_groups_and_preserves_japanese_ruby(self):
         entries = tuple(Entry(str(i), term, reading, "Source", "ja",
