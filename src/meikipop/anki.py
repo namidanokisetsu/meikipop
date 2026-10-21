@@ -185,30 +185,34 @@ class AnkiClient:
         return note_id
 
 
-def note_values(entries, sentence="", selection="", translation="", furigana=None, *, converter=None):
+def note_values(entries, sentence="", selection="", translation="", furigana=None, *, converter=None, sources=None):
     entry = entries[0]
+    sources = set(FIELD_SOURCES if sources is None else sources)
+    glossary_entries = entries if "glossary" in sources else entries[:1] if "glossary-first" in sources else ()
     glossaries = ["".join(f"<div>{gloss}</div>" for gloss in
                          (converter.extract_glosses(list(item.definitions)) if converter else item.glosses()))
-                 for item in entries]
+                 for item in glossary_entries]
     glossary = "".join(f'<div style="margin:0 0 .5em"><div style="font-size:.75em;'
                        f'font-weight:normal;opacity:.65">{escape(item.source)}</div>{gloss}</div>'
-                       for item, gloss in zip(entries, glossaries))
+                       for item, gloss in zip(glossary_entries, glossaries)) if "glossary" in sources else ""
     def aligned(content):
         return f'<div class="meikipop-glossary" style="text-align:left;line-height:1.5">{content}</div>'
-    rank = harmonic_rank(f for item in entries for f in item.frequencies)
-    pitches = tuple(dict.fromkeys(p for item in entries for p in item.pitches if p.reading == entry.reading))
+    rank = harmonic_rank(f for item in entries for f in item.frequencies) if "frequency" in sources else None
+    pitches = tuple(dict.fromkeys(p for item in entries for p in item.pitches if p.reading == entry.reading)) if sources.intersection(
+        ("pitch_positions", "pitch_categories")) else ()
     positions = tuple(dict.fromkeys(p.position for p in pitches if type(p.position) is int))
     categories = tuple(dict.fromkeys("heiban" if p == 0 else "atamadaka" if p == 1 else
                                     "odaka" if p == len(morae(entry.reading)) else "nakadaka" for p in positions))
-    return dict({"glossary-first": aligned(glossaries[0]),
+    return dict({"glossary-first": aligned(glossaries[0]) if glossaries else "",
                  "popup-selection-text": escape(selection).replace("\n", "<br>")},
-                expression=escape(entry.term), reading=escape(entry.reading), glossary=aligned(glossary),
+                expression=escape(entry.term), reading=escape(entry.reading), glossary=aligned(glossary) if glossary else "",
                 sentence=escape(sentence).replace("\n", "<br>"), source=escape(entry.source),
-                sentence_furigana=furigana if furigana is not None else sentence_readings(sentence, entries),
+                sentence_furigana=(furigana if furigana is not None else sentence_readings(sentence, entries))
+                    if "sentence_furigana" in sources else "",
                 sentence_translation=escape(translation).replace("\n", "<br>"),
                 pitch_positions=", ".join(map(str, positions)), pitch_categories=", ".join(categories),
                 language=escape(entry.language), frequency=str(max(1, round(rank))) if rank is not None else "",
-                pitch=render_pitches((p for item in entries for p in item.pitches), native=False))
+                pitch=render_pitches((p for item in entries for p in item.pitches), native=False) if "pitch" in sources else "")
 
 
 def sentence_readings(sentence, entries=(), library=None):

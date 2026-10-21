@@ -326,8 +326,8 @@ def export_note(entries, sentence, selection, options, *, translation="", screen
             furigana = sentence_readings(sentence, entries, library)
         finally:
             library.close()
-    values = note_values(entries, sentence, selection, translation, furigana,
-                         converter=_AnkiGlossConverter())
+    converter = _AnkiGlossConverter() if mapped.intersection(("glossary", "glossary-first")) else None
+    values = note_values(entries, sentence, selection, translation, furigana, converter=converter, sources=mapped)
     values["kanji-details"] = ""
     if "kanji-details" in mapped and entries[0].language == "ja":
         from meikipop.gui.kanji_panel import render_kanji_export
@@ -336,7 +336,7 @@ def export_note(entries, sentence, selection, options, *, translation="", screen
     if screenshot is not None and "picture" in mapped:
         from io import BytesIO
         buffer = BytesIO()
-        screenshot.image().save(buffer, format="PNG")
+        screenshot.image().save(buffer, format="PNG", compress_level=1)
         media["picture"] = media_value(buffer.getvalue(), "png")
     if ("word_audio" in mapped and audio_clip is not None
             and audio_clip.key == (entries[0].term, entries[0].reading or "")):

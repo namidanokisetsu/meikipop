@@ -103,6 +103,24 @@ class AnkiTests(unittest.TestCase):
                 client.add({"expression": "cat", "_media": {"picture": {"filename": "image.png", "data": b"png"}}})
         self.assertNotIn("addNote", [item.args[0] for item in call.call_args_list])
 
+    def test_unmapped_content_is_not_rendered(self):
+        from unittest.mock import Mock
+        entries = [Entry("1", "cat", "", "Words", "en", ("cat",)),
+                   Entry("2", "cat", "", "Other", "en", ("feline",))]
+        converter = Mock()
+        converter.extract_glosses.return_value = ["first"]
+        with patch("meikipop.anki.sentence_readings") as readings, patch("meikipop.anki.render_pitches") as pitch:
+            values = note_values(entries, "cat here", converter=converter, sources={"expression"})
+            converter.extract_glosses.assert_not_called()
+            readings.assert_not_called()
+            pitch.assert_not_called()
+        self.assertEqual(values["expression"], "cat")
+        self.assertEqual(values["glossary"], "")
+        values = note_values(entries, converter=converter, sources={"glossary-first"})
+        converter.extract_glosses.assert_called_once_with(["cat"])
+        self.assertIn("first", values["glossary-first"])
+        self.assertEqual(values["glossary"], "")
+
     def test_kikitori_furigana_translation_and_pitch_values(self):
         entry = Entry("1", "猫", "ねこ", "Words", "ja", ("cat",), pitches=(Pitch("Accent", "ねこ", 1),))
         values = note_values([entry], "猫がいる。", translation="A cat <here>.")
