@@ -2,6 +2,7 @@
 from collections import OrderedDict
 from dataclasses import dataclass, replace
 import json
+import math
 from pathlib import Path
 import re
 
@@ -289,6 +290,8 @@ class SearchEngine:
     def _japanese(self, text):
         self._matched_length = 0
         from .deconjugator import Deconjugator
+        from .kanji import kanji_characters
+        from .metadata import harmonic_rank
         if self.deconjugator is None:
             rules = Path(__file__).parents[1] / "scripts/deconjugator.json"
             self.deconjugator = Deconjugator(json.loads(rules.read_text(encoding="utf-8")))
@@ -307,25 +310,51 @@ class SearchEngine:
             family = "v5" if tag.startswith("v5") else "vs" if tag.startswith("vs") else tag
             return tag in rules or family in rules or (
                 family == "v1" and "v1-s" in rules or family == "adj-i" and "adj-ix" in rules)
+        lookups = {}
+
+        def lookup(surface):
+            if surface not in lookups:
+                lookups[surface] = self.library.lookup(surface, "ja", limit=None)
+            return lookups[surface]
+
         # Prefer the longest word at the beginning of a phrase, as the OCR lookup does.
         for length in range(min(25, len(text)), 0, -1):
             prefix = text[:length]
-            results = list(self.library.lookup(prefix, "ja"))
+            results = [(entry, len(entry.inflection)) for entry in lookup(prefix)]
             for form in sorted(self.deconjugator.deconjugate(prefix), key=lambda f: (len(f.process), f.text, f.tags)):
                 if form.text == prefix:
                     continue
-                for entry in self.library.lookup(form.text, "ja"):
+                for entry in lookup(form.text):
                     if not compatible(form.tags, entry.rules):
                         continue
                     labels = {"teiru": "progressive", "teru (teiru)": "progressive",
                               "teoru": "progressive", "toru (teoru)": "progressive"}
                     process = tuple(dict.fromkeys(labels.get(step, step) for step in reversed(form.process)
                                                   if step and not step.startswith("(")))
-                    results.append(replace(entry, route="inflected", inflection=process))
+                    results.append((replace(entry, route="inflected", inflection=process), len(form.process)))
             if results:
                 self._matched_length = length
                 unique = {}
-                for entry in results:
-                    unique.setdefault(entry.id, entry)
-                return tuple(unique.values())[:60]
+                for entry, cost in results:
+                    if entry.id not in unique or cost < unique[entry.id][1]:
+                        unique[entry.id] = (entry, cost)
+                groups = OrderedDict()
+                for entry, cost in unique.values():
+                    groups.setdefault((entry.term, entry.reading), []).append((entry, cost))
+                kana_query = not kanji_characters(prefix, 1)
+
+                def priority(group):
+                    entries = groups[group]
+                    cost = min(cost for _, cost in entries)
+                    score = -cost
+                    rank = harmonic_rank(f for entry, _ in entries for f in entry.frequencies)
+                    if rank is not None and rank < 999_999:
+                        score += 10 * (1 - math.log(max(1, rank)) / math.log(999_999))
+                    if kana_query and not cost and not kanji_characters(group[0], 1):
+                        score += 3
+                    return score
+
+                # Limit lexical groups after ranking, keeping their senses and sources together.
+                return tuple(entry for group in sorted(groups, key=priority, reverse=True)[:60]
+                             for entry, _ in groups[group])
         return ()

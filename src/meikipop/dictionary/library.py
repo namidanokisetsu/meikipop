@@ -399,6 +399,7 @@ class Library:
                      tuple(row["rules"].split()), route)
 
     def lookup(self, text, language="ja", limit=60, *, tolerant=True, target_language=None):
+        """Return indexed matches; limit=None retains all records for lexical ranking."""
         term = key(text, language)
         if not term or len(term) > 2000:
             return ()
@@ -476,7 +477,7 @@ class Library:
                                              target_language=target_language):
                         route = "form spelling" if entry.route == "form" else "spelling"
                         unique.setdefault(entry.id, replace(entry, route=route))
-                    if len(unique) >= limit:
+                    if limit is not None and len(unique) >= limit:
                         break
             return tuple(list(unique.values())[:limit])
         return self._with_frequencies(tuple(list(unique.values())[:limit]), language)
@@ -543,15 +544,16 @@ class Library:
 
     def _lookup_keys(self, packs, keys, limit, fold=False, inflections=None):
         result = []
+        row_limit = -1 if limit is None else limit
         # Direct spellings precede form-derived entries across all dictionaries.
         for candidate, route in keys.items():
             for path, meta, db in packs:
                 if fold:
                     rows = db.execute("SELECT * FROM terms WHERE folded=? ORDER BY score DESC,id LIMIT ?",
-                                      (folded(candidate), limit))
+                                      (folded(candidate), row_limit))
                 else:
                     rows = db.execute("SELECT * FROM terms WHERE key=? OR reading_key=? ORDER BY score DESC,id LIMIT ?",
-                                      (candidate, candidate, limit))
+                                      (candidate, candidate, row_limit))
                 result.extend(replace(self._entry(path, meta, row, route),
                                       inflection=(inflections or {}).get(candidate, ()) if route.startswith("form") else ())
                               for row in rows)

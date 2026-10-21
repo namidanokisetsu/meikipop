@@ -34,7 +34,10 @@ Paths below are relative to `src/meikipop/`.
 | Screen lookup | `gui/unified_ocr.py`, `gui/lookup_session.py`, `ocr/` | Capture/OCR and lookup run off the UI thread. Reject stale results; pinning freezes the current result. |
 | Translation | `dictionary/translation.py` | Explicit model setup; lazy local inference, cancellation and loopback-only custom servers. |
 
-Japanese uses bundled deconjugation rules. Turkish uses Zeyrek 0.1.3, accent
+Japanese uses bundled deconjugation rules. Its headword/reading groups rank by
+installed frequency ranks, kana preference and deconjugation cost. The result
+limit applies to ranked groups, retaining their source records and dictionary order.
+Turkish uses Zeyrek 0.1.3, accent
 recovery and precomputed lexicon rankings; exact entries and imported forms
 retain precedence. Full morpheme paths remain attached to their analyses.
 Turkish lookup never starts Stanza. Other supported languages can install an
