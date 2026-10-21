@@ -194,7 +194,9 @@ class SearchEngine:
                 translation = self.translator.translate(text, source, target, **options)
             except (ImportError, RuntimeError, ValueError) as error:
                 message = str(error)
-        kanji = self.library.kanji_info(entries[0].term if entries else text) if not translate and (source == "ja" or target == "ja") else ()
+        kanji_text = "".join(dict.fromkeys(entry.term for entry in entries)) if entries else text
+        kanji = (self.library.kanji_info(kanji_text, limit=len(kanji_text))
+                 if not translate and (source == "ja" or target == "ja") else ())
         model = getattr(self.translator, "last_model", "") if translation else ""
         analyses = self._analyses if not entries else ()
         if analyses:

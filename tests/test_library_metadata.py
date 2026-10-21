@@ -96,6 +96,18 @@ class LibraryMetadataTests(unittest.TestCase):
         library.refresh_if_changed()
         self.assertEqual(library.kanji_info("日本語"), ())
 
+    def test_search_loads_kanji_for_every_returned_headword(self):
+        characters = "日本語猫犬学校先生天気電車水火"
+        self.install("Words", {"term_bank_1": [self.word(char, "かな", char) for char in characters]})
+        self.install("Kanji", {"kanji_bank_1": [[char, "", "", "", [char], {}] for char in characters]})
+        engine = SearchEngine(self.directory)
+        self.addCleanup(engine.close)
+        result = engine.search("かな", source="ja")
+        self.assertGreater(len(result.entries), 12)
+        self.assertEqual([entry.character for entry in result.kanji],
+                         list(dict.fromkeys("".join(entry.term for entry in result.entries))))
+        self.assertIs(engine.search("かな", source="ja"), result)
+
     def test_supplementary_and_compatibility_kanji_are_queryable(self):
         self.install("Rare Kanji", {"kanji_bank_1": [
             ["𠮷", "キチ", "よし", "", ["good luck"], {}],
