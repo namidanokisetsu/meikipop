@@ -4,23 +4,30 @@ THEMES = {
     "Dark": {
         "color_background": "#000000", "color_foreground": "#FFFFFF",
         "color_highlight_word": "#FFFFFF", "color_highlight_reading": "#B8B8B8",
-        "background_opacity": 230,
+        "background_opacity": 250,
     },
-    "Green": {
-        "color_background": "#000000", "color_foreground": "#E8E8E8",
-        "color_highlight_word": "#80D69B", "color_highlight_reading": "#A8CFB5",
-        "background_opacity": 230,
+    "Tokyo Night": {
+        "color_background": "#0B0E18", "color_foreground": "#E4E9FF",
+        "color_highlight_word": "#82AAFF", "color_highlight_reading": "#86E1FC",
+        "background_opacity": 250,
+    },
+    "Dracula": {
+        "color_background": "#100D17", "color_foreground": "#F8F8F2",
+        "color_highlight_word": "#FF92D0", "color_highlight_reading": "#C8ACFF",
+        "background_opacity": 250,
     },
     "Light": {
         "color_background": "#FFFFFF", "color_foreground": "#202020",
         "color_highlight_word": "#202020", "color_highlight_reading": "#606060",
-        "background_opacity": 230,
+        "background_opacity": 250,
     },
     "Custom": {}
 }
 
 
 def theme_name(name):
+    if name == "Green":
+        return "Tokyo Night"
     if name == "Monochrome Dark":
         return "Dark"
     return name if name in THEMES else "Dark"

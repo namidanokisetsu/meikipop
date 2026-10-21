@@ -186,8 +186,6 @@ class SettingsDialog(QDialog):
         for key, button in self.colors.items():
             if key in values:
                 button.setText(values[key])
-        if "background_opacity" in values:
-            self.fields["background_opacity"].setValue(values["background_opacity"])
 
     def save(self):
         bindings = [self.activation.currentText()] if self.activation.currentText() != "None" else []

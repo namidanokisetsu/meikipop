@@ -49,6 +49,8 @@ Settings shows the available choices for your language.
 **Appearance** controls fonts, themes and readings, with separate options for
 preview and pinned results. Scrolling is continuous by default; enable
 **Snap scrolling** to move between sections.
+Tokyo Night and Dracula use darker, high-contrast palettes. Background opacity
+defaults to 98%; changing themes keeps your chosen opacity.
 Preview shows one definition by default; change **Definitions** or select **All**.
 Pinned results have no definition limit. Turkish misses can still show the analyzed root and
 grammar, and screen lookup keeps available spelling suggestions.

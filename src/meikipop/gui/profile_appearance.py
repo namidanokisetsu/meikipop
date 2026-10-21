@@ -214,8 +214,6 @@ class ProfileAppearance(QWidget):
         for key, value in palette.items():
             if key.startswith("color"):
                 self.set_color(key, value)
-            elif key in self.controls:
-                self.controls[key].setValue(round(value * 100 / 255) if key == "background_opacity" else int(value))
         for key, widget in self.controls.items():
             if key.startswith("color"):
                 self.form.setRowVisible(widget, name == "Custom")

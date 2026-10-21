@@ -453,10 +453,6 @@ class SettingsDialog(QDialog):
             theme_data = THEMES[theme_name]
             self.color_values.update({key: theme_data[key] for key in self.color_values})
             self._update_color_buttons()
-            self.opacity_slider.blockSignals(True)
-            self.opacity_slider.setValue(round(theme_data["background_opacity"] * 100 / 255))
-            self.opacity_slider.blockSignals(False)
-            self.opacity_label.setText(f"{self.opacity_slider.value()}%")
 
     def _update_color_buttons(self):
         for key, btn in self.color_widgets.items():

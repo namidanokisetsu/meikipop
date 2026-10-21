@@ -36,7 +36,7 @@ class ProfileThemeTests(unittest.TestCase):
             settings.setValue('profiles/ja/theme_name', 'Green')
             widget = ProfileAppearance(settings, lambda: 'ja', lambda: load_appearance(settings, 'ja'))
             try:
-                self.assertEqual(widget.controls['background_opacity'].value(), 90)
+                self.assertEqual(widget.controls['background_opacity'].value(), 98)
                 self.assertEqual(widget.controls['background_opacity'].suffix(), '%')
                 self.assertFalse(widget.form.isRowVisible(widget.controls['color_background']))
                 self.assertTrue(widget.form.isRowVisible(widget.controls['background_opacity']))
@@ -45,26 +45,32 @@ class ProfileThemeTests(unittest.TestCase):
                 self.assertEqual(config.background_opacity, 128)
                 widget.reload()
                 self.assertEqual(widget.controls['background_opacity'].value(), 50)
-                self.assertEqual(widget.theme.currentText(), 'Green')
+                self.assertEqual(widget.theme.currentText(), 'Tokyo Night')
+                for name in ('Dracula', 'Dark', 'Custom', 'Tokyo Night'):
+                    widget.theme.setCurrentText(name)
+                    self.assertEqual(widget.controls['background_opacity'].value(), 50)
+                    self.assertEqual(config.background_opacity, 128)
             finally:
                 widget.deleteLater()
 
     def test_presets_keep_text_and_metadata_readable(self):
-        self.assertEqual(set(THEMES), {"Green", "Dark", "Light", "Custom"})
+        self.assertEqual(set(THEMES), {"Tokyo Night", "Dracula", "Dark", "Light", "Custom"})
         for name, theme in THEMES.items():
             if not theme:
                 continue
             with self.subTest(theme=name):
                 bg = theme['color_background']
-                self.assertEqual(theme['background_opacity'], 230)
+                self.assertEqual(theme['background_opacity'], 250)
                 self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 7)
                 for key in ('color_highlight_word', 'color_highlight_reading'):
-                    self.assertGreaterEqual(contrast(bg, theme[key]), 4.5)
+                    self.assertGreaterEqual(contrast(bg, theme[key]), 7 if name != 'Light' else 4.5)
                 for key in ('color_background', 'color_foreground', 'color_highlight_word', 'color_highlight_reading'):
                     red, green, blue, _ = QColor(theme[key]).getRgb()
-                    if name != 'Green':
+                    if name in ('Dark', 'Light'):
                         self.assertEqual(red, green)
                         self.assertEqual(green, blue)
+                if name in ('Tokyo Night', 'Dracula'):
+                    self.assertLess(luminance(bg), .01)
                 if name == 'Dark':
                     self.assertEqual(bg, '#000000')
                     self.assertGreaterEqual(contrast(bg, theme['color_foreground']), 20)
@@ -187,7 +193,7 @@ class ProfileThemeTests(unittest.TestCase):
             widget = ProfileAppearance(settings, lambda: 'ja', Mock())
             try:
                 self.assertEqual(widget.theme.currentText(), 'Dark')
-                self.assertEqual(widget.controls['background_opacity'].value(), 90)
+                self.assertEqual(widget.controls['background_opacity'].value(), 98)
                 self.assertEqual(widget.preview_definitions.value(), 1)
                 self.assertFalse(widget.pinned_sentence.isChecked())
                 self.assertFalse(widget.snap_scrolling.isChecked())

@@ -72,7 +72,7 @@ class Config:
             'color_foreground': '#FFFFFF',
             'color_highlight_word': '#FFFFFF',
             'color_highlight_reading': '#B8B8B8',
-            'background_opacity': 230,
+            'background_opacity': 250,
             'popup_position_mode': 'visual_novel_mode'
         }
     }
