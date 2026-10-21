@@ -2613,7 +2613,7 @@ class QuickLookupTests(unittest.TestCase):
             self.window.restore_shortcut()
             self.assertIsNone(self.window._keys)
 
-    def test_lookup_shortcut_prefers_selection_then_falls_back_to_clipboard(self):
+    def test_lookup_shortcut_opens_empty_input_without_selection(self):
         with patch.object(QApplication, "activeWindow", return_value=None), \
                 patch.object(QApplication, "clipboard") as clipboard, \
                 patch.object(self.window.selection, "start") as capture:
@@ -2625,19 +2625,33 @@ class QuickLookupTests(unittest.TestCase):
             self.assertEqual(self.window.search.text(), "selected")
             self.window.request_lookup()
             self.window.selection.unavailable.emit(True)
-            self.assertEqual(self.window.search.text(), "clipboard")
+            self.assertEqual(self.window.search.text(), "")
+            self.assertTrue(self.window.isVisible())
             self.window.hide()
             self.window.request_lookup()
             self.window.selection.unavailable.emit(False)
             self.assertFalse(self.window.isVisible())
+            clipboard.assert_not_called()
 
-    def test_shortcut_clipboard_sentence_translates_after_exact_entry_miss(self):
-        with patch.object(QApplication, "activeWindow", return_value=None), \
-                patch.object(QApplication, "clipboard") as clipboard, \
-                patch.object(self.window.selection, "start"):
-            clipboard.return_value.text.return_value = "This is a complete sentence."
+    def test_lookup_shortcut_uses_only_selection_within_app(self):
+        with patch.object(QApplication, "activeWindow", return_value=self.window), \
+                patch.object(QApplication, "focusWidget", return_value=self.window.search), \
+                patch.object(QApplication, "clipboard") as clipboard:
+            self.window.search.setText("selected phrase")
+            self.window.search.selectAll()
             self.window.request_lookup()
-            self.window.selection.unavailable.emit(True)
+            self.assertEqual(self.window.search.text(), "selected phrase")
+            self.window.search.deselect()
+            self.window.request_lookup()
+            self.assertEqual(self.window.search.text(), "")
+            self.assertTrue(self.window.isVisible())
+            clipboard.assert_not_called()
+
+    def test_shortcut_selected_sentence_translates_after_exact_entry_miss(self):
+        with patch.object(QApplication, "activeWindow", return_value=None), \
+                patch.object(self.window.selection, "start"):
+            self.window.request_lookup()
+            self.window.selection.completed.emit("This is a complete sentence.")
             self.wait_until(lambda: self.window._result is not None and self.window._result.translation)
             self.assertEqual([call[3] for call in self.engine.calls], [False, True])
 

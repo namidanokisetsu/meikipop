@@ -21,8 +21,9 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
   Point at words inside it without holding a key. The area is remembered between
   sessions while the display layout and scaling match. Enable Hover scan each session.
 - **Typed or copied text:** open **Search** from the tray. The configurable text
-  shortcut can also open selected text or clipboard text. Select a word in the
-  search input and press Enter to look it up with the surrounding sentence.
+  shortcut opens selected text, or an empty input when nothing is selected.
+  Select a word in the search input and press Enter to look it up with the
+  surrounding sentence.
 - **Read more:** pin the popup to show all definitions. Dictionary headings
   collapse or reopen a dictionary; its own detail links open examples and notes.
   **Back** returns to the previous lookup. **Copy sentence** copies the context.

@@ -2408,12 +2408,11 @@ class QuickLookupWindow(QDialog):
         self.selection.start(wait_for_modifiers=True)
 
     def request_lookup(self):
-        self._lookup_clipboard = QApplication.clipboard().text()[:2000]
         if QApplication.activeWindow() is not None:
             focused = QApplication.focusWidget()
             text = focused.selectedText() if isinstance(focused, QLineEdit) else (
                 self.browser.selected_text() if focused in (self.browser, self.browser.viewport()) else "")
-            self.open_search(text or self._lookup_clipboard)
+            self.open_search(text)
             return
         if self.selection.pending:
             return
@@ -2430,7 +2429,7 @@ class QuickLookupWindow(QDialog):
     def _selection_unavailable(self, same_application):
         requested, self._selection_for_search = self._selection_for_search, False
         if requested and same_application:
-            self.open_search(self._lookup_clipboard)
+            self.open_search()
 
     def scan_hold_changed(self, active):
         self._scan_hold_active = active

@@ -97,6 +97,8 @@ input stays with the source.
 Manual search retains normal focus behavior. Borderless fullscreen uses the same
 native monitor-bounds check. Side buttons page while over the popup and can be
 disabled per profile.
+The text lookup shortcut opens selected text or a blank search input, without
+falling back to clipboard contents. Foreground changes still cancel capture.
 Unhandled native popup events return `(False, 0)` directly. Calling PyQt's base
 `nativeEvent` can crash Windows handle creation; a hidden native-window fixture
 covers creation, capture exclusion, focus tracking and mouse activation.
