@@ -850,6 +850,7 @@ class QuickLookupWindow(QDialog):
         self._needs_place = False
         self._context = ""
         self._peek = False
+        self._fullscreen_overlay = False
         self._history = []
         self._new_chain = True
         self._expanded = set()
@@ -2163,6 +2164,8 @@ class QuickLookupWindow(QDialog):
                 self.move(*popup_position(point.x(), point.y(), self.size(), area, config.popup_position_mode))
 
     def _set_peek(self, peek):
+        from meikipop.utils.window_focus import foreground_is_fullscreen
+        self._fullscreen_overlay = bool(peek) and foreground_is_fullscreen()
         if peek and not self._peek and (self._reading_size_custom or self.size() != self._auto_fit_size):
             self._normal_size = self.size()
         elif not peek and self._peek and not self.is_pinned:
@@ -2737,7 +2740,7 @@ class QuickLookupWindow(QDialog):
                     self._resize_expanded()
             elif self._reading_size_custom or self.size() != self._auto_fit_size:
                 self._normal_size = self.size()
-        if checked:
+        if checked and not self._fullscreen_overlay:
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
             from meikipop.utils.window_focus import focus_pinned_popup
             self._opening_search = sys.platform == "darwin"
@@ -2748,6 +2751,15 @@ class QuickLookupWindow(QDialog):
         self.layout().activate()
         self.render_timer.stop()
         self._render(preserve_scroll=True)
+
+    def nativeEvent(self, event_type, message):
+        if getattr(self, "_fullscreen_overlay", False) and event_type == b"windows_generic_MSG":
+            import ctypes
+            from ctypes import wintypes
+            native = wintypes.MSG.from_address(int(message))
+            if native.message == 0x0021:  # WM_MOUSEACTIVATE
+                return True, 3  # MA_NOACTIVATE keeps the fullscreen source active.
+        return super().nativeEvent(event_type, message)
 
     def eventFilter(self, watched, event):
         if (event.type() == QEvent.Type.MouseButtonPress and isinstance(watched, QWidget)
@@ -2886,7 +2898,7 @@ class QuickLookupWindow(QDialog):
             QTimer.singleShot(0, self._dismiss_if_inactive)
 
     def _dismiss_if_inactive(self):
-        if self._opening_search or self._passive_text:
+        if self._opening_search or self._passive_text or self._fullscreen_overlay:
             return
         if self.geometry().contains(QCursor.pos()):
             return

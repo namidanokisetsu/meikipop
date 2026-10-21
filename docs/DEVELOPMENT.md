@@ -76,6 +76,9 @@ the full captured context, never the compact display text. Preview clicks only
 pin; their mouse release never activates links exposed by the pinned layout.
 Lookup autoplay runs on new lookup results, never on translation completion,
 history restoration or rendering. Pin autoplay follows its separate preference.
+Windows OCR popups over a fullscreen source expand without activation and reject
+mouse activation, keeping the source foreground and its taskbar hidden. Keyboard
+input stays with the source; manual search retains normal focus behavior.
 
 Keep OCR usable on its own. Non-OCR lookup actions and text shortcuts remain
 independently configurable. Reuse shared rendering and input components;

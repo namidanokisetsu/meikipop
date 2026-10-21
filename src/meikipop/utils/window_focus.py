@@ -55,6 +55,39 @@ def restore_foreground(handle):
         user32.SetForegroundWindow(handle)
 
 
+def foreground_is_fullscreen():
+    """Compare native bounds so mixed-DPI and secondary displays stay correct."""
+    from PyQt6.QtWidgets import QApplication
+    if sys.platform != "win32" or QApplication.platformName() == "offscreen":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class MonitorInfo(ctypes.Structure):
+        _fields_ = [("size", wintypes.DWORD), ("monitor", wintypes.RECT),
+                    ("work", wintypes.RECT), ("flags", wintypes.DWORD)]
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetDesktopWindow.restype = wintypes.HWND
+    user32.GetShellWindow.restype = wintypes.HWND
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.MonitorFromWindow.restype = wintypes.HANDLE
+    user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MonitorInfo)]
+    handle = user32.GetForegroundWindow()
+    if not handle or handle in (user32.GetDesktopWindow(), user32.GetShellWindow()):
+        return False
+    rect, info = wintypes.RECT(), MonitorInfo()
+    info.size = ctypes.sizeof(info)
+    monitor = user32.MonitorFromWindow(handle, 0)
+    if not monitor or not user32.GetWindowRect(handle, ctypes.byref(rect)) \
+            or not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+        return False
+    return all(getattr(rect, side) == getattr(info.monitor, side)
+               for side in ("left", "top", "right", "bottom"))
+
+
 def activate_application():
     from PyQt6.QtWidgets import QApplication
     if sys.platform == "darwin" and QApplication.platformName() != "offscreen":

@@ -1777,6 +1777,29 @@ class QuickLookupTests(unittest.TestCase):
             self.window._dismiss_if_inactive()
         self.assertFalse(self.window.isVisible())
 
+    def test_fullscreen_ocr_pin_and_clicks_keep_source_active(self):
+        import ctypes
+        from ctypes import wintypes
+        with patch("meikipop.utils.window_focus.foreground_is_fullscreen", return_value=True), \
+                patch("meikipop.utils.window_focus.focus_pinned_popup") as focus:
+            self.window.show_entries((entry(),), "cat", peek=True)
+            message = wintypes.MSG()
+            message.message = 0x0021
+            address = ctypes.addressof(message)
+            self.assertEqual(self.window.nativeEvent(b"windows_generic_MSG", address), (True, 3))
+            self.window.pin.setChecked(True)
+            focus.assert_not_called()
+            self.assertTrue(self.window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating))
+            self.assertEqual(self.window.nativeEvent(b"windows_generic_MSG", address), (True, 3))
+            with patch.object(self.window, "isActiveWindow", return_value=False), \
+                    patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-500, -500)):
+                self.window._dismiss_if_inactive()
+            self.assertTrue(self.window.isVisible())
+            self.assertTrue(self.window.is_pinned)
+            self.window.open_search()
+            self.assertFalse(self.window._fullscreen_overlay)
+            self.assertFalse(self.window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating))
+
     def test_escape_hides_and_invalidates_pending_results(self):
         self.window.open_search()
         self.window.search.setText("猫")

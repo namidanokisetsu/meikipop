@@ -3,10 +3,40 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from meikipop.utils.window_focus import configure_macos_popup, focus_pinned_popup, reduce_motion_enabled
+from meikipop.utils.window_focus import (configure_macos_popup, focus_pinned_popup,
+                                        foreground_is_fullscreen, reduce_motion_enabled)
 
 
 class PopupSpaceTests(unittest.TestCase):
+    def test_windows_fullscreen_uses_monitor_bounds_and_excludes_desktop(self):
+        user32 = Mock()
+        user32.GetForegroundWindow.return_value = 42
+        user32.GetDesktopWindow.return_value = 1
+        user32.GetShellWindow.return_value = 2
+        user32.MonitorFromWindow.return_value = 3
+
+        def bounds(output, values):
+            for side, value in zip(("left", "top", "right", "bottom"), values):
+                setattr(output, side, value)
+            return 1
+
+        monitor = (-2560, 0, 0, 1440)
+        user32.GetMonitorInfoW.side_effect = lambda handle, output: bounds(output._obj.monitor, monitor)
+        with patch('sys.platform', 'win32'), \
+                patch('PyQt6.QtWidgets.QApplication.platformName', return_value='windows'), \
+                patch('ctypes.WinDLL', return_value=user32, create=True):
+            for rect, expected in ((monitor, True), ((-2560, 0, 0, 1400), False),
+                                   ((-2568, -8, 8, 1448), False)):
+                with self.subTest(rect=rect):
+                    user32.GetWindowRect.side_effect = lambda handle, output: bounds(output._obj, rect)
+                    self.assertEqual(foreground_is_fullscreen(), expected)
+            user32.GetForegroundWindow.return_value = 2
+            self.assertFalse(foreground_is_fullscreen())
+            user32.GetForegroundWindow.return_value = 42
+            user32.GetWindowRect.side_effect = None
+            user32.GetWindowRect.return_value = 0
+            self.assertFalse(foreground_is_fullscreen())
+
     def test_popup_joins_fullscreen_spaces_without_moving_the_source_app(self):
         constants = dict(CanJoinAllSpaces=1, MoveToActiveSpace=2, FullScreenPrimary=128,
                          FullScreenAuxiliary=256, FullScreenNone=512, Primary=65536,
