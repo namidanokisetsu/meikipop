@@ -148,6 +148,16 @@ class JapaneseRankingTests(unittest.TestCase):
         self.assertEqual([entry.term for entry in result.entries], [term])
         self.assertEqual(result.matched_length, len(term))
 
+    def test_exact_compound_precedes_shorter_headwords_and_keeps_sources(self):
+        for source in ("A", "B"):
+            self.install(source, [self.word("語彙力", "ごいりょく"), self.word("語彙", "ごい")])
+        engine = self.engine()
+        for _ in range(2):
+            result = engine.search("語彙力", source="ja")
+            self.assertEqual([entry.term for entry in result.entries], ["語彙力", "語彙力", "語彙", "語彙"])
+            self.assertEqual(result.matched_length, 3)
+        self.assertEqual({entry.term for entry in engine._japanese("語彙力", full_only=True)}, {"語彙力"})
+
     def test_prefix_scan_length_changes_invalidate_cached_results(self):
         stem = "あ" * 25
         term, query = stem + "食べる", stem + "食べました"

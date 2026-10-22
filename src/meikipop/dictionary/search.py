@@ -380,6 +380,22 @@ class SearchEngine:
                     return score
 
                 # Limit lexical groups after ranking, keeping their senses and sources together.
-                return tuple(entry for group in sorted(groups, key=priority, reverse=True)[:60]
-                             for entry, _ in groups[group])
+                ranked = [entry for group in sorted(groups, key=priority, reverse=True)[:60]
+                          for entry, _ in groups[group]]
+                # Exact compounds also expose their shorter dictionary headwords.
+                if not full_only and any(not cost for _, cost in results):
+                    seen = {entry.id for entry in ranked}
+                    remaining = 60 - len(groups)
+                    for end in range(min(length - 1, max_lookup_length), 0, -1):
+                        shorter = OrderedDict()
+                        for entry in lookup(text[:end]):
+                            if entry.id not in seen:
+                                shorter.setdefault((entry.term, entry.reading), []).append(entry)
+                        for entries in list(shorter.values())[:max(0, remaining)]:
+                            ranked.extend(entries)
+                            seen.update(entry.id for entry in entries)
+                            remaining -= 1
+                        if remaining <= 0:
+                            break
+                return tuple(ranked)
         return ()
