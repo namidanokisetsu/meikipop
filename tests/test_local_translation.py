@@ -245,11 +245,49 @@ class TranslationTests(unittest.TestCase):
         with patch("meikipop.dictionary.translation.http.client.HTTPConnection") as connection:
             self.assertEqual(self.translator.translate("hello", "en", "en"), "hello")
             self.assertEqual(self.translator.translate("", "ja", "en"), "")
-            with self.assertRaisesRegex(ValueError, "2,000"):
-                self.translator.translate("a" * 2001, "ja", "en")
             with self.assertRaisesRegex(ValueError, "not configured"):
                 self.translator.translate("hello", "en", "xx")
             connection.assert_not_called()
+
+    def test_long_translation_streams_passages_in_order_and_retains_paragraph_breaks(self):
+        self.manual(chunk_size=256)
+        text = "猫。" * 100 + "\n\n" + "犬。" * 100
+        updates = []
+        with patch.object(self.translator, "_request", side_effect=["cats", "dogs"]) as request:
+            self.assertEqual(self.translator.translate(text, "ja", "en", on_text=updates.append), "cats\n\ndogs")
+            self.assertEqual([call.args[0] for call in request.call_args_list], ["猫。" * 100, "犬。" * 100])
+            self.assertEqual(updates, ["cats\n\n", "cats\n\ndogs"])
+
+    def test_cancellation_between_passages_prevents_another_request(self):
+        self.manual(chunk_size=256)
+        cancel = threading.Event()
+        def translated(*args):
+            cancel.set()
+            return "first"
+        with patch.object(self.translator, "_request", side_effect=translated) as request:
+            with self.assertRaisesRegex(RuntimeError, "cancelled"):
+                self.translator.translate("猫" * 600, "ja", "en", cancelled=cancel)
+            request.assert_called_once()
+
+    def test_passages_preserve_every_source_character_and_japanese_boundaries(self):
+        from meikipop.dictionary.translation import translation_passages
+        text = "長い文章です。次の文章はもっと長いです。" * 30
+        passages = list(translation_passages(text, 256))
+        self.assertEqual("".join(passage for passage, _ in passages), text)
+        self.assertTrue(all(len(passage) <= 256 for passage, _ in passages))
+        self.assertTrue(all(passage.endswith("。") for passage, _ in passages))
+
+    def test_long_translation_bypasses_dictionary_input_limit(self):
+        from meikipop.dictionary.search import SearchEngine
+        translator = Mock(last_provider="fixture", last_model="fixture")
+        translator.translate.return_value = "translated"
+        engine = SearchEngine(self.directory, translator=translator)
+        self.addCleanup(engine.close)
+        text = "長い文章です。" * 400
+        self.assertEqual(engine.search(text, source="ja", translate=True).translation, "translated")
+        self.assertEqual(translator.translate.call_args.args[0], text)
+        with self.assertRaisesRegex(ValueError, "2,000"):
+            engine.search(text, source="ja")
 
 
 class TranslationSetupTests(unittest.TestCase):

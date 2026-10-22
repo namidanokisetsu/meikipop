@@ -85,12 +85,15 @@ class TranslationSettings:
     auto_start: bool = True
     stream: bool = True
     keep_warm: bool = False
+    chunk_size: int = 2000
 
     def validated(self):
         if self.provider not in ("server", "custom") or self.profile not in tuple(MODEL_NAMES):
             raise ValueError("Choose a translation model in Settings.")
         if not all(isinstance(value, bool) for value in (self.auto_start, self.stream, self.keep_warm)):
             raise ValueError("Invalid local server startup setting.")
+        if type(self.chunk_size) is not int or not 256 <= self.chunk_size <= 2000:
+            raise ValueError("Choose a passage size between 256 and 2,000 characters.")
         if self.provider == "server":
             endpoint, model = DEFAULT_ENDPOINT, DEFAULT_MODEL
         else:
@@ -100,7 +103,7 @@ class TranslationSettings:
             if any(ord(char) < 32 for char in self.model):
                 raise ValueError("Invalid local server model name.")
             model = self.model.strip()
-        return TranslationSettings(self.provider, self.profile, endpoint, model, self.auto_start, self.stream, self.keep_warm)
+        return TranslationSettings(self.provider, self.profile, endpoint, model, self.auto_start, self.stream, self.keep_warm, self.chunk_size)
 
 
 def load_settings(directory=None):
@@ -191,6 +194,26 @@ def _translation_content(response):
     return content
 
 
+def translation_passages(text, limit):
+    start = 0
+    while len(text) - start > limit:
+        window = text[start:start + limit]
+        boundaries = []
+        for pattern in (r"\n\s*\n", r"[。！？]|[.!?](?:\s+|$)", r"\s+"):
+            boundaries = list(re.finditer(pattern, window))
+            if boundaries:
+                break
+        end = boundaries[-1].end() if boundaries else limit
+        raw = text[start:start + end]
+        start += end
+        passage = raw.rstrip()
+        if passage:
+            yield passage, raw[len(passage):] or "\n"
+    remaining = text[start:]
+    if remaining.strip():
+        yield remaining, ""
+
+
 class LocalTranslator:
     def __init__(self, directory=None):
         self.directory = Path(directory or default_translation_path())
@@ -224,8 +247,6 @@ class LocalTranslator:
         source, target = language_code(source), language_code(target)
         if not text.strip() or source == target:
             return text
-        if len(text) > 2000:
-            raise ValueError("Enter at most 2,000 characters.")
         target_name = LANGUAGE_NAMES.get(target) or LANGUAGE_NAMES.get(target.split("-", 1)[0])
         if not target_name:
             raise ValueError(f"Translation to {target} is not configured. Dictionary lookup is still available.")
@@ -237,8 +258,21 @@ class LocalTranslator:
         if settings.provider == "server" and settings.auto_start:
             from meikipop.scripts.translation_server import request_lock
             with request_lock(self._cancelled):
-                return self._request(text, target_name, settings, on_text, on_state, request_id)
-        return self._request(text, target_name, settings, on_text, on_state, request_id)
+                return self._translate_passages(text, target_name, settings, on_text, on_state, request_id)
+        return self._translate_passages(text, target_name, settings, on_text, on_state, request_id)
+
+    def _translate_passages(self, text, target_name, settings, on_text, on_state, request_id):
+        completed = ""
+        for passage, separator in translation_passages(text, settings.chunk_size):
+            if self._cancelled.is_set():
+                raise RuntimeError("Translation cancelled.")
+            prefix = completed
+            progress = (lambda value: on_text(prefix + value)) if on_text else None
+            value = self._request(passage, target_name, settings, progress, on_state, request_id)
+            completed += value + separator
+            if on_text and settings.stream:
+                on_text(completed)
+        return completed.rstrip()
 
     def _request(self, text, target_name, settings, on_text, on_state, request_id):
         if settings.provider == "server" and settings.auto_start:

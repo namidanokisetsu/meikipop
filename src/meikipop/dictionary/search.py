@@ -103,7 +103,7 @@ class SearchEngine:
             raise RuntimeError("Translation cancelled.")
         self.refresh_if_changed()
         text = text.strip()
-        if len(text) > 2000:
+        if len(text) > 2000 and not translate:
             raise ValueError("Enter at most 2,000 characters.")
         if source != "auto":
             source = language_code(source)
