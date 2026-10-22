@@ -31,8 +31,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: meikipop ${{ github.ref_name }}
+          name: Meikipop ${{ github.ref_name }}
           generate_release_notes: false
+          make_latest: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           files: |
             artifacts/*/*.dmg
