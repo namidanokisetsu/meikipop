@@ -1346,7 +1346,7 @@ class QuickLookupWindow(QDialog):
 
     def _show_busy(self):
         if self._pending_revision == self.revision:
-            self.translate.setIcon(action_icon("stop", config.color_foreground))
+            self.translate.setIcon(action_icon("close", config.color_foreground))
             self.translate.setToolTip("Cancel translation" if self._translation_busy else "Cancel lookup")
             self.translate.setAccessibleName(self.translate.toolTip())
             if self._translation_busy and self._translation_model_state:
@@ -1444,7 +1444,7 @@ class QuickLookupWindow(QDialog):
         self.translation_browser.set_busy(busy)
         available = self.translation_available()
         self.translate.setEnabled(bool(busy or available and (self.search.text().strip() or self._context)))
-        self.translate.setIcon(action_icon("stop" if busy else "translate", config.color_foreground))
+        self.translate.setIcon(action_icon("translate", config.color_foreground))
         name = "Cancel translation" if busy else "Translate sentence" if self._peek and self._context else "Translate"
         model = self._result.translation_model if not busy and self._result is not None and self._display_revision == self.revision else ""
         self.translate.setToolTip(name + ("\n" + model if model else "") if busy or available
@@ -2212,6 +2212,8 @@ class QuickLookupWindow(QDialog):
                 visible = visible and self.settings.value(f"profiles/{self.preferred_foreign}/anki/enabled", False, bool)
             if name == "back":
                 visible = visible and (bool(self._history) or self._translation_view)
+            if name == "translate" and self._translation_view:
+                visible = visible and bool(self._translation_content.message) and not self._translation_busy
             if name in ("anki", "audio") and self._headword_rows:
                 visible = False
             button.setVisible(visible)
@@ -2400,8 +2402,12 @@ class QuickLookupWindow(QDialog):
         if (self.isVisible() and self.search.hasFocus() and self.search.hasSelectedText()
                 and self.search.selectedText().strip() != self.search.text().strip()):
             self.submit(translate=False, selection=True)
-        elif self.isVisible() and self.browser.selected_text():
-            self.browser.lookup_selection()
+        elif self.isVisible() and self._selected_reading_browser() is not None:
+            browser = self._selected_reading_browser()
+            if browser is self.browser:
+                browser.lookup_selection()
+            else:
+                self.lookup_word(browser.selected_text())
         elif self.isVisible():
             self.selection.cancel()
             self.hide()
@@ -2420,7 +2426,7 @@ class QuickLookupWindow(QDialog):
         if QApplication.activeWindow() is not None:
             focused = QApplication.focusWidget()
             text = focused.selectedText() if isinstance(focused, QLineEdit) else (
-                self.browser.selected_text() if focused in (self.browser, self.browser.viewport()) else "")
+                self._selected_reading_browser().selected_text() if self._selected_reading_browser() else "")
             self.open_search(text)
             return
         if self.selection.pending:
@@ -2940,12 +2946,22 @@ class QuickLookupWindow(QDialog):
         return False
 
     def copy_text(self):
-        text = (self.translation_browser.selected_text() if self._translation_view else
-                self.kanji_browser.selected_text() or self.browser.selected_text())
+        browser = self._selected_reading_browser()
+        text = browser.selected_text() if browser else ""
         if not text and self._result and self._result.entries:
             text = self._result.entries[0].term
         if text:
             QApplication.clipboard().setText(text)
+
+    def _reading_browsers(self):
+        if self._translation_view:
+            return (self.translation_browser,)
+        return (self.browser,) if self.kanji_panel.isHidden() else (self.kanji_browser, self.browser)
+
+    def _selected_reading_browser(self):
+        browsers = self._reading_browsers()
+        return next((browser for browser in sorted(browsers, key=lambda item: not item.hasFocus())
+                     if browser.selected_text()), None)
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
@@ -2953,6 +2969,8 @@ class QuickLookupWindow(QDialog):
                 and (self._peek or self._manual_at_cursor)
                 and not self._capture_visibility and not self.geometry().contains(QCursor.pos())
                 and QApplication.mouseButtons() == Qt.MouseButton.NoButton
+                and not any(browser.selecting or browser.textCursor().hasSelection()
+                            for browser in self._reading_browsers())
                 and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None
                 and not (self._setup is not None and self._setup.isVisible())):
             self.hide()

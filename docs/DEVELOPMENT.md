@@ -92,7 +92,8 @@ sentence actions and automatic pronunciation retain their existing scope.
 Translation uses a separate reading surface and the existing worker; returning
 keeps the dictionary document, selection and scroll intact.
 Compact language labels and a viewport loading indicator keep streaming updates
-separate from loading animation. A square stop action cancels the request.
+separate from loading animation. Back or dismissal cancels the request;
+translation errors expose the translation action for retry.
 Sentence links use the full captured context, never the compact display text. Preview clicks only
 pin; their mouse release never activates links exposed by the pinned layout.
 Lookup autoplay runs on new lookup results, never on translation completion,
@@ -131,6 +132,8 @@ Setup jobs share one control list for disabling and restoring their inputs.
 Cursor-leave dismissal is an app-wide opt-in, including pinned popups but excluding
 corner search. Corner search retains its saved size and tray edge; geometry,
 active selection, menus and Settings prevent unintended dismissal.
+Lookup and copy shortcuts share selection routing across the visible dictionary,
+translation and kanji panes, preferring the focused pane.
 Data removal validates owned paths before deletion. Removing a language deletes
 its packs, Stanza data and Japanese font, while shared OCR/translation data stays.
 Paddle's shared download retains its existing `languages/tr/paddle` storage path.

@@ -98,9 +98,26 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(view.toHtml(), before)
         self.assertTrue(view.loading_timer.isActive())
         self.assertEqual(self.window.translate.accessibleName(), "Cancel translation")
+        self.window._place_actions()
+        self.assertTrue(self.window.translate.isHidden())
         self.window._set_translation_busy(False)
         self.assertTrue(view.loading.isHidden())
         self.assertFalse(view.loading_timer.isActive())
+
+    def test_translation_selection_shortcut_looks_up_instead_of_closing(self):
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.pin.setChecked(True)
+        self.window._show_translation("猫", "ja", "en")
+        view = self.window.translation_browser
+        view.set_content("猫", "cat", "日本語", "English")
+        view.setTextCursor(view.document().find("cat"))
+        self.settings.setValue("close_on_cursor_leave", True)
+        with patch.object(self.window, "lookup_word") as lookup, patch.object(self.window, "hide") as hide, \
+                patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-500, -500)):
+            self.window.leaveEvent(QEvent(QEvent.Type.Leave))
+            self.window.toggle_lookup()
+            lookup.assert_called_once_with("cat")
+            hide.assert_not_called()
 
     def test_copy_shortcut_copies_headword_selection_and_leaves_input_copy_native(self):
         self.window.show_entries((entry("語彙力"),), "語彙力")
