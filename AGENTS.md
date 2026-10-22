@@ -10,6 +10,7 @@
 - Follow the architecture and constraints in `docs/DEVELOPMENT.md`; preserve Japanese behavior.
 - Inspect and reuse existing Meikipop components, UI conventions, and pipeline logic before adding new implementations. Extend shared components where practical; document any necessary language-specific divergence in the development notes.
 - Make small, logical commits with focused validation. Separate independent changes into reviewable commits; do not accumulate unrelated work into enormous diffs.
+- When asked to reinstall or perform the end release procedure, rebuild and install locally on this Windows machine, preserve settings/data, push the commits and release tag to GitHub, and start the release workflow. Finish after the local installation; do not wait for GitHub builds or macOS installers.
 - Keep NLP imports lazy and model/data setup explicit. Runtime Turkish lookup must work offline.
 - Keep validation efficient: use small fixtures and run `python -m unittest discover -s tests` once with the project environment. Avoid computer-use sessions, repeated live checks, heavy model tests and benchmarks unless requested or needed to diagnose a specific failure. Leave broad hands-on acceptance to the user; run actual-model Turkish smoke checks only when needed for an analysis change.
 - Keep documentation slim: update the existing user guide/development notes, avoid repeated status summaries, and add no agent worklogs or extra status documents. Do not edit README unless requested or required by agreed release scope.
