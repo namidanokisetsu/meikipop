@@ -145,6 +145,9 @@ Setup jobs share one control list for disabling and restoring their inputs.
 Cursor-leave dismissal is an app-wide opt-in, including pinned popups but excluding
 corner search. Corner search retains its saved size and tray edge; geometry,
 active selection, menus and Settings prevent unintended dismissal.
+The shared cursor grace area expands the current window frame in logical pixels.
+Polling runs only while the cursor is outside; OCR's release timer uses the same
+boundary and interaction guards when cursor-leave dismissal is enabled.
 Lookup and copy shortcuts share selection routing across the visible dictionary,
 translation and kanji panes, preferring the focused pane.
 Data removal validates owned paths before deletion. Removing a language deletes

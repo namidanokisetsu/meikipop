@@ -47,6 +47,8 @@ lookup key** in Lookup.
 Automatic lookup of selected text is separate and optional.
 **Lookup → Close popup when cursor leaves** also closes pinned popups when you
 move away. Corner search stays open, as does text selection or an open menu.
+**Cursor grace area** sets how far beyond the popup edge you can move before it
+closes (24 px by default; 0 closes at the edge).
 Ctrl+C copies selected popup text, or the first headword when nothing is selected.
 On Windows, closing a focused popup returns focus to the app used before lookup.
 Corner search keeps its size between lookups. Drag an edge to resize it.

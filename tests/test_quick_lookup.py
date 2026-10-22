@@ -226,6 +226,50 @@ class QuickLookupTests(unittest.TestCase):
             self.window.leaveEvent(QEvent(QEvent.Type.Leave))
             hide.assert_not_called()
 
+    def test_cursor_grace_area_tracks_distance_return_and_resizing(self):
+        self.window.show_entries((entry(),), peek=True)
+        self.window.pin.setChecked(True)
+        self.settings.setValue("close_on_cursor_leave", True)
+        self.settings.setValue("cursor_close_margin", 36)
+        frame = self.window.frameGeometry()
+        near = QPoint(frame.right() + 36, frame.center().y())
+        with patch('meikipop.gui.quick_lookup.QCursor.pos', return_value=near) as cursor, \
+                patch.object(self.window, 'hide') as hide:
+            self.window.leaveEvent(QEvent(QEvent.Type.Leave))
+            hide.assert_not_called()
+            self.assertTrue(self.window.cursor_leave_timer.isActive())
+            self.window.resize(self.window.width() + 50, self.window.height())
+            self.window._check_cursor_leave()
+            hide.assert_not_called()
+            self.assertFalse(self.window.cursor_leave_timer.isActive())
+            frame = self.window.frameGeometry()
+            cursor.return_value = QPoint(frame.right() + 37, frame.center().y())
+            self.window.leaveEvent(QEvent(QEvent.Type.Leave))
+            hide.assert_called_once_with()
+
+    def test_zero_cursor_grace_area_closes_at_edge(self):
+        self.window.show_entries((entry(),), peek=True)
+        self.settings.setValue("close_on_cursor_leave", True)
+        self.settings.setValue("cursor_close_margin", 0)
+        frame = self.window.frameGeometry()
+        with patch('meikipop.gui.quick_lookup.QCursor.pos', return_value=QPoint(frame.right() + 1, frame.center().y())), \
+                patch.object(self.window, 'hide') as hide:
+            self.window.leaveEvent(QEvent(QEvent.Type.Leave))
+            hide.assert_called_once_with()
+
+    def test_cursor_grace_area_setting_is_shared_and_saved(self):
+        dialog = SetupDialog(self.temp.name, self.settings, self.window.apply_shortcut, self.window)
+        self.assertFalse(dialog.cursor_close_margin.isEnabled())
+        self.assertEqual(dialog.cursor_close_margin.value(), 24)
+        dialog.close_on_cursor_leave.setChecked(True)
+        self.assertTrue(dialog.cursor_close_margin.isEnabled())
+        dialog.cursor_close_margin.setValue(48)
+        self.assertEqual(self.settings.value('cursor_close_margin', type=int), 48)
+        dialog.close_on_cursor_leave.setChecked(False)
+        self.assertFalse(dialog.cursor_close_margin.isEnabled())
+        self.assertEqual(self.settings.value('cursor_close_margin', type=int), 48)
+        dialog.hide()
+
     def test_translation_loading_animates_without_rebuilding_content(self):
         self.window._show_translation("猫", "ja", "en")
         self.window._set_translation_busy(True)

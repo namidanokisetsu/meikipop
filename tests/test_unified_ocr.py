@@ -846,6 +846,16 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             self.controller.finish_peek()
             hide.assert_called_once_with()
 
+    def test_release_timer_defers_to_configured_cursor_grace_area(self):
+        self.controller.holding = False
+        self.window.settings = SimpleNamespace(value=lambda *args: True)
+        self.window._check_cursor_leave = Mock()
+        with patch('meikipop.gui.unified_ocr.QCursor.pos', return_value=QPoint(-100, -100)), \
+                patch.object(self.window, 'hide') as hide:
+            self.controller.finish_peek()
+            self.window._check_cursor_leave.assert_called_once_with()
+            hide.assert_not_called()
+
     def test_entry_and_exit_rearm_preview_grace(self):
         from PyQt6.QtCore import QEvent
         self.controller.holding = False

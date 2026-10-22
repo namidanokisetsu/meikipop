@@ -1121,6 +1121,9 @@ class QuickLookupWindow(QDialog):
         self.stream_timer.setSingleShot(True)
         self.stream_timer.setInterval(80)
         self.stream_timer.timeout.connect(self._flush_translation)
+        self.cursor_leave_timer = QTimer(self)
+        self.cursor_leave_timer.setInterval(50)
+        self.cursor_leave_timer.timeout.connect(self._check_cursor_leave)
         self.source.currentIndexChanged.connect(self._mode_changed)
         self.foreign.currentIndexChanged.connect(self._mode_changed)
         self.worker = LookupWorker(directory, engine_factory)
@@ -3045,9 +3048,26 @@ class QuickLookupWindow(QDialog):
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
-        if (self.settings.value("close_on_cursor_leave", False, bool) and self.isVisible()
-                and (self._peek or self._manual_at_cursor)
-                and not self._capture_visibility and not self.geometry().contains(QCursor.pos())
+        self._check_cursor_leave()
+
+    def enterEvent(self, event):
+        self.cursor_leave_timer.stop()
+        super().enterEvent(event)
+
+    def cursor_close_bounds(self):
+        margin = max(0, self.settings.value("cursor_close_margin", 24, int))
+        return self.frameGeometry().adjusted(-margin, -margin, margin, margin)
+
+    def _check_cursor_leave(self):
+        point = QCursor.pos()
+        if (not self.settings.value("close_on_cursor_leave", False, bool) or not self.isVisible()
+                or not (self._peek or self._manual_at_cursor) or self._capture_visibility
+                or self._shutting_down or self.frameGeometry().contains(point)):
+            self.cursor_leave_timer.stop()
+            return
+        if not self.cursor_leave_timer.isActive():
+            self.cursor_leave_timer.start()
+        if (not self.cursor_close_bounds().contains(point)
                 and QApplication.mouseButtons() == Qt.MouseButton.NoButton
                 and not any(browser.selecting or browser.textCursor().hasSelection()
                             for browser in self._reading_browsers())
@@ -3063,7 +3083,8 @@ class QuickLookupWindow(QDialog):
     def _dismiss_if_inactive(self):
         if self._opening_search or self._passive_text or self._fullscreen_overlay:
             return
-        if self.geometry().contains(QCursor.pos()):
+        bounds = self.cursor_close_bounds() if self.settings.value("close_on_cursor_leave", False, bool) else self.geometry()
+        if bounds.contains(QCursor.pos()):
             return
         setup_open = self._setup is not None and self._setup.isVisible()
         # A macOS source pin click also reaches the source application, which
@@ -3080,6 +3101,7 @@ class QuickLookupWindow(QDialog):
         super().showEvent(event)
 
     def hideEvent(self, event):
+        self.cursor_leave_timer.stop()
         if self._capture_visibility:
             super().hideEvent(event)
             return
@@ -3201,7 +3223,8 @@ class QuickLookupWindow(QDialog):
         if self.audio:
             self.audio.shutdown()
         self.debounce.stop()
-        for timer in (self.busy_delay, self.fit_timer, self.render_timer, self.stream_timer, self.link_timer):
+        for timer in (self.busy_delay, self.fit_timer, self.render_timer, self.stream_timer, self.link_timer,
+                      self.cursor_leave_timer):
             timer.stop()
         self._translation_chunk = None
         self.worker.shutdown()
