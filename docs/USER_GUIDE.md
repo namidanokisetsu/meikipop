@@ -46,7 +46,9 @@ release and press Shift again, or turn off **Freeze capture while holding the
 lookup key** in Lookup.
 Automatic lookup of selected text is separate and optional.
 **Lookup → Close popup when cursor leaves** also closes pinned popups when you
-move away. It stays open while selecting text or using a menu.
+move away. Corner search stays open, as does text selection or an open menu.
+Ctrl+C copies selected popup text, or the first headword when nothing is selected.
+Corner search keeps its size between lookups. Drag an edge to resize it.
 
 ## Dictionaries and appearance
 

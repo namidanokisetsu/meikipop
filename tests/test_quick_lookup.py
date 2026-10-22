@@ -79,6 +79,31 @@ class QuickLookupTests(unittest.TestCase):
             self.window.leaveEvent(leave)
             hide.assert_called_once_with()
 
+    def test_corner_search_ignores_cursor_leave(self):
+        self.window.open_search()
+        self.settings.setValue("close_on_cursor_leave", True)
+        with patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-500, -500)), \
+                patch.object(self.window, "hide") as hide:
+            self.window.leaveEvent(QEvent(QEvent.Type.Leave))
+            hide.assert_not_called()
+
+    def test_copy_shortcut_copies_headword_selection_and_leaves_input_copy_native(self):
+        self.window.show_entries((entry("語彙力"),), "語彙力")
+        self.window.activateWindow()
+        self.window.browser.setFocus()
+        self.app.processEvents()
+        QTest.keyClick(self.window.browser, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(QApplication.clipboard().text(), "語彙力")
+        cursor = self.window.browser.document().find("cat")
+        self.window.browser.setTextCursor(cursor)
+        QTest.keyClick(self.window.browser, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(QApplication.clipboard().text(), "cat")
+        self.window.search.setText("input")
+        self.window.search.selectAll()
+        self.window.search.setFocus()
+        QTest.keyClick(self.window.search, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(QApplication.clipboard().text(), "input")
+
     def test_profile_removal_cleans_language_data_and_survives_library_refresh(self):
         self.settings.setValue("profiles/tr/target", "en")
         self.window.update_languages(("ja", "tr"))
@@ -895,9 +920,10 @@ class QuickLookupTests(unittest.TestCase):
         self.window.pin.setChecked(False)
         self.app.processEvents()
         self.window.open_search()
-        self.assertEqual(self.window.height(), 420)
+        self.assertEqual(self.window.height(), 340)
 
     def test_default_reading_window_fits_short_content_and_keeps_manual_size(self):
+        self.window._manual_at_cursor = True
         self.window.show_entries((entry(definitions=("cat",)),), "猫")
         self.app.processEvents()
         self.assertLess(self.window.height(), 340)
@@ -1812,6 +1838,19 @@ class QuickLookupTests(unittest.TestCase):
         self.window.lookup_selected("猫")
         self.assertTrue(self.window._manual_at_cursor)
 
+    def test_corner_size_survives_short_results_reopening_and_ocr(self):
+        self.window.open_search()
+        size = QSize(560, 420)
+        self.window.resize(size)
+        self.window._display(SearchResult("猫", "ja", "en", (entry(),)))
+        self.window._fit_preview()
+        self.assertEqual(self.window.size(), size)
+        self.window.hide()
+        self.assertEqual(self.settings.value("corner_size", type=QSize), size)
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.open_search()
+        self.assertEqual(self.window.size(), size)
+
     def test_macos_search_anchors_below_menu_bar_and_windows_stays_at_bottom(self):
         area = QRect(1440, 38, 1440, 840)
         screen = Mock()
@@ -1823,8 +1862,11 @@ class QuickLookupTests(unittest.TestCase):
                         patch.object(QApplication, "screenAt", return_value=screen):
                     self.window.tray_geometry = lambda: tray
                     self.window._place()
-                    expected = area.top() + 8 if platform == "darwin" else area.bottom() - self.window.height() - 8
+                    expected = area.top() + 8 if platform == "darwin" else area.bottom() + 1 - self.window.height()
                     self.assertEqual(self.window.y(), expected)
+                    edge = self.window.geometry().top() if platform == "darwin" else self.window.geometry().bottom()
+                    self.window._resize_expanded(QSize(self.window.width(), 240))
+                    self.assertEqual(self.window.geometry().top() if platform == "darwin" else self.window.geometry().bottom(), edge)
                     self.assertGreaterEqual(self.window.x(), area.left())
                     self.assertLessEqual(self.window.geometry().right(), area.right())
 

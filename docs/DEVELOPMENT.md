@@ -42,6 +42,8 @@ installed frequency ranks, kana preference and deconjugation cost. The result
 limit applies to ranked groups, retaining their source records and dictionary order.
 Full dictionary matches precede prefix scanning; shared search and OCR use the
 existing maximum lookup length for that scan, including it in cache identity.
+Exact Japanese compounds append shorter direct prefix matches in descending
+length, retaining the longest match length and the shared group limit.
 Manual Japanese search adds offline romkan2 reading candidates without changing
 the input or OCR lookup. Fully converted readings must match the whole query;
 deconjugation and ranking reuse Japanese lookup. English results retain precedence
@@ -124,7 +126,8 @@ dictionary packs, generated assets and environments stay outside Git.
 Settings save screen, pin and text shortcuts independently. OCR component
 validation only gates provider setup; rejected choices restore the saved controls.
 Setup jobs share one control list for disabling and restoring their inputs.
-Cursor-leave dismissal is an app-wide opt-in, including pinned popups; geometry,
+Cursor-leave dismissal is an app-wide opt-in, including pinned popups but excluding
+corner search. Corner search retains its saved size and tray edge; geometry,
 active selection, menus and Settings prevent unintended dismissal.
 Data removal validates owned paths before deletion. Removing a language deletes
 its packs, Stanza data and Japanese font, while shared OCR/translation data stays.

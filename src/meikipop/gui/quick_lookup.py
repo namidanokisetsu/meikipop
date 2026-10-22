@@ -909,6 +909,7 @@ class QuickLookupWindow(QDialog):
         self.setMinimumSize(340, 190)
         self.resize(480, 340)
         self._normal_size = QSize(480, 340)
+        self._corner_size = self.settings.value("corner_size", QSize(480, 340), type=QSize)
         self._reading_size_custom = False
         self._auto_fit_size = None
         self._preview_viewport_height = 0
@@ -1137,6 +1138,8 @@ class QuickLookupWindow(QDialog):
             shortcut.activated.connect(lambda action=action: self.popup_action(action))
             self._popup_shortcuts[action] = shortcut
         self.copy_shortcut = self._popup_shortcuts["copy"]
+        self.selection_copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, self)
+        self.selection_copy_shortcut.activated.connect(self.copy_text)
         self.back_shortcut = self._popup_shortcuts["back"]
         self.anki_shortcut = self._popup_shortcuts["anki"]
         self.reload_popup_shortcuts()
@@ -1799,6 +1802,8 @@ class QuickLookupWindow(QDialog):
                 self.fit_timer.start(0)
 
     def _fit_preview(self):
+        if not self._peek and not self._manual_at_cursor:
+            return
         if self._translation_view or not self.kanji_panel.isHidden():
             return
         preview = self._peek and not self.is_pinned and self.compact_preview()
@@ -2149,7 +2154,7 @@ class QuickLookupWindow(QDialog):
             self.resize(min(self.width(), area.width()), min(self.height(), area.height()))
             if not self._peek and not self._manual_at_cursor:
                 x = tray.center().x() if tray and not tray.isNull() else area.right()
-                y = area.bottom() - self.height() - 8
+                y = area.bottom() + 1 - self.height()
                 if sys.platform == "darwin":
                     y = area.top() + 8
                     if tray and not tray.isNull():
@@ -2162,6 +2167,8 @@ class QuickLookupWindow(QDialog):
 
     def _set_peek(self, peek):
         from meikipop.utils.window_focus import foreground_is_fullscreen
+        if peek:
+            self._remember_corner_size()
         self._fullscreen_overlay = bool(peek) and foreground_is_fullscreen()
         if peek and not self._peek and (self._reading_size_custom or self.size() != self._auto_fit_size):
             self._normal_size = self.size()
@@ -2185,6 +2192,13 @@ class QuickLookupWindow(QDialog):
             return
         self.setGeometry(expanded_geometry(previous, requested, screen.availableGeometry(),
                                            self._lookup_anchor if self._peek else None))
+        if not self._peek and not self._manual_at_cursor:
+            rect = self.geometry()
+            if sys.platform == "darwin":
+                rect.moveTop(previous.top())
+            else:
+                rect.moveBottom(previous.bottom())
+            self.setGeometry(rect)
 
     def _place_actions(self):
         if self._shutting_down:
@@ -2329,6 +2343,7 @@ class QuickLookupWindow(QDialog):
             row.raise_()
 
     def open_search(self, text="", *, at_cursor=False, passive=False, selection=False):
+        self._remember_corner_size()
         self._leave_translation()
         self.remember_foreground()
         self._history.clear()
@@ -2341,6 +2356,8 @@ class QuickLookupWindow(QDialog):
         self._manual_at_cursor = at_cursor
         self.pin.setChecked(False)
         self._set_peek(False)
+        if not at_cursor:
+            self.resize(self._corner_size)
         self._clear_context()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, self._passive_text)
         if not self.is_pinned or not self.isVisible():
@@ -2921,9 +2938,17 @@ class QuickLookupWindow(QDialog):
             return True
         return False
 
+    def copy_text(self):
+        text = self.kanji_browser.selected_text() or self.browser.selected_text()
+        if not text and self._result and self._result.entries:
+            text = self._result.entries[0].term
+        if text:
+            QApplication.clipboard().setText(text)
+
     def leaveEvent(self, event):
         super().leaveEvent(event)
         if (self.settings.value("close_on_cursor_leave", False, bool) and self.isVisible()
+                and (self._peek or self._manual_at_cursor)
                 and not self._capture_visibility and not self.geometry().contains(QCursor.pos())
                 and QApplication.mouseButtons() == Qt.MouseButton.NoButton
                 and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None
@@ -2958,8 +2983,14 @@ class QuickLookupWindow(QDialog):
             return
         if hasattr(self, "worker"):
             self._invalidate()
+        self._remember_corner_size(force=True)
         self.pin.setChecked(False)
         super().hideEvent(event)
+
+    def _remember_corner_size(self, *, force=False):
+        if (force or self.isVisible()) and not self._peek and not self._manual_at_cursor:
+            self._corner_size = self.size()
+            self.settings.setValue("corner_size", self._corner_size)
 
     def remember_foreground(self):
         if QApplication.platformName() != "offscreen":
