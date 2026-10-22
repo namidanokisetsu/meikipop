@@ -90,8 +90,10 @@ Multiple headword/reading groups have their own audio and Anki controls anchored
 to cached heading blocks. Anki exports and saved-note state belong to that group;
 sentence actions and automatic pronunciation retain their existing scope.
 Translation uses a separate reading surface and the existing worker; returning
-keeps the dictionary document, selection and scroll intact. Sentence links use
-the full captured context, never the compact display text. Preview clicks only
+keeps the dictionary document, selection and scroll intact.
+Compact language labels and a viewport loading indicator keep streaming updates
+separate from loading animation. A square stop action cancels the request.
+Sentence links use the full captured context, never the compact display text. Preview clicks only
 pin; their mouse release never activates links exposed by the pinned layout.
 Lookup autoplay runs on new lookup results, never on translation completion,
 history restoration or rendering. Pin autoplay follows its separate preference.

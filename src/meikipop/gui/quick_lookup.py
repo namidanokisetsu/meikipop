@@ -1346,7 +1346,7 @@ class QuickLookupWindow(QDialog):
 
     def _show_busy(self):
         if self._pending_revision == self.revision:
-            self.translate.setIcon(action_icon("close", config.color_foreground))
+            self.translate.setIcon(action_icon("stop", config.color_foreground))
             self.translate.setToolTip("Cancel translation" if self._translation_busy else "Cancel lookup")
             self.translate.setAccessibleName(self.translate.toolTip())
             if self._translation_busy and self._translation_model_state:
@@ -1441,9 +1441,10 @@ class QuickLookupWindow(QDialog):
 
     def _set_translation_busy(self, busy):
         self._translation_busy = busy
+        self.translation_browser.set_busy(busy)
         available = self.translation_available()
         self.translate.setEnabled(bool(busy or available and (self.search.text().strip() or self._context)))
-        self.translate.setIcon(action_icon("translate", config.color_foreground))
+        self.translate.setIcon(action_icon("stop" if busy else "translate", config.color_foreground))
         name = "Cancel translation" if busy else "Translate sentence" if self._peek and self._context else "Translate"
         model = self._result.translation_model if not busy and self._result is not None and self._display_revision == self.revision else ""
         self.translate.setToolTip(name + ("\n" + model if model else "") if busy or available
@@ -2939,7 +2940,8 @@ class QuickLookupWindow(QDialog):
         return False
 
     def copy_text(self):
-        text = self.kanji_browser.selected_text() or self.browser.selected_text()
+        text = (self.translation_browser.selected_text() if self._translation_view else
+                self.kanji_browser.selected_text() or self.browser.selected_text())
         if not text and self._result and self._result.entries:
             text = self._result.entries[0].term
         if text:

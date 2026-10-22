@@ -87,6 +87,21 @@ class QuickLookupTests(unittest.TestCase):
             self.window.leaveEvent(QEvent(QEvent.Type.Leave))
             hide.assert_not_called()
 
+    def test_translation_loading_animates_without_rebuilding_content(self):
+        self.window._show_translation("猫", "ja", "en")
+        self.window._set_translation_busy(True)
+        view = self.window.translation_browser
+        before = view.toHtml()
+        dots = view.loading.text()
+        view._animate_loading()
+        self.assertNotEqual(view.loading.text(), dots)
+        self.assertEqual(view.toHtml(), before)
+        self.assertTrue(view.loading_timer.isActive())
+        self.assertEqual(self.window.translate.accessibleName(), "Cancel translation")
+        self.window._set_translation_busy(False)
+        self.assertTrue(view.loading.isHidden())
+        self.assertFalse(view.loading_timer.isActive())
+
     def test_copy_shortcut_copies_headword_selection_and_leaves_input_copy_native(self):
         self.window.show_entries((entry("語彙力"),), "語彙力")
         self.window.activateWindow()
