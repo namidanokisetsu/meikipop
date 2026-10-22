@@ -173,8 +173,10 @@ The hover scan area persists globally with its screen geometry and scale;
 restore it only on a matching display. Hover scanning starts disabled.
 Automatic popup hides keep hover scanning active inside the area; explicit
 dismissal pauses it until the pointer leaves and returns.
-Completion only marks the submitted lookup as saved; its checkmark
-opens the saved note in Anki's browser. Sentence furigana uses exact dictionary
+Successful saves retain their headword/reading and Anki settings across lookups;
+their checkmarks open the saved notes in Anki's browser. Live checks reconcile
+deleted notes; checks started before a save cannot erase its confirmation.
+Sentence furigana uses exact dictionary
 headwords only, without deconjugation or full result preparation. Card glossaries
 are left-aligned with compact source labels and native HTML ruby; popup rendering
 stays separate.

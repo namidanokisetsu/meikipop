@@ -270,6 +270,51 @@ class AnkiGuiTests(unittest.TestCase):
         self.assertEqual(window.anki_button.toolTip(), "Add to Anki")
         self.assertEqual(window._anki_existing_notes, {})
 
+    def test_saved_word_survives_relookup_stale_check_and_temporary_anki_failure(self):
+        window = self.anki_window()
+        gate, saved, started = threading.Event(), threading.Event(), threading.Event()
+        word = Entry('1', 'cat', '', 'Words', 'ja', ('cat',))
+
+        def find(words):
+            result = {'cat': (123,)} if saved.is_set() else {}
+            started.set()
+            gate.wait(2)
+            return result
+
+        def add(*args, **kwargs):
+            saved.set()
+            return 123
+
+        with patch('meikipop.anki.AnkiClient.existing_notes', side_effect=find), \
+                patch('meikipop.gui.anki.export_note', side_effect=add):
+            window.show_entries([word], 'cat')
+            self.assertTrue(started.wait(1))
+            window.add_to_anki()
+            self.wait_until(lambda: window._anki_task is None)
+            window.hide()
+            window.show_entries([word], 'cat')
+            self.assertEqual(window.anki_button.property('action_name'), 'anki_saved')
+            gate.set()
+            self.wait_until(lambda: window._anki_check_task is None)
+            self.assertEqual(window.anki_button.toolTip(), 'Show in Anki')
+        with patch('meikipop.anki.AnkiClient.existing_notes', side_effect=ValueError('offline')):
+            window.show_entries([word], 'cat')
+            self.wait_until(lambda: window._anki_check_task is None)
+            self.assertEqual(window.anki_button.property('action_name'), 'anki_saved')
+            with patch('meikipop.anki.AnkiClient.call') as call:
+                window.add_to_anki()
+                self.wait_until(lambda: window._anki_browse_task is None)
+                call.assert_called_once_with('guiBrowse', query='nid:123')
+        self.settings.setValue('profiles/ja/anki/deck', 'Other')
+        window.show_entries([word], 'cat')
+        self.assertEqual(window.anki_button.property('action_name'), 'anki')
+        self.wait_until(lambda: window._anki_check_task is None)
+        self.settings.setValue('profiles/ja/anki/deck', 'Japanese')
+        window.show_entries([word], 'cat')
+        self.assertEqual(window.anki_button.property('action_name'), 'anki_saved')
+        self.wait_until(lambda: window._anki_check_task is None)
+        self.assertEqual(window.anki_button.property('action_name'), 'anki')
+
     def test_one_click_snapshots_all_entries_context_and_selection_without_a_dialog(self):
         from PyQt6.QtGui import QTextCursor
         window = self.anki_window()
