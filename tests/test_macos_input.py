@@ -74,6 +74,7 @@ class InputPermissionTests(unittest.TestCase):
         from meikipop.gui.quick_lookup import QuickLookupWindow
         from meikipop.utils.macos import InputMonitoringPermissionError
         settings = Mock()
+        settings.value.return_value = ""
         window = SimpleNamespace(settings=settings, _keys=None, hotkey_requested=Mock(), show_message=Mock())
         with patch("meikipop.gui.text_shortcuts.TextHotKeys") as listener:
             listener.return_value.start.side_effect = InputMonitoringPermissionError("Input Monitoring denied")

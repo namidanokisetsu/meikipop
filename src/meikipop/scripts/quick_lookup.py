@@ -190,6 +190,7 @@ def main(argv=None):
     window.tray_geometry = tray.geometry
     menu = QMenu()
     menu.addAction("Search", lambda: window.open_search())
+    menu.addAction("Translate", window.open_translation)
     profiles = menu.addMenu(window.source.currentText())
     window.mode_changed.connect(lambda *_: profiles.setTitle(window.source.currentText()))
     profile_group = QActionGroup(profiles)

@@ -236,6 +236,15 @@ class SetupDialog(QDialog):
         advanced_form.addRow("Server model", self.translation_model)
         self.translation_stream = QCheckBox("Stream translation")
         advanced_form.addRow(self.translation_stream)
+        self.translation_split = QCheckBox("Side-by-side text panes")
+        self.translation_split.setChecked(settings.value("translation_side_by_side", False, bool))
+        translation_form.addRow(self.translation_split)
+        self.translation_split.toggled.connect(self.save_translation_layout)
+        self.translation_chunk_size = QSpinBox()
+        self.translation_chunk_size.setRange(256, 2000)
+        self.translation_chunk_size.setSuffix(" characters")
+        self.translation_chunk_size.setToolTip("Split long text into passages for translation")
+        advanced_form.addRow("Passage size", self.translation_chunk_size)
         self.translation_warm = QCheckBox("Keep model warm")
         self.translation_warm.setToolTip("Retains model memory after use. Changes apply on the next translation.")
         advanced_form.addRow(self.translation_warm)
@@ -257,6 +266,7 @@ class SetupDialog(QDialog):
         self.translation_endpoint.setText(translation_settings.endpoint)
         self.translation_model.setText(translation_settings.model)
         self.translation_stream.setChecked(translation_settings.stream)
+        self.translation_chunk_size.setValue(translation_settings.chunk_size)
         self.translation_warm.setChecked(translation_settings.keep_warm)
         self.translation_mode.currentIndexChanged.connect(self.update_translation_controls)
         self.update_translation_controls()
@@ -287,6 +297,11 @@ class SetupDialog(QDialog):
                                      settings.value("hotkey_preset", shortcut_preset()))
         self.shortcut.setToolTip("Look up selected or copied text. Shared by all languages.")
         shared_layout.addRow("Text lookup", self.shortcut)
+        self.translation_shortcut = ShortcutEdit(settings.value("translation_hotkey", ""),
+            settings.value("translation_hotkey_preset", "Meta+Shift+T" if sys.platform == "darwin" else "Ctrl+Shift+T"))
+        shortcut_layout.addRow("Translate", self.translation_shortcut)
+        self.translation_shortcut.enabled.toggled.connect(lambda _: self.autosave(self.save_translation_shortcut))
+        self.translation_shortcut.recorder.editingFinished.connect(lambda: self.autosave(self.save_translation_shortcut))
         self.close_on_cursor_leave = QCheckBox("Close popup when cursor leaves")
         self.close_on_cursor_leave.setToolTip("Includes pinned popups")
         self.close_on_cursor_leave.setChecked(settings.value("close_on_cursor_leave", False, bool))
@@ -461,6 +476,7 @@ class SetupDialog(QDialog):
         for control in (self.translation_endpoint, self.translation_model):
             control.editingFinished.connect(lambda: self.autosave(self.save_translation))
         self.translation_stream.toggled.connect(lambda _: self.autosave(self.save_translation))
+        self.translation_chunk_size.valueChanged.connect(lambda _: self.autosave(self.save_translation))
         self.translation_warm.toggled.connect(lambda _: self.autosave(lambda: self.save_translation(cancel=False)))
         for control in (self.scan_key, self.scan_mouse):
             control.currentIndexChanged.connect(lambda _: self.autosave(self.save_screen_shortcut))
@@ -618,14 +634,13 @@ class SetupDialog(QDialog):
 
     def choose_profile(self):
         from meikipop.language.support import profile_languages
-        choices = {f"{language_name(code)} ({code})": code
+        from meikipop.gui.language_chooser import choose_language
+        choices = {code: language_name(code)
                    for code in profile_languages(self._imported_languages, configured_profiles(self.settings))
                    if self.profile.findData(code) < 0}
-        name, accepted = QInputDialog.getItem(self, "Add language", "Language or code", sorted(choices), editable=True)
-        if accepted:
+        code = choose_language(self, choices, title="Add language")
+        if code is not None:
             try:
-                names = {label.casefold(): code for code, label in LANGUAGE_NAMES.items()}
-                code = choices.get(name, names.get(name.strip().casefold(), name.strip().lower()))
                 self.add_profile(language_code(code))
             except ValueError as error:
                 self.status.setText(str(error))
@@ -734,6 +749,30 @@ class SetupDialog(QDialog):
             with QSignalBlocker(self.shortcut.enabled), QSignalBlocker(self.shortcut.recorder):
                 self.shortcut.set_value(self.settings.value("hotkey", ""),
                                         self.settings.value("hotkey_preset", shortcut_preset()))
+            self.status.setText(str(error))
+
+    def save_translation_layout(self, enabled):
+        self.settings.setValue("translation_side_by_side", enabled)
+        if self.parent() is not None:
+            self.parent().translation_panel.set_side_by_side(enabled)
+
+    def save_translation_shortcut(self):
+        try:
+            value = self.translation_shortcut.text()
+            preset = self.translation_shortcut.recorder.keySequence().toString()
+            warning = ""
+            if self.parent() is not None:
+                warning = self.parent().apply_translation_shortcut(value, preset)
+            else:
+                from meikipop.gui.text_shortcuts import validate_shortcuts
+                validate_shortcuts([self.settings.value("hotkey", ""), value])
+                self.settings.setValue("translation_hotkey", value)
+                self.settings.setValue("translation_hotkey_preset", preset)
+            self.status.setText(warning if isinstance(warning, str) else "")
+        except (ValueError, OSError, RuntimeError) as error:
+            with QSignalBlocker(self.translation_shortcut.enabled), QSignalBlocker(self.translation_shortcut.recorder):
+                self.translation_shortcut.set_value(self.settings.value("translation_hotkey", ""),
+                                                    self.settings.value("translation_hotkey_preset", "Ctrl+Shift+T"))
             self.status.setText(str(error))
 
     def save_screen_shortcut(self):
@@ -877,6 +916,7 @@ class SetupDialog(QDialog):
         self.translation_advanced.setChecked(translation.provider == "custom" or any(
             self.settings.value(f"profiles/{code}/translation_{key}", "auto") != "auto" for key in ("source", "target")))
         self.translation_stream.setChecked(translation.stream)
+        self.translation_chunk_size.setValue(translation.chunk_size)
         self.translation_warm.setChecked(translation.keep_warm)
         self.appearance.reload()
         self.show_component_controls()
@@ -1060,7 +1100,7 @@ class SetupDialog(QDialog):
                 profile=mode if mode != "custom" else "quality",
                 endpoint=self.translation_endpoint.text(), model=self.translation_model.text(),
                 auto_start=True, stream=self.translation_stream.isChecked(),
-                keep_warm=self.translation_warm.isChecked()))
+                keep_warm=self.translation_warm.isChecked(), chunk_size=self.translation_chunk_size.value()))
             self.settings.setValue(f"profiles/{code}/target", self.translation_partner.currentData())
             for key, control in (("source", self.translation_source), ("target", self.translation_target)):
                 self.settings.setValue(f"profiles/{code}/translation_{key}", control.currentData())

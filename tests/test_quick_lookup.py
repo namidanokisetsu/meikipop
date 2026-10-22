@@ -57,6 +57,109 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_translation_dismissal_and_new_hover_never_restore_old_sentence(self):
+        self.window.translation_worker = Mock()
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("前の猫です。")
+        self.window.pin.setChecked(True)
+        self.window.submit(translate=True, context=True)
+        old_revision = self.window.revision
+        self.window.deliver(old_revision, SearchResult("前の猫です。", "ja", "en", translation="Old sentence"))
+        self.window.hide()
+        self.assertFalse(self.window._translation_view)
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("次の猫です。")
+        self.window.pin.setChecked(True)
+        self.window.submit(translate=True, context=True)
+        self.assertEqual(self.window.translation_worker.request.call_args.args[1], "次の猫です。")
+        self.window.deliver(old_revision, SearchResult("前の猫です。", "ja", "en", translation="Late old sentence"))
+        self.assertEqual(self.window.translation_panel.source.toPlainText(), "次の猫です。")
+        self.assertEqual(self.window.translation_browser.toPlainText(), "")
+
+    def test_standalone_translation_edit_copy_swap_and_layout(self):
+        self.window.translation_worker = Mock()
+        self.window.open_translation()
+        panel = self.window.translation_panel
+        self.assertEqual(panel.source.toPlainText(), "")
+        long_text = "A long source.\n" * 200
+        panel.source.setPlainText(long_text)
+        panel.copy_source.click()
+        self.assertEqual(QApplication.clipboard().text(), long_text)
+        panel.translate.click()
+        revision = self.window.revision
+        self.assertEqual(self.window.translation_worker.request.call_args.args[1], long_text.strip())
+        self.window.deliver(revision, SearchResult(long_text.strip(), "en", "ja", translation="長い翻訳。"))
+        panel.copy_output.click()
+        self.assertEqual(QApplication.clipboard().text(), "長い翻訳。")
+        selection = panel.source.textCursor()
+        selection.select(QTextCursor.SelectionType.WordUnderCursor)
+        panel.source.setTextCursor(selection)
+        before = panel.source.selected_text()
+        panel.set_side_by_side(True)
+        self.assertEqual(panel.source.selected_text(), before)
+        self.assertEqual(panel.splitter.orientation(), Qt.Orientation.Horizontal)
+        panel.swap.click()
+        self.assertEqual(panel.source.toPlainText(), "長い翻訳。")
+        self.assertEqual(self.window._translation_content.source, "ja")
+        self.assertEqual(self.window._translation_content.target, "en")
+        self.assertEqual(panel.output.toPlainText(), "")
+
+    def test_editing_source_cancels_stream_and_preserves_edit_cursor(self):
+        self.window.translation_worker = Mock()
+        self.window.open_translation()
+        panel = self.window.translation_panel
+        panel.source.setPlainText("old")
+        panel.translate.click()
+        old_revision = self.window.revision
+        panel.source.setPlainText("new")
+        panel.source.moveCursor(QTextCursor.MoveOperation.End)
+        self.window._translation_progress(old_revision, SearchResult("old", "en", "ja", translation="obsolete"))
+        self.window.deliver(old_revision, SearchResult("old", "en", "ja", translation="obsolete"))
+        self.assertEqual(panel.source.toPlainText(), "new")
+        self.assertEqual(panel.source.textCursor().position(), 3)
+        self.assertFalse(self.window._translation_busy)
+        self.assertEqual(panel.output.toPlainText(), "")
+        self.window.translation_worker.cancel.assert_called()
+
+    def test_translation_shortcut_is_independent_recordable_and_disabled_by_default(self):
+        self.assertIsNone(self.window._translation_keys)
+        with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:
+            self.window.apply_translation_shortcut("<ctrl>+<shift>+t", "Ctrl+Shift+T")
+            self.assertIsNone(self.window._keys)
+            self.assertEqual(self.settings.value("translation_hotkey"), "<ctrl>+<shift>+t")
+            with self.assertRaises(ValueError):
+                self.window.apply_shortcut("<shift>+<ctrl>+t")
+            self.window.apply_translation_shortcut("")
+            hotkeys.return_value.stop.assert_called_once()
+            self.assertIsNone(self.window._translation_keys)
+
+    def test_translation_settings_round_trip_and_shortcut_do_not_enable_ocr(self):
+        dialog = SetupDialog(self.temp.name, self.settings, self.window.apply_shortcut, self.window)
+        dialog.translation_split.setChecked(True)
+        self.assertTrue(self.settings.value("translation_side_by_side", False, bool))
+        self.assertEqual(self.window.translation_panel.splitter.orientation(), Qt.Orientation.Horizontal)
+        with patch("meikipop.gui.text_shortcuts.TextHotKeys") as listener:
+            dialog.translation_shortcut.enabled.setChecked(True)
+            import sys
+            self.assertEqual(self.settings.value("translation_hotkey"),
+                             "<cmd>+<shift>+t" if sys.platform == "darwin" else "<ctrl>+<shift>+t")
+            self.assertIsNone(self.window._keys)
+            dialog.translation_shortcut.enabled.setChecked(False)
+            listener.return_value.stop.assert_called_once()
+        dialog.translation_chunk_size.setValue(512)
+        from meikipop.dictionary.translation import load_profile_settings
+        self.assertEqual(load_profile_settings(self.settings, self.window.preferred_foreign).chunk_size, 512)
+        dialog.hide()
+
+    def test_language_search_accepts_native_english_and_code(self):
+        from meikipop.gui.language_chooser import LanguageChooser
+        dialog = LanguageChooser(self.window, {"ja": "日本語", "tr": "Türkçe"})
+        for query in ("ja", "Japanese", "日本語"):
+            dialog.search.setText(query)
+            self.assertEqual(dialog.selected_code(), "ja")
+        dialog.search.setText("Turkish")
+        self.assertEqual(dialog.selected_code(), "tr")
+
     def test_close_on_cursor_leave_respects_geometry_and_interaction(self):
         self.window.show()
         self.window._peek = True
@@ -109,7 +212,7 @@ class QuickLookupTests(unittest.TestCase):
         self.window.pin.setChecked(True)
         self.window._show_translation("猫", "ja", "en")
         view = self.window.translation_browser
-        view.set_content("猫", "cat", "日本語", "English")
+        view.set_content("cat")
         view.setTextCursor(view.document().find("cat"))
         self.settings.setValue("close_on_cursor_leave", True)
         with patch.object(self.window, "lookup_word") as lookup, patch.object(self.window, "hide") as hide, \
@@ -1068,15 +1171,15 @@ class QuickLookupTests(unittest.TestCase):
         with patch.object(browser, "setHtml", wraps=browser.setHtml) as render:
             self.window.translate.click()
             self.assertTrue(self.window._translation_view)
-            self.assertIs(self.window.content_stack.currentWidget(), self.window.translation_browser)
-            self.assertIn(sentence, self.window.translation_browser.toPlainText())
+            self.assertIs(self.window.content_stack.currentWidget(), self.window.translation_panel)
+            self.assertEqual(sentence, self.window.translation_panel.source.toPlainText())
             self.assertNotIn("dictionary definition", self.window.translation_browser.toPlainText())
             revision = self.window.revision
             self.window.deliver(revision, SearchResult(sentence, "ja", "en", translation="Full translated sentence."))
-            self.assertIn("English", self.window.translation_browser.toPlainText())
+            self.assertEqual("English", self.window.translation_panel.target_label.text())
             self.assertIn("Full translated sentence.", self.window.translation_browser.toPlainText())
-            self.assertIn('href="language:source"', self.window.translation_browser.toHtml())
-            self.assertIn('href="language:target"', self.window.translation_browser.toHtml())
+            self.assertEqual("日本語", self.window.translation_panel.source_label.text())
+            self.assertTrue(self.window.translation_panel.copy_output.isEnabled())
             self.window._set_translation_language("target", "tr")
             self.assertEqual(self.window.translation_worker.request.call_args.kwargs["target"], "tr")
             self.assertEqual(self.window.translation_worker.request.call_args.args[1], sentence)

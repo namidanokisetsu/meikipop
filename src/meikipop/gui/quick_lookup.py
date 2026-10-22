@@ -13,7 +13,7 @@ from PyQt6.QtCore import QObject, QEvent, QLocale, QPointF, QSettings, QSignalBl
 from PyQt6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QKeyEvent, QKeySequence, QShortcut, QTextBlockFormat, QTextCursor, QTextDocument, QTextFormat, QTextLayout, QTextOption
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
-    QKeySequenceEdit, QLineEdit, QMenu, QSizePolicy, QSplitter, QStackedWidget, QToolButton, QToolTip, QVBoxLayout, QWidget,
+    QKeySequenceEdit, QLineEdit, QMenu, QSizePolicy, QSplitter, QStackedWidget, QTextEdit, QToolButton, QToolTip, QVBoxLayout, QWidget,
 )
 
 from meikipop.config.config import config
@@ -823,6 +823,7 @@ class QuickLookupWindow(QDialog):
     scan_settings_changed = pyqtSignal()
     models_changed = pyqtSignal()
     hotkey_requested = pyqtSignal()
+    translation_requested = pyqtSignal()
     selection_requested = pyqtSignal()
     clipboard_requested = pyqtSignal()
 
@@ -1038,12 +1039,16 @@ class QuickLookupWindow(QDialog):
         self._pending_link = None
         self.browser.anchorClicked.connect(self._queue_link)
         self.browser.word_selected.connect(self.lookup_word)
-        from meikipop.gui.translation_view import TranslationView
-        self.translation_browser = TranslationView()
-        self.translation_browser.language_requested.connect(self._translation_language_menu)
+        from meikipop.gui.translation_view import TranslationPanel
+        self.translation_panel = TranslationPanel()
+        self.translation_browser = self.translation_panel.output
+        self.translation_panel.language_requested.connect(self._translation_language_menu)
+        self.translation_panel.translate_requested.connect(self._submit_translation_source)
+        self.translation_panel.source_changed.connect(self._translation_source_edited)
+        self.translation_panel.swap_requested.connect(self._swap_translation_languages)
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.browser)
-        self.content_stack.addWidget(self.translation_browser)
+        self.content_stack.addWidget(self.translation_panel)
         self.kanji_splitter = QSplitter(Qt.Orientation.Vertical)
         self.kanji_splitter.setChildrenCollapsible(False)
         self.kanji_splitter.setHandleWidth(2)
@@ -1124,6 +1129,8 @@ class QuickLookupWindow(QDialog):
         self.worker.languages.connect(self.update_languages)
         self.worker.start()
         self.hotkey_requested.connect(self.toggle_lookup)
+        self.translation_requested.connect(self.open_translation)
+        self._translation_keys = None
         from meikipop.gui.selection import SelectionCapture
         self.selection = SelectionCapture(self)
         self.selection.completed.connect(self._selected_text_ready)
@@ -1180,11 +1187,11 @@ class QuickLookupWindow(QDialog):
         colors = surface_colors(config.color_background, config.color_foreground)
         self.frame.setStyleSheet(frame_stylesheet(config.color_background, config.color_foreground,
                                                   config.background_opacity, config.font_family) + f'''
-            QLineEdit,QComboBox,QTextBrowser {{background:transparent;color:{config.color_foreground};
+            QLineEdit,QComboBox,QTextBrowser,QTextEdit {{background:transparent;color:{config.color_foreground};
                 border:0;padding:3px;selection-background-color:{config.color_highlight_word};
                 selection-color:{config.color_background};}}
             QLineEdit {{border-bottom:1px solid {colors['border']};}}
-            QTextBrowser {{border-radius:0;padding:0;}}
+            QTextBrowser,QTextEdit {{border-radius:0;padding:0;}}
             QStackedWidget {{background:transparent;border:0;border-radius:0;}}
             QSplitter {{background:transparent;border:0;border-radius:0;}}
             QSplitter::handle {{background:{colors['border']};}}
@@ -1213,6 +1220,8 @@ class QuickLookupWindow(QDialog):
         self.browser.setFont(font)
         self.kanji_browser.setFont(font)
         self.translation_browser.setFont(document_font(config.font_family, config.font_size_sentence, self.preferred_foreign))
+        self.translation_panel.source.setFont(self.translation_browser.font())
+        self.translation_panel.set_side_by_side(self.settings.value("translation_side_by_side", False, bool))
         self.search.setFont(font)
         for button in self.findChildren(QToolButton):
             name = button.property("action_name")
@@ -1365,6 +1374,8 @@ class QuickLookupWindow(QDialog):
         if self._translation_busy or self._pending_revision is not None and not self.busy_delay.isActive():
             self._invalidate()
             self._restore_actions()
+        elif self._translation_view:
+            self._submit_translation_source()
         else:
             self.submit(translate=True, context=bool(self._context))
 
@@ -1382,7 +1393,7 @@ class QuickLookupWindow(QDialog):
         self._translation_text = text
         self._translation_content = SearchResult(text, source, target)
         self.fit_timer.stop()
-        self.content_stack.setCurrentWidget(self.translation_browser)
+        self.content_stack.setCurrentWidget(self.translation_panel)
         self._set_kanji_visible(False)
         self.back.setEnabled(True)
         self._update_trail()
@@ -1391,7 +1402,7 @@ class QuickLookupWindow(QDialog):
 
     def _render_translation(self):
         result = self._translation_content
-        self.translation_browser.set_content(result.text, result.translation,
+        self.translation_panel.set_content(result.text, result.translation,
                                              "Automatic" if result.source == "auto" else language_name(result.source),
                                              language_name(result.target), result.message)
 
@@ -1410,25 +1421,74 @@ class QuickLookupWindow(QDialog):
         self._place_actions()
 
     def _translation_language_menu(self, role):
-        menu = QMenu(self.translation_browser)
+        from meikipop.gui.language_chooser import choose_language
         current = getattr(self._translation_content, role)
         other = self._translation_content.target if role == "source" else self._translation_content.source
+        languages = {"auto": "Automatic"} if role == "source" else {}
         for index in range(self.foreign.count()):
             code = self.foreign.itemData(index)
-            action = menu.addAction(language_name(code))
-            action.setCheckable(True)
-            action.setChecked(code == current)
-            action.setEnabled(self.foreign.model().item(index).isEnabled() and code != other)
-            action.triggered.connect(lambda _, code=code: self._set_translation_language(role, code))
-        menu.aboutToHide.connect(menu.deleteLater)
-        menu.popup(QCursor.pos())
+            if self.foreign.model().item(index).isEnabled() and code != other:
+                languages[code] = language_name(code)
+        code = choose_language(self, languages, current)
+        if code is not None:
+            self._set_translation_language(role, code)
 
     def _set_translation_language(self, role, code):
         if not self._translation_view or role not in ("source", "target"):
             return
         self.settings.setValue(f"profiles/{self.preferred_foreign}/translation_{role}", code)
-        self.set_context(self._translation_text)
-        self.submit(translate=True, context=True)
+        self._translation_content = replace(self._translation_content, **{role: code})
+        self._render_translation()
+        if self.translation_panel.source.toPlainText().strip():
+            self._submit_translation_source()
+
+    def open_translation(self):
+        if isinstance(QApplication.focusWidget(), QKeySequenceEdit):
+            return
+        if self.isVisible() and self._translation_view:
+            self.translation_panel.source.setFocus()
+            return
+        text = (self._context or (self._result.text if self._result else "")) if self.isVisible() else ""
+        if self.isVisible():
+            self._invalidate()
+            if self._peek:
+                self.pin.setChecked(True)
+        else:
+            self.open_search()
+        prefix = f"profiles/{self.preferred_foreign}/translation_"
+        source = self.settings.value(prefix + "source", "auto")
+        target = self.settings.value(prefix + "target", "auto")
+        self._show_translation(text, source, self.foreign.currentData() if target == "auto" else target)
+        self._fullscreen_overlay = False
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+        from meikipop.utils.window_focus import focus_pinned_popup
+        focus_pinned_popup(self, self.translation_panel.source)
+
+    def _translation_source_edited(self, text):
+        if not self._translation_view:
+            return
+        self._translation_text = text
+        self._translation_content = replace(self._translation_content, text=text, translation="", message="")
+        self._invalidate()
+        self._render_translation()
+        self._place_actions()
+
+    def _submit_translation_source(self):
+        if self._translation_view:
+            self.submit(translate=True, translation_text=self.translation_panel.source.toPlainText())
+
+    def _swap_translation_languages(self):
+        if not self._translation_view:
+            return
+        content = self._translation_content
+        if content.source == "auto":
+            return
+        prefix = f"profiles/{self.preferred_foreign}/translation_"
+        self.settings.setValue(prefix + "source", content.target)
+        self.settings.setValue(prefix + "target", content.source)
+        text = content.translation or self.translation_panel.source.toPlainText()
+        self._translation_content = replace(content, source=content.target, target=content.source)
+        self._translation_source_edited(text)
 
     def _restore_actions(self):
         current = (self._result is not None and getattr(self, "_result_profile", None) == self.preferred_foreign
@@ -1441,7 +1501,7 @@ class QuickLookupWindow(QDialog):
 
     def _set_translation_busy(self, busy):
         self._translation_busy = busy
-        self.translation_browser.set_busy(busy)
+        self.translation_panel.set_busy(busy)
         available = self.translation_available()
         self.translate.setEnabled(bool(busy or available and (self.search.text().strip() or self._context)))
         self.translate.setIcon(action_icon("translate", config.color_foreground))
@@ -1470,7 +1530,7 @@ class QuickLookupWindow(QDialog):
             self.browser.clear()
             self._close_kanji()
 
-    def submit(self, translate=None, *, context=False, remember=False, selection=False):
+    def submit(self, translate=None, *, context=False, remember=False, selection=False, translation_text=None):
         if not translate:
             self._leave_translation()
         input_text = self.search.text().strip()
@@ -1478,6 +1538,9 @@ class QuickLookupWindow(QDialog):
         selected = selected if selected != input_text else ""
         sentence = self._context if context else input_text if selected else None
         text = self._context if context else selected or input_text
+        if translate and translation_text is not None:
+            text = translation_text.strip()
+            sentence = text
         lookup_context = None
         if selected:
             raw = self.search.text()
@@ -1556,7 +1619,8 @@ class QuickLookupWindow(QDialog):
                        exact_only=exact_only)
 
     def deliver(self, revision, result):
-        if revision != self.revision or self._shutting_down:
+        if (revision != self.revision or self._shutting_down
+                or self._last_request_translate and self._translation_view and result.text != self._translation_text):
             mark("discard", revision, reason="obsolete_lookup")
             return
         mark("accepted", revision)
@@ -1597,7 +1661,8 @@ class QuickLookupWindow(QDialog):
             self.translate.setToolTip("Cancel translation\n" + state)
 
     def _translation_progress(self, revision, result):
-        if revision != self.revision or self._shutting_down or not self._translation_busy:
+        if (revision != self.revision or self._shutting_down or not self._translation_busy
+                or self._translation_view and result.text != self._translation_text):
             mark("discard", revision, reason="obsolete_chunk")
             return
         self._translation_chunk = result
@@ -2212,8 +2277,8 @@ class QuickLookupWindow(QDialog):
                 visible = visible and self.settings.value(f"profiles/{self.preferred_foreign}/anki/enabled", False, bool)
             if name == "back":
                 visible = visible and (bool(self._history) or self._translation_view)
-            if name == "translate" and self._translation_view:
-                visible = visible and bool(self._translation_content.message) and not self._translation_busy
+            if name in ("translate", "copy") and self._translation_view:
+                visible = False
             if name in ("anki", "audio") and self._headword_rows:
                 visible = False
             button.setVisible(visible)
@@ -2377,9 +2442,12 @@ class QuickLookupWindow(QDialog):
         def finish_opening():
             self._opening_search = False
         def focus():
-            from meikipop.utils.window_focus import focus_search
+            from meikipop.utils.window_focus import focus_pinned_popup, focus_search
             if self.isVisible() and not self._passive_text:
-                focus_search(self)
+                if self._translation_view:
+                    focus_pinned_popup(self, self.translation_panel.source)
+                else:
+                    focus_search(self)
             if (sys.platform == "darwin" and QApplication.platformName() != "offscreen"
                     and self.isVisible() and not self.isActiveWindow()):
                 # AppKit activation is asynchronous; an earlier focus-loss
@@ -2663,7 +2731,7 @@ class QuickLookupWindow(QDialog):
         if peek and self.is_pinned:
             return False
         entries = tuple(entries or ())
-        if (peek and self._peek and self._result is not None and self._result.text == text
+        if (peek and self._peek and not self._translation_view and self._result is not None and self._result.text == text
                 and self._result.source == source and self._result.entries == entries
                 and self._result.analyses == tuple(analyses) and self._result.suggestions == tuple(suggestions)
                 and self._result.message == message
@@ -2674,6 +2742,7 @@ class QuickLookupWindow(QDialog):
         self._invalidate()
         self._result_screenshot = None
         self._leave_translation()
+        self._last_request_translate = False
         self._history.clear()
         self._new_chain = True
         entries = tuple(entries or ())
@@ -2712,7 +2781,7 @@ class QuickLookupWindow(QDialog):
         self.context_label.setTextFormat(Qt.TextFormat.PlainText)
         self.context_label.setText(preview)
         self.context_label.hide()
-        self.copy_button.setVisible(bool(self._context))
+        self.copy_button.setVisible(bool(self._context) and not self._translation_view)
         self._set_translation_busy(self._translation_busy)
         if self._peek and self.is_pinned and previous != self._context:
             self._render()
@@ -2723,8 +2792,9 @@ class QuickLookupWindow(QDialog):
         self._result_context = previous
 
     def copy_sentence(self):
-        if self._context:
-            QApplication.clipboard().setText(self._context)
+        text = self.translation_panel.source.toPlainText() if self._translation_view else self._context
+        if text:
+            QApplication.clipboard().setText(text)
             self.hide()
 
     def _pin_changed(self, checked):
@@ -2809,7 +2879,9 @@ class QuickLookupWindow(QDialog):
         return False, 0
 
     def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.ShortcutOverride and isinstance(watched, (QLineEdit, QKeySequenceEdit)):
+        if (event.type() == QEvent.Type.ShortcutOverride
+                and (isinstance(watched, (QLineEdit, QKeySequenceEdit))
+                     or isinstance(watched, QTextEdit) and not watched.isReadOnly())):
             event.accept()
             return True
         if (event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease)
@@ -2847,6 +2919,12 @@ class QuickLookupWindow(QDialog):
             QToolTip.hideText()
             return True
         if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            if (self._translation_view and self._fullscreen_overlay
+                    and watched in (self.translation_panel.source, self.translation_panel.source.viewport())):
+                self._fullscreen_overlay = False
+                self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+                from meikipop.utils.window_focus import focus_pinned_popup
+                focus_pinned_popup(self, self.translation_panel.source)
             if self._passive_text:
                 self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
                 self.activateWindow()
@@ -2948,6 +3026,8 @@ class QuickLookupWindow(QDialog):
     def copy_text(self):
         browser = self._selected_reading_browser()
         text = browser.selected_text() if browser else ""
+        if not text and self._translation_view:
+            text = self.translation_panel.translation or self.translation_panel.source.toPlainText()
         if not text and self._result and self._result.entries:
             text = self._result.entries[0].term
         if text:
@@ -2955,7 +3035,7 @@ class QuickLookupWindow(QDialog):
 
     def _reading_browsers(self):
         if self._translation_view:
-            return (self.translation_browser,)
+            return (self.translation_panel.source, self.translation_browser)
         return (self.browser,) if self.kanji_panel.isHidden() else (self.kanji_browser, self.browser)
 
     def _selected_reading_browser(self):
@@ -3003,6 +3083,7 @@ class QuickLookupWindow(QDialog):
             return
         if hasattr(self, "worker"):
             self._invalidate()
+        self._leave_translation()
         self._remember_corner_size(force=True)
         self.pin.setChecked(False)
         super().hideEvent(event)
@@ -3061,7 +3142,7 @@ class QuickLookupWindow(QDialog):
         from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
         from meikipop.utils.macos import InputMonitoringPermissionError
         bindings = {value: self.hotkey_requested.emit} if value else {}
-        validate_shortcuts([value])
+        validate_shortcuts([value, self.settings.value("translation_hotkey", "")])
         replacement = TextHotKeys(bindings) if bindings else None
         warning = ""
         if replacement:
@@ -3083,6 +3164,29 @@ class QuickLookupWindow(QDialog):
     def restore_shortcut(self, explicit=None):
         binding = explicit if explicit is not None else self.settings.value("hotkey", "")
         self.apply_shortcut(binding)
+        self.apply_translation_shortcut(self.settings.value("translation_hotkey", ""))
+
+    def apply_translation_shortcut(self, value, preset=None):
+        from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
+        from meikipop.utils.macos import InputMonitoringPermissionError
+        validate_shortcuts([self.settings.value("hotkey", ""), value])
+        replacement = TextHotKeys({value: self.translation_requested.emit}) if value else None
+        warning = ""
+        if replacement:
+            try:
+                replacement.start()
+            except InputMonitoringPermissionError as error:
+                warning = str(error)
+                replacement = None
+                self.show_message(warning)
+        previous, self._translation_keys = self._translation_keys, replacement
+        if previous:
+            previous.stop()
+            previous.join(timeout=2)
+        self.settings.setValue("translation_hotkey", value)
+        if preset is not None:
+            self.settings.setValue("translation_hotkey_preset", preset)
+        return warning
 
     def shutdown(self):
         if self._shutting_down:
@@ -3107,6 +3211,9 @@ class QuickLookupWindow(QDialog):
         if self._keys:
             self._keys.stop()
             self._keys = None
+        if self._translation_keys:
+            self._translation_keys.stop()
+            self._translation_keys = None
 
 
 def shortcut_preset():

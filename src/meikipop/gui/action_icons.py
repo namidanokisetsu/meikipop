@@ -9,6 +9,7 @@ POPUP_ACTIONS = (("anki", "Add to Anki"), ("audio_sentence", "Sentence audio"),
 
 
 _SHAPES = {
+    "swap": '<path d="M3 8h17m-4-4 4 4-4 4M21 16H4m4-4-4 4 4 4"/>',
     "anki": '<circle cx="12" cy="12" r="10"/><path d="M7 12h10M12 7v10"/>',
     "anki_saved": '<circle cx="12" cy="12" r="10"/><path d="m7 12 3 3 7-7"/>',
     "audio": '<path d="M3 9h4l5-4v14l-5-4H3ZM16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14"/>',

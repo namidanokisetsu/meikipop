@@ -108,9 +108,17 @@ In **Translation**, download **Lightweight** (Hy-MT2 1.8B, about 2 GB) or
 **Quality** (7B, about 8 GB). These are download sizes; running a model needs
 additional memory. Models are shared across languages; new-language setup
 reuses installed models. Each language can choose its model and translation pair.
-**Translate** opens a separate view with the full source and translation.
-Click either language name to change it. **Back** returns to the dictionary
-with its selection and scroll position preserved.
+**Translate** opens editable input and translated output. Open it directly from
+the tray, or enable **Translate** in **Shortcuts** with the Ctrl+Shift+T preset
+(Command+Shift+T on macOS). Click a language name to change it; language search
+accepts codes, English names and native names. The swap button reverses direction
+and uses the output as the new input. Copy buttons stay beside the language labels.
+Use **Translate** or Ctrl+Enter to submit edited input. **Back** returns to the
+dictionary with its selection and scroll position preserved.
+Drag the divider to resize the text panes. **Translation → Side-by-side text panes**
+puts input on the left and output on the right; resize the window as needed.
+Long text translates in passages. **Advanced → Passage size** controls their
+maximum length; the model's context and output limits still apply per passage.
 To translate an English word or phrase into Japanese, use **Translate** and
 choose **English → 日本語** when the automatic direction is ambiguous.
 With an automatic source, a target that matches the detected language switches
