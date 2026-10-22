@@ -3074,6 +3074,8 @@ class QuickLookupWindow(QDialog):
 
     def showEvent(self, event):
         from meikipop.utils.window_focus import configure_macos_popup
+        if not self._capture_visibility:
+            self.remember_foreground()
         configure_macos_popup(self)
         super().showEvent(event)
 

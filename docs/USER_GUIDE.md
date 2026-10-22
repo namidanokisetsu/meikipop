@@ -48,6 +48,7 @@ Automatic lookup of selected text is separate and optional.
 **Lookup → Close popup when cursor leaves** also closes pinned popups when you
 move away. Corner search stays open, as does text selection or an open menu.
 Ctrl+C copies selected popup text, or the first headword when nothing is selected.
+On Windows, closing a focused popup returns focus to the app used before lookup.
 Corner search keeps its size between lookups. Drag an edge to resize it.
 
 ## Dictionaries and appearance

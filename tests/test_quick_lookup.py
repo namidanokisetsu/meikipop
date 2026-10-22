@@ -57,6 +57,42 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_ocr_dismissal_restores_source_even_when_click_activated_before_pin(self):
+        handle = int(self.window.winId())
+        with patch('PyQt6.QtWidgets.QApplication.platformName', return_value='windows'), \
+                patch('meikipop.utils.window_focus.foreground_is_fullscreen', return_value=False), \
+                patch('meikipop.utils.window_focus.focus_pinned_popup'), \
+                patch('meikipop.utils.window_focus.foreground_window') as foreground, \
+                patch('meikipop.utils.window_focus.restore_foreground') as restore:
+            for source, dismiss_foreground in ((123, handle), (456, 789)):
+                with self.subTest(source=source):
+                    foreground.return_value = source
+                    self.window.show_entries((entry(),), peek=True)
+                    foreground.return_value = handle
+                    self.window.pin.setChecked(True)
+                    self.assertEqual(self.window._previous_foreground, source)
+                    foreground.return_value = dismiss_foreground
+                    restore.reset_mock()
+                    self.window.hide()
+                    if dismiss_foreground == handle:
+                        restore.assert_called_once_with(source)
+                    else:
+                        restore.assert_not_called()
+
+    def test_capture_visibility_does_not_replace_source_or_restore_focus(self):
+        self.window._previous_foreground = 123
+        self.window._capture_visibility = True
+        try:
+            with patch.object(self.window, 'remember_foreground') as remember, \
+                    patch('meikipop.utils.window_focus.restore_foreground') as restore:
+                self.window.show()
+                self.window.hide()
+                remember.assert_not_called()
+                restore.assert_not_called()
+                self.assertEqual(self.window._previous_foreground, 123)
+        finally:
+            self.window._capture_visibility = False
+
     def test_translation_dismissal_and_new_hover_never_restore_old_sentence(self):
         self.window.translation_worker = Mock()
         self.window.show_entries((entry(),), "猫", peek=True)
