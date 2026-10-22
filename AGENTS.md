@@ -10,8 +10,8 @@
 - Follow the architecture and constraints in `docs/DEVELOPMENT.md`; preserve Japanese behavior.
 - Inspect and reuse existing Meikipop components, UI conventions, and pipeline logic before adding new implementations. Extend shared components where practical; document any necessary language-specific divergence in the development notes.
 - Make small, logical commits with focused validation. Separate independent changes into reviewable commits; do not accumulate unrelated work into enormous diffs.
-- When asked to reinstall or perform the end release procedure, rebuild and install locally on this Windows machine, preserve settings/data, push the commits and release tag to GitHub, and start the release workflow. Finish after the local installation; do not wait for GitHub builds or macOS installers.
-- Use one release version per finished batch. Tag only after validation and the local Windows build/install succeed; intermediate iterations are commits, not releases.
+- Reinstall means rebuild and install a local Windows test/developer build, preserve settings/data, and commit/push source changes to GitHub. Do not create a release or tag by default.
+- Public releases require an explicit request after user testing and a meaningful batch of changes, typically a day's work. Use one version per finished batch; tag only after validation and local Windows installation succeed. Start GitHub builds without waiting for macOS installers.
 - Publish the app as a single "Meikipop beta" prerelease. Once its replacement is available, remove older app release pages/assets, preserving Git tags and the separate dictionary-latest data release.
 - Keep NLP imports lazy and model/data setup explicit. Runtime Turkish lookup must work offline.
 - Keep validation efficient: use small fixtures and run `python -m unittest discover -s tests` once with the project environment. Avoid computer-use sessions, repeated live checks, heavy model tests and benchmarks unless requested or needed to diagnose a specific failure. Leave broad hands-on acceptance to the user; run actual-model Turkish smoke checks only when needed for an analysis change.

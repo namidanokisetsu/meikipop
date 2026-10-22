@@ -236,6 +236,10 @@ installation. Conversion dependencies are not needed at runtime.
 
 ## Packaging and compatibility
 
+Routine reinstalls are local Windows test builds with source commits pushed to
+GitHub. Public releases follow user testing and an explicit release request;
+retain one app beta release and its Git history.
+
 Desktop releases contain the Windows setup EXE and two macOS DMGs, for Apple
 silicon and Intel. Bundles include Python and inference libraries; user
 dictionaries and model weights are downloaded separately. Windows upgrades
