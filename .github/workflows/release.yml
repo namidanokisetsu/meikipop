@@ -35,6 +35,19 @@ jobs:
           generate_release_notes: false
           make_latest: false
           prerelease: true
+          fail_on_unmatched_files: true
           files: |
             artifacts/*/*.dmg
             artifacts/*/*-setup.exe
+      - name: remove older app releases, preserving tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.tag_name | startswith("v")) | .tag_name' |
+          while IFS= read -r tag; do
+            if [ "$tag" != "$RELEASE_TAG" ]; then
+              gh release delete "$tag" --yes
+            fi
+          done
