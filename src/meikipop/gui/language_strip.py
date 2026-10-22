@@ -1,6 +1,6 @@
 """Compact translation language tabs with an explicit chooser for other languages."""
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QButtonGroup, QHBoxLayout, QInputDialog, QToolButton, QWidget
+from PyQt6.QtWidgets import QButtonGroup, QHBoxLayout, QToolButton, QWidget
 
 
 class LanguageStrip(QWidget):
@@ -78,9 +78,7 @@ class LanguageStrip(QWidget):
         self.row.addStretch()
 
     def choose(self):
-        codes = [code for code in self.codes if code in self.available]
-        labels = [self.languages[code] for code in codes]
-        label, accepted = QInputDialog.getItem(self, "Translation language", "Language", labels,
-                                             codes.index(self.selected) if self.selected in codes else 0, editable=False)
-        if accepted:
-            self.setCurrentIndex(self.findData(codes[labels.index(label)]))
+        from meikipop.gui.language_chooser import choose_language
+        code = choose_language(self, {code: self.languages[code] for code in self.codes if code in self.available}, self.selected)
+        if code is not None:
+            self.setCurrentIndex(self.findData(code))
