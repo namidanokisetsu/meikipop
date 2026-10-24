@@ -154,6 +154,8 @@ Polling runs only while the cursor is outside; OCR's release timer uses the same
 boundary and interaction guards when cursor-leave dismissal is enabled.
 Lookup and copy shortcuts share selection routing across the visible dictionary,
 translation and kanji panes, preferring the focused pane.
+Copy confirmation uses the frame's content rectangle and layout margins because
+styling the label can invalidate the layout's cached geometry before placement.
 Data removal validates owned paths before deletion. Removing a language deletes
 its packs, Stanza data and Japanese font, while shared OCR/translation data stays.
 Paddle's shared download retains its existing `languages/tr/paddle` storage path.

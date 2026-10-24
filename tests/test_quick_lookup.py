@@ -2437,6 +2437,37 @@ class QuickLookupTests(unittest.TestCase):
         self.assertFalse(self.window.is_pinned)
         self.assertFalse(self.window.isVisible())
 
+    def test_copy_feedback_stays_inside_fullscreen_popup_after_layout_invalidation(self):
+        with patch("meikipop.utils.window_focus.foreground_is_fullscreen", return_value=True), \
+                patch("meikipop.utils.window_focus.focus_pinned_popup") as focus:
+            self.window.show_entries((entry(definitions=("Meaning\n" * 100,)),), "cat", peek=True)
+            self.window.set_context("A cat sits here.")
+            self.window.pin.setChecked(True)
+            self.app.processEvents()
+            browser = self.window.browser
+            selection = browser.textCursor()
+            selection.select(QTextCursor.SelectionType.WordUnderCursor)
+            browser.setTextCursor(selection)
+            browser.verticalScrollBar().setValue(30)
+            for copy in (self.window.copy_sentence, self.window.copy_text, self.window.copy_sentence):
+                geometry = self.window.geometry()
+                scroll = browser.verticalScrollBar().value()
+                selection = browser.textCursor()
+                self.window.frame.layout().invalidate()
+                copy()
+                feedback = self.window.copy_feedback
+                bounds = self.window.frame.contentsRect().marginsRemoved(
+                    self.window.frame.layout().contentsMargins())
+                self.assertTrue(feedback.isVisible())
+                self.assertTrue(bounds.contains(feedback.geometry()))
+                self.assertEqual(feedback.geometry().bottom(), bounds.bottom())
+                self.assertTrue(feedback.visibleRegion().contains(feedback.rect()))
+                self.assertEqual(self.window.geometry(), geometry)
+                self.assertEqual(browser.verticalScrollBar().value(), scroll)
+                self.assertEqual(browser.textCursor().selectionStart(), selection.selectionStart())
+                self.assertEqual(browser.textCursor().selectionEnd(), selection.selectionEnd())
+            focus.assert_not_called()
+
     def test_manual_search_restores_controls_and_all_dictionaries(self):
         self.window.show_entries((entry(source="First"), entry(source="Second")), "猫", peek=True)
         self.window.open_search()

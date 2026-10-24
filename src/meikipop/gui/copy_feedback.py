@@ -29,7 +29,9 @@ class CopyFeedback(QLabel):
         self.timer.start()
 
     def _place(self):
-        bounds = self.parentWidget().layout().contentsRect()
+        parent = self.parentWidget()
+        # Styling the label can invalidate the layout's cached geometry.
+        bounds = parent.contentsRect().marginsRemoved(parent.layout().contentsMargins())
         self.move(bounds.center().x() - self.width() // 2, bounds.bottom() - self.height() + 1)
 
     def eventFilter(self, watched, event):
