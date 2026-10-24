@@ -17,8 +17,8 @@ THEMES = {
         "background_opacity": 250,
     },
     "EVA": {
-        "color_background": "#100B1C", "color_foreground": "#F4F1FF",
-        "color_highlight_word": "#B8FF3D", "color_highlight_reading": "#B18AFF",
+        "color_background": "#28163F", "color_foreground": "#F4F1FF",
+        "color_highlight_word": "#B8FF3D", "color_highlight_reading": "#C09AFF",
         "background_opacity": 250,
     },
     "Light": {
