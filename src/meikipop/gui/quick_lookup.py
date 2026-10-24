@@ -896,6 +896,7 @@ class QuickLookupWindow(QDialog):
         self._translation_view = False
         self._translation_return = None
         self._translation_text = ""
+        self._translation_direction = ("auto", "auto")
         self._autoplayed = None
         self._scan_hold_active = False
         self._selection_lookup = False
@@ -1458,6 +1459,9 @@ class QuickLookupWindow(QDialog):
         if not self._translation_view or role not in ("source", "target"):
             return
         self.settings.setValue(f"profiles/{self.preferred_foreign}/translation_{role}", code)
+        direction = list(self._translation_direction)
+        direction[0 if role == "source" else 1] = code
+        self._translation_direction = tuple(direction)
         self._translation_content = replace(self._translation_content, **{role: code})
         self._render_translation()
         if self.translation_panel.source.toPlainText().strip():
@@ -1479,7 +1483,14 @@ class QuickLookupWindow(QDialog):
         prefix = f"profiles/{self.preferred_foreign}/translation_"
         source = self.settings.value(prefix + "source", "auto")
         target = self.settings.value(prefix + "target", "auto")
-        self._show_translation(text, source, self.foreign.currentData() if target == "auto" else target)
+        if text and self._result is not None:
+            source = self._result.source
+            if target == source:
+                target = "auto"
+        self._translation_direction = (source, target)
+        display_target = target if target != "auto" else (
+            self.preferred_foreign if source == self.foreign.currentData() else self.foreign.currentData())
+        self._show_translation(text, source, display_target)
         self._fullscreen_overlay = False
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
         from meikipop.utils.window_focus import focus_pinned_popup
@@ -1520,6 +1531,7 @@ class QuickLookupWindow(QDialog):
         prefix = f"profiles/{self.preferred_foreign}/translation_"
         self.settings.setValue(prefix + "source", content.target)
         self.settings.setValue(prefix + "target", content.source)
+        self._translation_direction = (content.target, content.source)
         text = content.translation or self.translation_panel.source.toPlainText()
         self._translation_content = replace(content, source=content.target, target=content.source)
         self._translation_source_edited(text)
@@ -1622,6 +1634,12 @@ class QuickLookupWindow(QDialog):
             prefix = f"profiles/{self.preferred_foreign}/translation_"
             selected_source = self.settings.value(prefix + "source", "auto")
             selected_target = self.settings.value(prefix + "target", "auto")
+            if translation_text is not None and self._translation_view:
+                selected_source, selected_target = self._translation_direction
+            elif context:
+                # A new captured sentence owns its source language, regardless of
+                # the direction last used in the manual translation editor.
+                selected_source = "auto"
             if selected_source != "auto":
                 source = selected_source
             if selected_target != "auto":
@@ -1635,6 +1653,8 @@ class QuickLookupWindow(QDialog):
             if selected_source == "auto" and display_target == display_source:
                 display_target = (self.preferred_foreign if display_source == self.foreign.currentData()
                                   else self.foreign.currentData())
+            self._translation_direction = ((source, target or "auto") if context else
+                                           (selected_source, selected_target))
             self._show_translation(text, display_source, display_target)
         from meikipop.dictionary.translation import load_profile_settings
         try:

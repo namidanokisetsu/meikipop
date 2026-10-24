@@ -1803,6 +1803,38 @@ class QuickLookupTests(unittest.TestCase):
             self.assertEqual((self.window._translation_content.source, self.window._translation_content.target), ("ja", "en"))
         self.assertEqual(self.settings.value("profiles/ja/translation_target"), "ja")
 
+    def test_new_ocr_translation_ignores_previous_manual_swap(self):
+        self.window.translation_worker = Mock()
+        self.window.show_entries((entry(),), "猫", peek=True)
+        self.window.set_context("猫がいる。")
+        self.window.submit(translate=True, context=True)
+        self.window.deliver(self.window.revision, SearchResult("猫がいる。", "ja", "en", translation="There is a cat."))
+        self.window._swap_translation_languages()
+        self.window.translation_panel.source.setPlainText("An English sentence.")
+        self.window._submit_translation_source()
+        self.assertEqual(self.window.translation_worker.request.call_args.args[2], "en")
+        self.window.hide()
+
+        for entrypoint in ("sentence", "shortcut"):
+            with self.subTest(entrypoint=entrypoint):
+                self.window.show_entries((entry(),), "猫", peek=True)
+                self.window.set_context("新しい猫です。")
+                if entrypoint == "sentence":
+                    self.window.submit(translate=True, context=True)
+                else:
+                    self.window.open_translation()
+                    self.window._submit_translation_source()
+                request = self.window.translation_worker.request.call_args
+                self.assertEqual(request.args[2], "ja")
+                self.assertIsNone(request.kwargs["target"])
+                self.assertEqual((self.window._translation_content.source, self.window._translation_content.target), ("ja", "en"))
+                self.window.translation_panel.source.insertPlainText("追記")
+                self.window._submit_translation_source()
+                self.assertEqual(self.window.translation_worker.request.call_args.args[2], "ja")
+                self.assertIsNone(self.window.translation_worker.request.call_args.kwargs["target"])
+                self.window.hide()
+        self.assertEqual(self.settings.value("profiles/ja/translation_source"), "en")
+
     def test_typed_results_are_silent_for_all_autoplay_modes(self):
         self.window.audio = Mock()
         for mode in ("lookup", "pin", "off"):

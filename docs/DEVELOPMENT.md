@@ -161,6 +161,8 @@ Model changes invalidate OCR caches on their worker; dictionary refresh drops on
 Stanza analyzers whose models were removed. Runtime-only translation setup preserves
 installed models. Automatic translation reverses the pair when a saved target
 matches the detected source; explicit manual directions retain validation.
+Fresh captured sentences use the lookup source regardless of the last manual
+swap. Their editing session retains its own direction separately from saved defaults.
 
 Anki's popup action snapshots the lookup and saves once on a worker, including
 glossary conversion and mapped media preparation. Native Anki duplicate checks
