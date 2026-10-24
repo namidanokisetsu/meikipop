@@ -131,12 +131,12 @@ class ProfileAppearance(QWidget):
             if key == "scale":
                 widget.setToolTip("Scales word, definition and sentence sizes together")
             (form if key in ("scale", "background_opacity") else detail_form).addRow(label, widget)
-        for key, label in (("color_background", "Background"), ("color_foreground", "Text"),
-                           ("color_highlight_word", "Word"), ("color_highlight_reading", "Reading")):
+        for row, (key, label) in enumerate((("color_background", "Background"), ("color_foreground", "Text"),
+                                           ("color_highlight_word", "Word"), ("color_highlight_reading", "Reading")), start=1):
             button = QPushButton()
             button.clicked.connect(lambda _, key=key: self.pick_color(key))
             self.controls[key] = button
-            form.addRow(label, button)
+            form.insertRow(row, label, button)
         self.general_section = SettingsSection("General", general)
         self.preview_section = SettingsSection("Preview", preview)
         self.pinned_section = SettingsSection("Pinned", pinned)
