@@ -116,7 +116,8 @@ reuses installed models. Each language can choose its model and translation pair
 the tray, or enable **Translate** in **Shortcuts** with the Ctrl+Shift+T preset
 (Command+Shift+T on macOS). Click a language name to change it; language search
 accepts codes, English names and native names. The swap button reverses direction
-and uses the output as the new input. Copy buttons stay beside the language labels.
+and uses the output as the new input. Copy buttons stay beside the language labels. Copying briefly shows **Copied**
+without closing the popup.
 Edits translate automatically after a short pause; Ctrl+Enter submits immediately. **Back** returns to the
 dictionary with its selection and scroll position preserved.
 Drag the divider to resize the text panes; each layout remembers its split. **Translation → Side-by-side text panes**

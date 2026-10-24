@@ -1043,7 +1043,8 @@ class QuickLookupTests(unittest.TestCase):
         with patch("meikipop.gui.quick_lookup.QApplication.clipboard") as clipboard:
             self.window.copy_sentence()
             clipboard.return_value.setText.assert_called_once_with(sentence)
-        self.assertFalse(self.window.isVisible())
+        self.assertTrue(self.window.isVisible())
+        self.assertTrue(self.window.copy_feedback.isVisible())
 
     def test_input_selection_shortcut_and_menu_use_japanese_word_and_context(self):
         sentence = "公園で猫が寝ている。"
@@ -2363,17 +2364,21 @@ class QuickLookupTests(unittest.TestCase):
         self.assertNotIn("Strokes 11", self.window.browser.toPlainText())
         self.assertEqual(self.window._context, "猫がいる。")
 
-    def test_copy_click_closes_after_copy_and_dismiss_does_not_pin(self):
+    def test_copy_click_confirms_without_closing_and_dismiss_does_not_pin(self):
         self.window.show_entries((entry(),), "猫", peek=True)
         self.window.set_context("猫がいる。")
         QTest.mouseClick(self.window.browser.viewport(), Qt.MouseButton.LeftButton)
         self.assertTrue(self.window.copy_button.isVisible())
+        geometry = self.window.geometry()
         with patch.object(QApplication, "clipboard") as clipboard:
             clipboard.return_value.setText.side_effect = lambda _: self.assertTrue(self.window.is_pinned)
             QTest.mouseClick(self.window.copy_button, Qt.MouseButton.LeftButton)
             clipboard.return_value.setText.assert_called_once_with("猫がいる。")
-        self.assertFalse(self.window.is_pinned)
-        self.assertFalse(self.window.isVisible())
+        self.assertTrue(self.window.is_pinned)
+        self.assertTrue(self.window.copy_feedback.isVisible())
+        self.assertEqual(self.window.geometry(), geometry)
+        self.window.hide()
+        self.assertTrue(self.window.copy_feedback.isHidden())
         self.window.show_entries((entry(),), "猫", peek=True)
         QTest.mouseClick(self.window.dismiss_button, Qt.MouseButton.LeftButton)
         self.assertFalse(self.window.is_pinned)

@@ -108,6 +108,7 @@ class TranslationPanel(QWidget):
     translate_requested = pyqtSignal()
     language_requested = pyqtSignal(str)
     swap_requested = pyqtSignal()
+    copied = pyqtSignal()
 
     def __init__(self, settings=None):
         super().__init__()
@@ -120,7 +121,7 @@ class TranslationPanel(QWidget):
         self.target_label.setToolTip("Target language")
         self.source_label.clicked.connect(lambda: self.language_requested.emit("source"))
         self.target_label.clicked.connect(lambda: self.language_requested.emit("target"))
-        self.copy_source = self._button("copy", "Copy input", lambda: QApplication.clipboard().setText(self.source.toPlainText()))
+        self.copy_source = self._button("copy", "Copy input", lambda: self._copy(self.source.toPlainText()))
         self.copy_output = self._button("copy", "Copy output", self._copy_output)
         self.swap = self._button("swap", "Swap languages", self.swap_requested.emit)
         self.splitter = QSplitter(Qt.Orientation.Vertical)
@@ -162,7 +163,12 @@ class TranslationPanel(QWidget):
         return button
 
     def _copy_output(self):
-        QApplication.clipboard().setText(self.translation)
+        self._copy(self.translation)
+
+    def _copy(self, text):
+        if text:
+            QApplication.clipboard().setText(text)
+            self.copied.emit()
 
     def set_content(self, text, translation, source, target, message=""):
         if self.source.toPlainText().strip() != text.strip():
