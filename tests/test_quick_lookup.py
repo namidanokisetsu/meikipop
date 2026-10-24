@@ -2290,6 +2290,71 @@ class QuickLookupTests(unittest.TestCase):
             self.window.reload_popup_shortcuts()
             self.assertTrue(self.window._popup_shortcuts["replay"].key().isEmpty())
 
+    def test_fullscreen_selection_copy_keeps_source_focus_and_releases_input_on_dismissal(self):
+        from meikipop.gui.turkish.desktop_input import DesktopInput
+        from meikipop.gui.unified_ocr import UnifiedOCR
+        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener"), \
+                patch("meikipop.gui.turkish.desktop_input.mouse.Listener"):
+            inputs = DesktopInput("shift,middle", "", "", 400)
+        self.addCleanup(inputs.shutdown)
+        controller = SimpleNamespace(window=self.window, input=inputs, _capture_hidden=False,
+                                     session=SimpleNamespace(hovering=False, scanning=lambda pinned: False))
+        inputs.popup_action_requested.connect(lambda action: UnifiedOCR.popup_action(controller, action))
+        user32 = Mock()
+        user32.GetForegroundWindow.return_value = 987654
+        user32.GetAsyncKeyState.side_effect = lambda vk: 0x8000 if vk == 0x11 else 0
+        with patch("PyQt6.QtWidgets.QApplication.platformName", return_value="windows"), \
+                patch("meikipop.gui.unified_ocr.sys.platform", "win32"), \
+                patch("ctypes.WinDLL", return_value=user32, create=True), \
+                patch("meikipop.utils.window_focus.foreground_window", user32.GetForegroundWindow), \
+                patch("meikipop.utils.window_focus.focused_child", return_value=987655), \
+                patch("meikipop.utils.window_focus.foreground_is_fullscreen", return_value=True), \
+                patch("meikipop.utils.window_focus.focus_pinned_popup") as focus, \
+                patch("meikipop.utils.window_focus.restore_foreground") as restore:
+            self.window.show_entries((entry(definitions=("Selected definition",)),), "cat", peek=True)
+            self.window.set_context("A different sentence.")
+            self.window.pin.setChecked(True)
+            self.app.processEvents()
+            selection = self.window.browser.document().find("Selected definition")
+            self.window.browser.setTextCursor(selection)
+            inputs.visible.set()
+            UnifiedOCR._reload_popup_bindings(controller)
+            UnifiedOCR._sync_pin_ready(controller)
+            native = SimpleNamespace(vkCode=0x43)
+            self.assertFalse(inputs.filter_key(0x100, native))
+            self.assertEqual(QApplication.clipboard().text(), "Selected definition")
+            self.assertTrue(self.window.copy_feedback.isVisible())
+            self.assertEqual((self.window._previous_foreground, self.window._previous_focus), (987654, 987655))
+            self.assertEqual(user32.GetForegroundWindow(), 987654)
+            self.window.hide()
+            inputs.visible.clear()
+            UnifiedOCR._sync_pin_ready(controller)
+            self.assertIsNone(inputs.navigation_source)
+            self.assertFalse(inputs.filter_key(0x101, native))
+            self.assertIsNone(inputs.filter_key(0x100, native))
+            for message in (0x20B, 0x20C):  # WM_XBUTTONDOWN / WM_XBUTTONUP
+                self.assertTrue(inputs.filter_mouse(message, SimpleNamespace(mouseData=0x10000)))
+            focus.assert_not_called()
+            restore.assert_not_called()
+
+    def test_copy_text_binding_uses_selection_and_yields_to_editable_fields(self):
+        self.window.show_entries((entry(definitions=("Selected definition",)),), "cat")
+        self.window.activateWindow()
+        self.window.browser.setFocus()
+        self.app.processEvents()
+        selection = self.window.browser.document().find("Selected definition")
+        self.window.browser.setTextCursor(selection)
+        QTest.keyClick(self.window.browser, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(QApplication.clipboard().text(), "Selected definition")
+        self.window.search.setText("Search selection")
+        self.window.search.selectAll()
+        self.window.search.setFocus()
+        QTest.keyClick(self.window.search, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(QApplication.clipboard().text(), "Search selection")
+        self.settings.setValue("profiles/ja/popup/copy_text_shortcut", "")
+        self.window.reload_popup_shortcuts()
+        self.assertFalse(self.window.selection_copy_shortcut.isEnabled())
+
     def test_escape_hides_and_invalidates_pending_results(self):
         self.window.open_search()
         self.window.search.setText("猫")

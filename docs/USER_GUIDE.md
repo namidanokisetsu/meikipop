@@ -84,6 +84,7 @@ apps, a pinned popup accepts arrows, Page Up/Down and Home/End while the source
 keeps focus. **Esc** closes the popup. In **Settings > Shortcuts**, record or
 disable lookup and popup bindings. Popup defaults are **R** for replay,
 **Shift+A** for Anki, **Shift+C** for copying the sentence and **Alt+Left** for Back.
+**Copy text** defaults to **Ctrl+C** and also works over fullscreen Windows apps.
 Close a pinned popup before starting another lookup with a keyboard hold.
 **Buttons** controls each popup action independently. **Sentence size** controls
 sentence and translation text. Click the compact sentence to read it in full.

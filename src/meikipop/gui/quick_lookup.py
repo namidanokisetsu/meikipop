@@ -1161,8 +1161,7 @@ class QuickLookupWindow(QDialog):
             shortcut.activated.connect(lambda action=action: self.popup_action(action))
             self._popup_shortcuts[action] = shortcut
         self.copy_shortcut = self._popup_shortcuts["copy"]
-        self.selection_copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, self)
-        self.selection_copy_shortcut.activated.connect(self.copy_text)
+        self.selection_copy_shortcut = self._popup_shortcuts["copy_text"]
         self.back_shortcut = self._popup_shortcuts["back"]
         self.anki_shortcut = self._popup_shortcuts["anki"]
         self.reload_popup_shortcuts()
@@ -2924,11 +2923,11 @@ class QuickLookupWindow(QDialog):
         self.update_anki()
 
     def popup_action(self, action):
-        if (not self.isVisible() or self._peek and not self.is_pinned
+        if (not self.isVisible() or self._peek and not self.is_pinned and action != "copy_text"
                 or QApplication.activeModalWidget() is not None):
             return
         callback = {"replay": self.play_audio, "copy": self.copy_sentence,
-                    "anki": self.add_to_anki, "back": self.go_back}.get(action)
+                    "copy_text": self.copy_text, "anki": self.add_to_anki, "back": self.go_back}.get(action)
         if callback is not None:
             callback()
 

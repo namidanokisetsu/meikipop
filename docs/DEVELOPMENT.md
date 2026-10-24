@@ -118,6 +118,8 @@ existing Windows input hook routes unmodified arrows, Page Up/Down and Home/End
 and configured popup actions to the pinned popup only while its source remains
 foreground; matching releases are consumed even after dismissal. Other keyboard
 input stays with the source.
+Copy text uses these same configurable bindings without activating the popup;
+source window and child-focus restoration on dismissal remains unchanged.
 Manual search retains normal focus behavior. Borderless fullscreen uses the same
 native monitor-bounds check. Side buttons page while over the popup and can be
 disabled per profile.

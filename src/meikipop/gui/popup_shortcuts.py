@@ -4,7 +4,8 @@ from PyQt6.QtGui import QKeySequence
 
 
 POPUP_ACTIONS = (("replay", "Replay audio", "R"), ("anki", "Add to Anki", "Shift+A"),
-                 ("copy", "Copy sentence", "Shift+C"), ("back", "Back", "Alt+Left"))
+                 ("copy", "Copy sentence", "Shift+C"), ("copy_text", "Copy text", "Ctrl+C"),
+                 ("back", "Back", "Alt+Left"))
 
 
 def shortcut_key(profile, action):

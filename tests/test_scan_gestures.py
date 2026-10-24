@@ -101,6 +101,27 @@ class ScanGestureTests(unittest.TestCase):
         self.input.key(keyboard.Key.shift, True)
         self.assertTrue(self.input.activation.active)
 
+    def test_selection_copy_binding_yields_when_source_changes_or_action_is_disabled(self):
+        requested = Mock()
+        self.input.popup_action_requested.connect(requested)
+        self.input.navigation_source = 42
+        self.input.visible.set()
+        self.input.popup_bindings = {(0x43, 2): "copy_text"}
+        user32 = Mock()
+        user32.GetForegroundWindow.return_value = 99
+        user32.GetAsyncKeyState.side_effect = lambda vk: 0x8000 if vk == 0x11 else 0
+        with patch("ctypes.WinDLL", return_value=user32, create=True):
+            native = SimpleNamespace(vkCode=0x43)
+            self.assertIsNone(self.input.filter_key(0x100, native))
+            user32.GetForegroundWindow.return_value = 42
+            self.assertFalse(self.input.filter_key(0x100, native))
+            self.assertFalse(self.input.filter_key(0x100, native))
+            requested.assert_called_once_with("copy_text")
+            self.assertFalse(self.input.filter_key(0x101, native))
+            self.input.popup_bindings = {}
+            self.assertIsNone(self.input.filter_key(0x100, native))
+            requested.assert_called_once_with("copy_text")
+
     def test_hover_preview_consumes_pin_gesture_without_a_held_key(self):
         self.input.hover_active.set()
         self.input.visible.set()
