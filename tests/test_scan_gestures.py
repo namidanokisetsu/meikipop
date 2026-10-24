@@ -39,6 +39,7 @@ class ScanGestureTests(unittest.TestCase):
         navigated = Mock()
         self.input.navigation_requested.connect(navigated)
         self.input.navigation_source = 42
+        self.input.popup_controls_active.set()
         self.input.visible.set()
         user32 = Mock()
         user32.GetForegroundWindow.return_value = 42
@@ -69,6 +70,7 @@ class ScanGestureTests(unittest.TestCase):
         self.input.popup_action_requested.connect(requested)
         self.input.dismissed.connect(dismissed)
         self.input.navigation_source = 42
+        self.input.popup_controls_active.set()
         self.input.visible.set()
         self.input.popup_bindings = {(0x52, 0): "replay", (0x41, 1): "anki", (0x43, 1): "copy"}
         user32 = Mock()
@@ -118,6 +120,11 @@ class ScanGestureTests(unittest.TestCase):
             self.assertFalse(self.input.filter_key(0x100, native))
             requested.assert_called_once_with("copy_text")
             self.assertFalse(self.input.filter_key(0x101, native))
+            self.input.popup_bindings[(0x41, 2)] = "anki"
+            self.assertIsNone(self.input.filter_key(0x100, SimpleNamespace(vkCode=0x41)))
+            user32.GetAsyncKeyState.side_effect = lambda vk: 0
+            self.assertIsNone(self.input.filter_key(0x100, SimpleNamespace(vkCode=0x22)))
+            user32.GetAsyncKeyState.side_effect = lambda vk: 0x8000 if vk == 0x11 else 0
             self.input.popup_bindings = {}
             self.assertIsNone(self.input.filter_key(0x100, native))
             requested.assert_called_once_with("copy_text")

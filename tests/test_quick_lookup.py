@@ -300,6 +300,24 @@ class QuickLookupTests(unittest.TestCase):
             self.window.leaveEvent(QEvent(QEvent.Type.Leave))
             hide.assert_not_called()
 
+    def test_cursor_leave_closes_retained_selection_after_drag_release(self):
+        self.settings.setValue("close_on_cursor_leave", True)
+        for pinned in (False, True):
+            with self.subTest(pinned=pinned):
+                self.window.show_entries((entry(definitions=("Selected definition",)),), peek=True)
+                self.window.pin.setChecked(pinned)
+                self.app.processEvents()
+                browser = self.window.browser
+                browser.setTextCursor(browser.document().find("Selected definition"))
+                self.assertTrue(browser.textCursor().hasSelection())
+                with patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-500, -500)):
+                    browser.selecting = True
+                    self.window._check_cursor_leave()
+                    self.assertTrue(self.window.isVisible())
+                    browser.selecting = False
+                    self.window._check_cursor_leave()
+                    self.assertFalse(self.window.isVisible())
+
     def test_cursor_grace_area_tracks_distance_return_and_resizing(self):
         self.window.show_entries((entry(),), peek=True)
         self.window.pin.setChecked(True)
@@ -368,6 +386,7 @@ class QuickLookupTests(unittest.TestCase):
         view = self.window.translation_browser
         view.set_content("cat")
         view.setTextCursor(view.document().find("cat"))
+        view.selecting = True
         self.settings.setValue("close_on_cursor_leave", True)
         with patch.object(self.window, "lookup_word") as lookup, patch.object(self.window, "hide") as hide, \
                 patch("meikipop.gui.quick_lookup.QCursor.pos", return_value=QPoint(-500, -500)):
@@ -2311,29 +2330,33 @@ class QuickLookupTests(unittest.TestCase):
                 patch("meikipop.utils.window_focus.foreground_is_fullscreen", return_value=True), \
                 patch("meikipop.utils.window_focus.focus_pinned_popup") as focus, \
                 patch("meikipop.utils.window_focus.restore_foreground") as restore:
-            self.window.show_entries((entry(definitions=("Selected definition",)),), "cat", peek=True)
-            self.window.set_context("A different sentence.")
-            self.window.pin.setChecked(True)
-            self.app.processEvents()
-            selection = self.window.browser.document().find("Selected definition")
-            self.window.browser.setTextCursor(selection)
-            inputs.visible.set()
-            UnifiedOCR._reload_popup_bindings(controller)
-            UnifiedOCR._sync_pin_ready(controller)
-            native = SimpleNamespace(vkCode=0x43)
-            self.assertFalse(inputs.filter_key(0x100, native))
-            self.assertEqual(QApplication.clipboard().text(), "Selected definition")
-            self.assertTrue(self.window.copy_feedback.isVisible())
-            self.assertEqual((self.window._previous_foreground, self.window._previous_focus), (987654, 987655))
-            self.assertEqual(user32.GetForegroundWindow(), 987654)
-            self.window.hide()
-            inputs.visible.clear()
-            UnifiedOCR._sync_pin_ready(controller)
-            self.assertIsNone(inputs.navigation_source)
-            self.assertFalse(inputs.filter_key(0x101, native))
-            self.assertIsNone(inputs.filter_key(0x100, native))
-            for message in (0x20B, 0x20C):  # WM_XBUTTONDOWN / WM_XBUTTONUP
-                self.assertTrue(inputs.filter_mouse(message, SimpleNamespace(mouseData=0x10000)))
+            for pinned in (False, True):
+                with self.subTest(pinned=pinned):
+                    self.window.show_entries((entry(definitions=("Selected definition",)),), "cat", peek=True)
+                    self.window.set_context("A different sentence.")
+                    self.window.pin.setChecked(pinned)
+                    self.app.processEvents()
+                    selection = self.window.browser.document().find("Selected definition")
+                    self.assertFalse(selection.isNull())
+                    self.window.browser.setTextCursor(selection)
+                    inputs.visible.set()
+                    UnifiedOCR._reload_popup_bindings(controller)
+                    UnifiedOCR._sync_pin_ready(controller)
+                    native = SimpleNamespace(vkCode=0x43)
+                    self.assertFalse(inputs.filter_key(0x100, native))
+                    self.assertEqual(QApplication.clipboard().text(), "Selected definition")
+                    self.assertTrue(self.window.copy_feedback.isVisible())
+                    self.assertEqual(self.window.is_pinned, pinned)
+                    self.assertEqual((self.window._previous_foreground, self.window._previous_focus), (987654, 987655))
+                    self.assertEqual(user32.GetForegroundWindow(), 987654)
+                    self.window.hide()
+                    inputs.visible.clear()
+                    UnifiedOCR._sync_pin_ready(controller)
+                    self.assertIsNone(inputs.navigation_source)
+                    self.assertFalse(inputs.filter_key(0x101, native))
+                    self.assertIsNone(inputs.filter_key(0x100, native))
+                    for message in (0x20B, 0x20C):  # WM_XBUTTONDOWN / WM_XBUTTONUP
+                        self.assertTrue(inputs.filter_mouse(message, SimpleNamespace(mouseData=0x10000)))
             focus.assert_not_called()
             restore.assert_not_called()
 

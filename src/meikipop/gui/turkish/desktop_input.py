@@ -168,7 +168,10 @@ class DesktopInput(QObject):
             active = (self.navigation_source and self.visible.is_set()
                       and user32.GetForegroundWindow() == self.navigation_source)
             action = self.popup_bindings.get((data.vkCode, modifiers))
-            navigation = not modifiers and data.vkCode in (0x21, 0x22, 0x23, 0x24, 0x26, 0x28)
+            controls = self.popup_controls_active.is_set()
+            if not controls and action != "copy_text":
+                action = None
+            navigation = controls and not modifiers and data.vkCode in (0x21, 0x22, 0x23, 0x24, 0x26, 0x28)
             if down and active and (action or navigation):
                 repeated = data.vkCode in self._consumed_navigation_keys
                 self._consumed_navigation_keys.add(data.vkCode)

@@ -119,7 +119,8 @@ and configured popup actions to the pinned popup only while its source remains
 foreground; matching releases are consumed even after dismissal. Other keyboard
 input stays with the source.
 Copy text uses these same configurable bindings without activating the popup;
-source window and child-focus restoration on dismissal remains unchanged.
+an unpinned fullscreen preview routes only Copy text while a reading pane has a
+selection. Source window and child-focus restoration on dismissal remains unchanged.
 Manual search retains normal focus behavior. Borderless fullscreen uses the same
 native monitor-bounds check. Side buttons page while over the popup and can be
 disabled per profile.
@@ -150,7 +151,8 @@ validation only gates provider setup; rejected choices restore the saved control
 Setup jobs share one control list for disabling and restoring their inputs.
 Cursor-leave dismissal is an app-wide opt-in, including pinned popups but excluding
 corner search. Corner search retains its saved size and tray edge; geometry,
-active selection, menus and Settings prevent unintended dismissal.
+selection drags, menus and Settings prevent unintended dismissal. A retained text
+selection does not override enabled cursor-leave dismissal after the mouse is released.
 The shared cursor grace area expands the current window frame in logical pixels.
 Polling runs only while the cursor is outside; OCR's release timer uses the same
 boundary and interaction guards when cursor-leave dismissal is enabled.

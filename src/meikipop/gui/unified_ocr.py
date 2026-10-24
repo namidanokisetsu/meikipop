@@ -6,7 +6,7 @@ from time import monotonic
 
 from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCursor, QImage
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QTextEdit
 
 from meikipop.config.config import config
 from meikipop.ocr.context import hit_paragraphs, paddle_paragraphs
@@ -374,6 +374,8 @@ class UnifiedOCR(QObject):
             window.scan_settings_changed.connect(self.reload_settings)
         if hasattr(window, "pin"):
             window.pin.toggled.connect(self.pin_changed)
+        for browser in window.findChildren(QTextEdit):
+            browser.selectionChanged.connect(self._sync_pin_ready)
         if hasattr(window, "dismiss_button"):
             window.dismiss_button.clicked.connect(self.dismiss)
         window.installEventFilter(self)
@@ -631,7 +633,8 @@ class UnifiedOCR(QObject):
             (self.input.popup_controls_active.set if active else self.input.popup_controls_active.clear)()
         if self.input:
             self.input.navigation_source = (getattr(self.window, "_previous_foreground", None)
-                if (getattr(self.window, "_fullscreen_overlay", False) and self.window.is_pinned
+                if (getattr(self.window, "_fullscreen_overlay", False)
+                    and (self.window.is_pinned or self.window._selected_reading_browser() is not None)
                     and self.window.isVisible() and QApplication.activeModalWidget() is None
                     and QApplication.activePopupWidget() is None) else None)
         if self.input and hasattr(self.input, "hover_active"):
@@ -648,7 +651,8 @@ class UnifiedOCR(QObject):
         self.window.navigate_overlay(virtual_key)
 
     def popup_action(self, action):
-        if (getattr(self.window, "_fullscreen_overlay", False) and self.window.is_pinned
+        if (getattr(self.window, "_fullscreen_overlay", False)
+                and (self.window.is_pinned or action == "copy_text" and self.window._selected_reading_browser() is not None)
                 and self.window.isVisible() and QApplication.activeModalWidget() is None
                 and QApplication.activePopupWidget() is None):
             self.window.popup_action(action)

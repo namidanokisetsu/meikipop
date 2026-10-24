@@ -3139,8 +3139,7 @@ class QuickLookupWindow(QDialog):
             self.cursor_leave_timer.start()
         if (not self.cursor_close_bounds().contains(point)
                 and QApplication.mouseButtons() == Qt.MouseButton.NoButton
-                and not any(browser.selecting or browser.textCursor().hasSelection()
-                            for browser in self._reading_browsers())
+                and not any(browser.selecting for browser in self._reading_browsers())
                 and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None
                 and not (self._setup is not None and self._setup.isVisible())):
             self.hide()
