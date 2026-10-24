@@ -147,9 +147,6 @@ def main():
         return search_main([] if len(sys.argv) == 1 else sys.argv[2:])
     if sys.argv[1] == "legacy-japanese":
         return run_gui()
-    if len(sys.argv) > 1 and sys.argv[1] in ("build-turkish-dict", "setup-turkish-model", "setup-turkish-wordnet", "setup-turkish-ocr", "turkish-clipboard", "lookup-turkish"):
-        from meikipop.scripts.turkish import main as turkish_main
-        return turkish_main(sys.argv[1:])
     parser = argparse.ArgumentParser(
         prog="meikipop",
         description="Multilingual OCR popup dictionary"
@@ -164,8 +161,6 @@ def main():
     library_parser.add_argument("--directory", help="Dictionary library directory")
 
     subparsers.add_parser("build-dict", help="Build the dictionary from source files")
-    for command in ("build-turkish-dict", "setup-turkish-model", "setup-turkish-wordnet", "setup-turkish-ocr", "turkish-clipboard", "lookup-turkish"):
-        subparsers.add_parser(command, help="Turkish clipboard proof of concept (use command --help)")
 
     import_html_parser = subparsers.add_parser("import-yomitan-dict-html", help="Import Yomitan dictionary (HTML format)")
     import_html_parser.add_argument("dictionary_files", nargs='+', help="Path(s) to the dictionary zip file(s)")

@@ -2,8 +2,8 @@
 
 See the [user guide](USER_GUIDE.md) for everyday use and
 [AGENTS.md](../AGENTS.md) for repository conventions. The shared desktop app is
-the main entrypoint; the original Japanese and Turkish clients remain available
-for compatibility.
+the main entrypoint; the original Japanese client remains available through
+`meikipop legacy-japanese`.
 
 ## Run from source
 
@@ -254,19 +254,20 @@ a tall box alone does not establish vertical text.
 
 Ordinary Paddle setup uses the native runtime. An optional ONNX export needs
 a separate Python 3.12 conversion environment; keep the desktop on Paddle 3.2.2.
-Install the OCR models first with `meikipop setup-turkish-ocr`, then:
+Install the OCR models first in Settings or with
+`meikipop search --setup-ocr paddle`, then:
 
 ```powershell
 py -3.12 -m venv .venv-ocr-export
 .\.venv-ocr-export\Scripts\python -m pip install paddlepaddle==3.1.1 paddle2onnx==2.1.0 onnx==1.17.0
 .\.venv-ocr-export\Scripts\python -m pip install --no-deps -e .
 .\.venv-ocr-export\Scripts\python -m meikipop.scripts.export_turkish_ocr --source-dir "$env:USERPROFILE\.paddlex\official_models" --output build\turkish-onnx
-.\.venv-desktop\Scripts\python -m meikipop.scripts.turkish setup-turkish-ocr --onnx-dir build\turkish-onnx
+.\.venv-desktop\Scripts\python -m meikipop.scripts.quick_lookup --setup-ocr paddle --onnx-dir build\turkish-onnx
 ```
 
 Setup verifies source/export hashes and loads both models before activation.
-Normal setup restores native Paddle; `--rollback` restores the previous asset
-installation. Conversion dependencies are not needed at runtime.
+Normal setup restores native Paddle. Conversion dependencies are not needed
+at runtime.
 
 ## Packaging and compatibility
 
@@ -289,13 +290,9 @@ both outside Git and reuse them across releases and architectures. Apple
 notarization and Windows publisher signing still require release credentials.
 Permission retention across macOS updates needs hands-on verification.
 
-`meikipop legacy-japanese` retains the original Japanese app;
-`meikipop-turkish` and [Start-Turkish.cmd](../Start-Turkish.cmd) retain the
-separate Turkish client. Its TDK/Wiktionary/KeNet assets, optional Stanza,
-`languages/tr` data and `Meikipop/Turkish` settings remain separate from shared
-Yomitan packs and `Meikipop/QuickLookup`. Legacy setup commands remain in
-`meikipop.scripts.turkish`; use its help for individual asset commands and
-close that client before asset updates.
+Turkish uses the shared app, Yomitan library and Zeyrek analyzer. Shared input
+and dictionary selection live in `gui/desktop_input.py` and
+`gui/dictionary_browser.py`; they have no separate language-specific window.
 
 ## Upstream work
 

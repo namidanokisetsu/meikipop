@@ -39,12 +39,10 @@ dependencies = [
 
 [project.scripts]
 meikipop = "meikipop.main:main"
-meikipop-turkish = "meikipop.scripts.turkish:desktop"
 meikipop-search = "meikipop.scripts.quick_lookup:main"
 meikipop-translation = "meikipop.scripts.translation_server:main"
 
 [project.optional-dependencies]
-turkish = ["stanza==1.14.0", "torch==2.8.0"]
 morphology = ["stanza==1.14.0", "torch==2.8.0"]
 # MeikiOCR and PaddleX install cv2 under two distribution names. Keep their
 # wheels on the same release so Python wrappers match the native extension.
@@ -61,4 +59,4 @@ where = ["src"]
 include = ["meikipop*"]
 
 [tool.setuptools.package-data]
-meikipop = ["scripts/deconjugator.json", "resources/icon.ico", "resources/icon.inactive.ico", "resources/turkish/*.json", "resources/licenses/*.txt"]
+meikipop = ["scripts/deconjugator.json", "resources/icon.ico", "resources/icon.inactive.ico", "resources/licenses/*.txt"]

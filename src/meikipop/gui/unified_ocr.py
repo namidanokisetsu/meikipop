@@ -750,7 +750,7 @@ class UnifiedOCR(QObject):
                 from meikipop.utils.macos import require_screen_capture_permission
                 require_screen_capture_permission(request_access=request_access)
             if self.input is None:
-                from meikipop.gui.turkish.desktop_input import DesktopInput
+                from meikipop.gui.desktop_input import DesktopInput
                 from meikipop.config.config import config
                 self.input = DesktopInput(getattr(self, "activation_bindings", config.activation_bindings), "", "", QApplication.doubleClickInterval(), self)
                 self.input.hold_changed.connect(self.hold_changed)

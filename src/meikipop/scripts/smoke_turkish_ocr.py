@@ -1,4 +1,5 @@
 """Actual-model local OCR smoke, with networking blocked throughout inference."""
+import json
 import socket
 from time import perf_counter
 from unittest.mock import patch
@@ -8,7 +9,6 @@ def main():
     import numpy as np
     from PIL import Image, ImageDraw, ImageFont
     from meikipop.ocr.turkish_paddle import LocalOCR, hit_word
-    from meikipop.scripts.turkish import print_json
 
     image = Image.new("RGB", (850, 100), "white")
     text = "Bugün çocuklar kitap okuyor."
@@ -36,8 +36,9 @@ def main():
             assert cached == (text, offset), cached
             offset += len(word)
         cached_hover_ms = (perf_counter() - started) * 1000 / len(words)
-    print_json({"offline": True, "text": text, "target": "kitap", "offset": hit[1],
-                "recognition_ms": round(recognition_ms, 2), "cached_hover_ms": round(cached_hover_ms, 2)})
+    print(json.dumps({"offline": True, "text": text, "target": "kitap", "offset": hit[1],
+                      "recognition_ms": round(recognition_ms, 2), "cached_hover_ms": round(cached_hover_ms, 2)},
+                     ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

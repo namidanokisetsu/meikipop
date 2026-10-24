@@ -114,7 +114,7 @@ def validate_models(root):
                 raise ValueError("Damaged OCR models")
         return manifest
     except (OSError, KeyError, ValueError) as error:
-        raise RuntimeError("Local OCR models missing or damaged. Run meikipop setup-turkish-ocr.") from error
+        raise RuntimeError("Local OCR models missing or damaged. Download them in Settings > Lookup.") from error
 
 
 class LocalOCR:

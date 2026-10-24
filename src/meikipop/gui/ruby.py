@@ -10,7 +10,7 @@ from PyQt6.QtGui import (QColor, QFont, QFontMetricsF, QTextCharFormat, QTextCur
 from meikipop.config.config import config
 from meikipop.dictionary.pitch import PITCH_DATA, PITCH_OBJECT, PITCH_PREFIX
 from meikipop.gui.popup_style import surface_colors
-from meikipop.gui.turkish.browser import DictionaryBrowser
+from meikipop.gui.dictionary_browser import DictionaryBrowser
 
 
 RUBY = QTextFormat.ObjectTypes.UserObject.value + 1

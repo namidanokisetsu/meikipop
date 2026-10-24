@@ -1,4 +1,4 @@
-"""Dictionary-internal selection never needs to touch the system clipboard."""
+"""Shared dictionary selection without touching the system clipboard."""
 from PyQt6.QtCore import pyqtSignal, Qt, QPointF
 from PyQt6.QtGui import QTextCursor
 from PyQt6.QtWidgets import QTextBrowser

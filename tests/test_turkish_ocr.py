@@ -62,10 +62,10 @@ class OCRTests(unittest.TestCase):
 
     def test_missing_models_fail_before_paddle_import_or_download(self):
         with tempfile.TemporaryDirectory() as temporary, patch("meikipop.ocr.turkish_paddle.model_root", return_value=Path(temporary)):
-            with self.assertRaisesRegex(RuntimeError, "setup-turkish-ocr"):
+            with self.assertRaisesRegex(RuntimeError, "Settings"):
                 LocalOCR()
 
-    def test_legacy_hover_reassembles_real_paddle_turkish_fragments(self):
+    def test_word_hit_reassembles_paddle_turkish_fragments(self):
         result = dict(rec_texts=['Bu araç yeni.'], text_word=[['Bu', ' ', 'ara', 'ç ', 'yeni', '.']],
                       text_word_boxes=[[[0,0,20,20], [20,0,30,20], [30,0,60,20],
                                         [60,0,80,20], [80,0,120,20], [120,0,130,20]]])

@@ -72,10 +72,10 @@ def install(provider, progress, cancelled):
     return ""
 
 
-def setup_models(provider):
+def setup_models(provider, *, onnx_dir=None):
     if provider == "paddle":
         from meikipop.ocr.turkish_paddle import setup_ocr
-        setup_ocr()
+        setup_ocr(onnx_dir=onnx_dir)
     elif provider == "meikiocr":
         from meikiocr import MeikiOCR
         MeikiOCR(provider="CPUExecutionProvider")

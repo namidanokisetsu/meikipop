@@ -1,4 +1,4 @@
-"""Global input listeners; all widget work is delivered through Qt signals."""
+"""Shared global input listeners; widget work is delivered through Qt signals."""
 import sys
 import threading
 from time import monotonic

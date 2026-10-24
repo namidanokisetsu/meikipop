@@ -34,7 +34,6 @@ a = Analysis(
         ('src/meikipop/resources/icon.ico', 'meikipop/resources'),
         ('src/meikipop/resources/icon.inactive.ico', 'meikipop/resources'),
         ('src/meikipop/scripts/deconjugator.json', 'meikipop/scripts'),
-        ('src/meikipop/resources/turkish/*.json', 'meikipop/resources/turkish'),
         ('src/meikipop/resources/licenses/*.txt', 'meikipop/resources/licenses'),
     ],
     hiddenimports=model_imports + ['PyQt6.QtTextToSpeech', 'Vision', 'Foundation', 'Quartz', 'AppKit', 'pynput.keyboard._darwin', 'pynput.mouse._darwin'],

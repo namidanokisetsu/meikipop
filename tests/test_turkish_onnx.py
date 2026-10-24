@@ -113,10 +113,8 @@ class ONNXTests(unittest.TestCase):
                 self.export(source, output, fail=True)
             self.assertFalse(output.exists())
 
-    def test_cli_forwards_optional_export_directory_through_rollback_staging(self):
-        from meikipop.scripts.turkish import main
-        with patch('meikipop.dictionary.turkish_assets.setup_asset', return_value='installed') as setup, \
-                patch('builtins.print'):
-            main(['setup-turkish-ocr', '--onnx-dir', 'exports'])
-        self.assertEqual(setup.call_args.kwargs, {'onnx_dir': Path('exports')})
-        self.assertEqual(setup.call_args.args[0], 'ocr')
+    def test_shared_setup_forwards_optional_export_directory(self):
+        from meikipop.scripts.quick_lookup import main
+        with patch('meikipop.ocr.turkish_paddle.setup_ocr') as setup:
+            self.assertEqual(main(['--setup-ocr', 'paddle', '--onnx-dir', 'exports']), 0)
+        setup.assert_called_once_with(onnx_dir=Path('exports'))

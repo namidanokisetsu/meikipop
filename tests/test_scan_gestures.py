@@ -13,7 +13,7 @@ from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QApplication, QWidget
 from pynput import keyboard, mouse
 
-from meikipop.gui.turkish.desktop_input import DesktopInput
+from meikipop.gui.desktop_input import DesktopInput
 
 
 class ScanGestureTests(unittest.TestCase):
@@ -22,8 +22,8 @@ class ScanGestureTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
-        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener"), \
-                patch("meikipop.gui.turkish.desktop_input.mouse.Listener"):
+        with patch("meikipop.gui.desktop_input.KeyboardListener"), \
+                patch("meikipop.gui.desktop_input.mouse.Listener"):
             self.input = DesktopInput("shift,middle", "", "", 400)
         self.addCleanup(self.input.shutdown)
         self.requested = Mock()
@@ -182,13 +182,13 @@ class ScanGestureTests(unittest.TestCase):
         clicked = Mock()
         self.input.clicked.connect(clicked)
         self.ready()
-        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"):
+        with patch("meikipop.gui.desktop_input.sys.platform", "darwin"):
             self.input.click(10, 20, mouse.Button.left, True)
             self.input.click(10, 20, mouse.Button.left, False)
         self.requested.assert_called_once_with()
         clicked.assert_not_called()
         self.input.clicks.suppress_event.assert_not_called()
-        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"):
+        with patch("meikipop.gui.desktop_input.sys.platform", "darwin"):
             self.input.click(10, 20, mouse.Button.left, True)
         clicked.assert_called_once_with()
 
@@ -199,7 +199,7 @@ class ScanGestureTests(unittest.TestCase):
                                  kCGEventOtherMouseDown=25, kCGEventOtherMouseUp=26,
                                  kCGMouseEventButtonNumber=3, kCGMouseButtonCenter=2)
         event = object()
-        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"), \
+        with patch("meikipop.gui.desktop_input.sys.platform", "darwin"), \
                 patch("pynput.mouse._darwin.Quartz", quartz):
             self.input.click(10, 20, mouse.Button.left, True)
             self.assertIsNone(self.input.darwin_intercept(1, event))
@@ -220,8 +220,8 @@ class ScanGestureTests(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "darwin", "Requires native pynput macOS backend")
     def test_macos_listener_uses_pynput_darwin_intercept_option(self):
-        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener") as keyboard_listener, \
-                patch("meikipop.gui.turkish.desktop_input.mouse.Listener") as mouse_listener:
+        with patch("meikipop.gui.desktop_input.KeyboardListener") as keyboard_listener, \
+                patch("meikipop.gui.desktop_input.mouse.Listener") as mouse_listener:
             probe = DesktopInput("shift", "", "", 400)
         try:
             self.assertEqual(keyboard_listener.call_args.kwargs["darwin_intercept"], probe.darwin_key_intercept)
@@ -231,7 +231,7 @@ class ScanGestureTests(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS listener backend")
     def test_actual_macos_listeners_store_interceptors_without_starting_hooks(self):
-        from meikipop.gui.turkish.desktop_input import KeyboardListener
+        from meikipop.gui.desktop_input import KeyboardListener
         with patch.object(KeyboardListener, "start"), patch.object(KeyboardListener, "stop"), \
                 patch.object(KeyboardListener, "join"), patch.object(mouse.Listener, "start"), \
                 patch.object(mouse.Listener, "stop"), patch.object(mouse.Listener, "join"):
@@ -249,7 +249,7 @@ class ScanGestureTests(unittest.TestCase):
                                  kCGKeyboardEventKeycode=9,
                                  CGEventGetIntegerValueField=lambda event, field: 53)
         event = object()
-        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"), \
+        with patch("meikipop.gui.desktop_input.sys.platform", "darwin"), \
                 patch.multiple("pynput.keyboard._darwin", kCGEventKeyDown=10, kCGEventKeyUp=11,
                                 kCGKeyboardEventKeycode=9,
                                 CGEventGetIntegerValueField=quartz.CGEventGetIntegerValueField):
@@ -269,7 +269,7 @@ class ScanGestureTests(unittest.TestCase):
                                  kCGKeyboardEventKeycode=9,
                                  CGEventGetIntegerValueField=lambda event, field: 8)
         event = object()
-        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"), \
+        with patch("meikipop.gui.desktop_input.sys.platform", "darwin"), \
                 patch.multiple("pynput.keyboard._darwin", kCGEventKeyDown=10, kCGEventKeyUp=11,
                                 kCGKeyboardEventKeycode=9,
                                 CGEventGetIntegerValueField=quartz.CGEventGetIntegerValueField):
@@ -298,7 +298,7 @@ class ScanGestureTests(unittest.TestCase):
         self.assertEqual(self.input.keys.suppress_event.call_count, 3)
 
     def test_pin_key_can_be_changed_or_disabled_and_requires_scan_preview(self):
-        with patch("meikipop.gui.turkish.desktop_input.sys.platform", "darwin"):
+        with patch("meikipop.gui.desktop_input.sys.platform", "darwin"):
             self.input.keys.canonical.side_effect = lambda key: key
             self.input.set_pin_shortcut("x")
             self.input.key(keyboard.KeyCode.from_char("x"), True)

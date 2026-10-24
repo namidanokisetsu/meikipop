@@ -2408,10 +2408,10 @@ class QuickLookupTests(unittest.TestCase):
             self.assertTrue(self.window._popup_shortcuts["replay"].key().isEmpty())
 
     def test_fullscreen_selection_copy_keeps_source_focus_and_releases_input_on_dismissal(self):
-        from meikipop.gui.turkish.desktop_input import DesktopInput
+        from meikipop.gui.desktop_input import DesktopInput
         from meikipop.gui.unified_ocr import UnifiedOCR
-        with patch("meikipop.gui.turkish.desktop_input.KeyboardListener"), \
-                patch("meikipop.gui.turkish.desktop_input.mouse.Listener"):
+        with patch("meikipop.gui.desktop_input.KeyboardListener"), \
+                patch("meikipop.gui.desktop_input.mouse.Listener"):
             inputs = DesktopInput("shift,middle", "", "", 400)
         self.addCleanup(inputs.shutdown)
         controller = SimpleNamespace(window=self.window, input=inputs, _capture_hidden=False,

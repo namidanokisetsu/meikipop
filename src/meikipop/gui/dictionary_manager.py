@@ -838,7 +838,7 @@ class SetupDialog(QDialog):
     def save_pin_shortcut(self):
         prefix = f"profiles/{self.profile.currentData()}/"
         try:
-            from meikipop.gui.turkish.desktop_input import validate_pin_shortcut
+            from meikipop.gui.desktop_input import validate_pin_shortcut
             value = self.pin_shortcut.text()
             validate_pin_shortcut(value)
         except ValueError as error:

@@ -1,5 +1,6 @@
 """Lightweight, cross-platform desktop entrypoint; OCR and models stay lazy."""
 import argparse
+from pathlib import Path
 import sys
 
 
@@ -19,9 +20,12 @@ def main(argv=None):
     parser.add_argument("--setup", action="store_true", help="Open setup")
     parser.add_argument("--setup-morphology", metavar="LANGUAGE", help=argparse.SUPPRESS)
     parser.add_argument("--setup-ocr", choices=("paddle", "meikiocr"), help=argparse.SUPPRESS)
+    parser.add_argument("--onnx-dir", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--setup-dictionary", metavar="LANGUAGE", help=argparse.SUPPRESS)
     parser.add_argument("--check-runtime", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.onnx_dir and args.setup_ocr != "paddle":
+        parser.error("--onnx-dir requires --setup-ocr paddle")
     background = args.background or (not args.text and sys.platform != "darwin")
 
     if args.setup_dictionary:
@@ -40,7 +44,7 @@ def main(argv=None):
     if args.setup_ocr:
         from meikipop.scripts.setup_ocr import setup_models
         try:
-            setup_models(args.setup_ocr)
+            setup_models(args.setup_ocr, onnx_dir=args.onnx_dir)
         except Exception as error:
             import traceback
             traceback.print_exc()
@@ -82,7 +86,6 @@ def main(argv=None):
             application.processEvents()
         if getattr(sys, "frozen", False):
             import json
-            from pathlib import Path
             import tempfile
             import threading
             import zipfile
