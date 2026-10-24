@@ -159,6 +159,27 @@ class QuickLookupTests(unittest.TestCase):
         self.assertTrue(self.window.translation_debounce.isActive())
         self.assertFalse(panel.copy_output.isEnabled())
 
+    def test_translation_divider_has_balanced_insets_and_matching_header_padding(self):
+        self.window.open_translation()
+        panel = self.window.translation_panel
+        for size in (QSize(480, 340), QSize(620, 420)):
+            self.window.resize(size)
+            self.app.processEvents()
+            geometry = self.window.geometry()
+            for horizontal in (False, True):
+                panel.set_side_by_side(horizontal)
+                self.app.processEvents()
+                self.assertEqual(panel.source_label.y(), panel.target_label.y())
+                self.assertGreater(panel.source_label.parentWidget().layout().contentsMargins().top(), 0)
+                if not horizontal:
+                    handle = panel.splitter.handle(1)
+                    left = handle.mapTo(self.window.frame, QPoint()).x()
+                    self.assertEqual(left, self.window.frame.width() - left - handle.width())
+                self.assertEqual(self.window.geometry(), geometry)
+        self.assertEqual(panel.splitter.handleWidth(), self.window.kanji_splitter.handleWidth())
+        self.assertEqual(panel.source_label.parentWidget().layout().contentsMargins().top(),
+                         self.window.kanji_panel.layout().contentsMargins().top())
+
     def test_editing_source_cancels_stream_and_preserves_edit_cursor(self):
         self.window.translation_worker = Mock()
         self.window.open_translation()

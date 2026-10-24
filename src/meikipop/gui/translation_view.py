@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QSplitter, QTextE
 from meikipop.config.config import config
 from meikipop.gui.ruby import RubyBrowser
 from meikipop.gui.section_scroll import ReadingPosition
-from meikipop.gui.popup_style import surface_colors
+from meikipop.gui.popup_style import DIVIDER_WIDTH, PANE_PADDING, surface_colors
 from meikipop.gui.action_icons import action_icon
 
 
@@ -125,12 +125,12 @@ class TranslationPanel(QWidget):
         self.copy_output = self._button("copy", "Copy output", self._copy_output)
         self.swap = self._button("swap", "Swap languages", self.swap_requested.emit)
         self.splitter = QSplitter(Qt.Orientation.Vertical)
-        self.splitter.setHandleWidth(2)
+        self.splitter.setHandleWidth(DIVIDER_WIDTH)
         for editor, label, buttons in ((self.source, self.source_label, (self.copy_source,)),
                                         (self.output, self.target_label, (self.copy_output,))):
             pane = QWidget()
             layout = QVBoxLayout(pane)
-            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setContentsMargins(0, PANE_PADDING, 0, PANE_PADDING)
             layout.setSpacing(2)
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)

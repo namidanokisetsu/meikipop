@@ -2,6 +2,9 @@
 
 from PyQt6.QtGui import QColor
 
+PANE_PADDING = 4
+DIVIDER_WIDTH = 2
+
 
 def surface_colors(background, foreground):
     bg, fg = QColor(background), QColor(foreground)

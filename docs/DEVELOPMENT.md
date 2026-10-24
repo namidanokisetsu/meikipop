@@ -62,7 +62,8 @@ keeps stable per-language scan callbacks so unchanged pixels reuse OCR.
 Disclosure preserves the scroll offset; streaming text retains its text anchor.
 Japanese headword and compact-card kanji links share one detail pane below the
 dictionary viewport. Selection replaces its contents without rebuilding the
-dictionary document. A compact vertical splitter remembers the kanji height share.
+dictionary document. A compact vertical splitter remembers the kanji height share. Kanji and translation
+share divider thickness and pane padding; translation headers use equal top insets.
 Without a saved split, its position fits the rendered glyph block and pane header,
 subject to available space. Opening and closing kanji never resize the popup.
 Lookup prepares kanji data for every returned headword in result order.

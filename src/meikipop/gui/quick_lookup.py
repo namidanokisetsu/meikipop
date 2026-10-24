@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 
 from meikipop.config.config import config
 from meikipop.dictionary.search import SearchEngine, SearchResult
-from meikipop.gui.popup_style import expanded_geometry, frame_stylesheet, popup_position, surface_colors
+from meikipop.gui.popup_style import DIVIDER_WIDTH, PANE_PADDING, expanded_geometry, frame_stylesheet, popup_position, surface_colors
 from meikipop.gui.action_icons import action_icon
 from meikipop.gui.ruby import RubyBrowser, TAG_PREFIX, ruby_html
 from meikipop.gui.gloss_content import normalize_definitions
@@ -925,7 +925,7 @@ class QuickLookupWindow(QDialog):
         self.frame = QFrame()
         outer.addWidget(self.frame)
         layout = QVBoxLayout(self.frame)
-        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setContentsMargins(6, PANE_PADDING, 6, PANE_PADDING)
         layout.setSpacing(3)
         self.actions_row = QWidget()
         toolbar = QHBoxLayout(self.actions_row)
@@ -1063,14 +1063,14 @@ class QuickLookupWindow(QDialog):
         self.content_stack.addWidget(self.translation_panel)
         self.kanji_splitter = QSplitter(Qt.Orientation.Vertical)
         self.kanji_splitter.setChildrenCollapsible(False)
-        self.kanji_splitter.setHandleWidth(2)
+        self.kanji_splitter.setHandleWidth(DIVIDER_WIDTH)
         self.content_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.content_stack.setMinimumHeight(self.browser.fontMetrics().height())
         self.kanji_splitter.addWidget(self.content_stack)
         layout.addWidget(self.kanji_splitter, 1)
         self.kanji_panel = QWidget()
         kanji_layout = QVBoxLayout(self.kanji_panel)
-        kanji_layout.setContentsMargins(0, 0, 0, 0)
+        kanji_layout.setContentsMargins(0, PANE_PADDING, 0, PANE_PADDING)
         kanji_layout.setSpacing(2)
         self.kanji_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         kanji_header = QHBoxLayout()
@@ -2323,6 +2323,7 @@ class QuickLookupWindow(QDialog):
     def _place_actions(self):
         if self._shutting_down:
             return
+        self.frame.layout().setContentsMargins(6, 0 if self._translation_view else PANE_PADDING, 6, PANE_PADDING)
         self._sync_headword_actions()
         self.mode_row.hide()
         for name, button in self._popup_actions.items():
