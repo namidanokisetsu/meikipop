@@ -379,6 +379,11 @@ class UnifiedOCR(QObject):
         window.installEventFilter(self)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
         self._restore_scan_area()
+        settings = getattr(window, "settings", None)
+        self.hover_enabled = bool(self.hover_region is not None and settings is not None
+                                  and settings.value("hover_scan/startup", False, bool))
+        if hasattr(window, "hover_toggle_requested"):
+            window.hover_toggle_requested.connect(self.toggle_hover)
         self.reload_settings()
 
     @property
@@ -443,6 +448,12 @@ class UnifiedOCR(QObject):
             area.setEnabled(self.hover_enabled)
         menu.aboutToShow.connect(sync)
         sync()
+
+    def toggle_hover(self):
+        from PyQt6.QtWidgets import QKeySequenceEdit
+        if isinstance(QApplication.focusWidget(), QKeySequenceEdit) or QApplication.activeModalWidget():
+            return
+        self.set_hover_enabled(not self.hover_enabled)
 
     def set_hover_enabled(self, enabled):
         if enabled and self.hover_region is None and not self.select_scan_area():

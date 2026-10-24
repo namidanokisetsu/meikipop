@@ -461,6 +461,27 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
                 controller.shutdown()
                 window.deleteLater()
 
+    def test_hover_startup_requires_valid_saved_area_without_opening_selector(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(os.path.join(directory, "startup.ini"), QSettings.Format.IniFormat)
+            settings.setValue("hover_scan/startup", True)
+            settings.setValue("hover_scan/region", QRect(50, 50, 100, 50))
+            screen = QApplication.primaryScreen()
+            for key, expected in ((self.controller._screen_key(screen), True),
+                                  (("missing", 0, 0, 800, 600, 1), False)):
+                settings.setValue("hover_scan/screen", list(key))
+                window = FakeWindow()
+                window.settings = settings
+                with patch.object(UnifiedOCR, "reload_settings"), \
+                        patch("meikipop.gui.region_selector.RegionSelector.get_region") as selector:
+                    controller = UnifiedOCR(window)
+                try:
+                    self.assertEqual(controller.hover_enabled, expected)
+                    selector.assert_not_called()
+                finally:
+                    controller.shutdown()
+                    window.deleteLater()
+
     def test_saved_scan_area_requires_valid_bounds_and_matching_display(self):
         with tempfile.TemporaryDirectory() as directory:
             self.window.settings = QSettings(os.path.join(directory, "settings.ini"), QSettings.Format.IniFormat)

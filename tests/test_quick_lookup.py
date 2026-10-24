@@ -175,6 +175,16 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(panel.output.toPlainText(), "")
         self.window.translation_worker.cancel.assert_called()
 
+    def test_hover_shortcut_is_independent_and_checks_collisions(self):
+        self.assertIsNone(self.window._hover_keys)
+        with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:
+            self.window.apply_hover_shortcut("<ctrl>+<shift>+h", "Ctrl+Shift+H")
+            with self.assertRaises(ValueError):
+                self.window.apply_translation_shortcut("<shift>+<ctrl>+h")
+            self.window.apply_hover_shortcut("")
+            hotkeys.return_value.stop.assert_called_once()
+            self.assertIsNone(self.window._hover_keys)
+
     def test_translation_shortcut_is_independent_recordable_and_disabled_by_default(self):
         self.assertIsNone(self.window._translation_keys)
         with patch("meikipop.gui.text_shortcuts.TextHotKeys") as hotkeys:

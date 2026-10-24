@@ -172,7 +172,8 @@ entry, `glossary` uses every returned entry, and `popup-selection-text` remains
 separate. Hover scanning retains the active monitor's full capture for Anki while
 OCR uses only the selected area, with both images taken from the same frame.
 The hover scan area persists globally with its screen geometry and scale;
-restore it only on a matching display. Hover scanning starts disabled.
+restore it only on a matching display. Hover scanning starts disabled unless
+explicitly enabled at startup; restoration requires a valid saved area. Its independently recorded toggle defaults to disabled.
 Automatic popup hides keep hover scanning active inside the area; explicit
 dismissal pauses it until the pointer leaves and returns.
 Successful saves retain their headword/reading and Anki settings across lookups;

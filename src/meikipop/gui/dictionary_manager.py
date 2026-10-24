@@ -302,6 +302,15 @@ class SetupDialog(QDialog):
         shortcut_layout.addRow("Translate", self.translation_shortcut)
         self.translation_shortcut.enabled.toggled.connect(lambda _: self.autosave(self.save_translation_shortcut))
         self.translation_shortcut.recorder.editingFinished.connect(lambda: self.autosave(self.save_translation_shortcut))
+        self.hover_shortcut = ShortcutEdit(settings.value("hover_hotkey", ""),
+            settings.value("hover_hotkey_preset", "Meta+Shift+H" if sys.platform == "darwin" else "Ctrl+Shift+H"))
+        shortcut_layout.addRow("Toggle hover scan", self.hover_shortcut)
+        self.hover_shortcut.enabled.toggled.connect(lambda _: self.autosave(self.save_hover_shortcut))
+        self.hover_shortcut.recorder.editingFinished.connect(lambda: self.autosave(self.save_hover_shortcut))
+        self.hover_startup = QCheckBox("Enable hover scan at startup")
+        self.hover_startup.setChecked(settings.value("hover_scan/startup", False, bool))
+        self.hover_startup.toggled.connect(lambda enabled: settings.setValue("hover_scan/startup", enabled))
+        shared_layout.addRow(self.hover_startup)
         self.close_on_cursor_leave = QCheckBox("Close popup when cursor leaves")
         self.close_on_cursor_leave.setToolTip("Includes pinned popups")
         self.close_on_cursor_leave.setChecked(settings.value("close_on_cursor_leave", False, bool))
@@ -765,22 +774,29 @@ class SetupDialog(QDialog):
             self.parent().translation_panel.set_side_by_side(enabled)
 
     def save_translation_shortcut(self):
+        self._save_auxiliary_shortcut("translation", self.translation_shortcut)
+
+    def save_hover_shortcut(self):
+        self._save_auxiliary_shortcut("hover", self.hover_shortcut)
+
+    def _save_auxiliary_shortcut(self, name, editor):
+        key = name + "_hotkey"
+        preset = editor.recorder.keySequence().toString()
         try:
-            value = self.translation_shortcut.text()
-            preset = self.translation_shortcut.recorder.keySequence().toString()
+            value = editor.text()
             warning = ""
             if self.parent() is not None:
-                warning = self.parent().apply_translation_shortcut(value, preset)
+                warning = getattr(self.parent(), "apply_" + name + "_shortcut")(value, preset)
             else:
                 from meikipop.gui.text_shortcuts import validate_shortcuts
-                validate_shortcuts([self.settings.value("hotkey", ""), value])
-                self.settings.setValue("translation_hotkey", value)
-                self.settings.setValue("translation_hotkey_preset", preset)
+                validate_shortcuts([value, *(self.settings.value(other, "") for other in
+                                           ("hotkey", "translation_hotkey", "hover_hotkey") if other != key)])
+                self.settings.setValue(key, value)
+                self.settings.setValue(key + "_preset", preset)
             self.status.setText(warning if isinstance(warning, str) else "")
         except (ValueError, OSError, RuntimeError) as error:
-            with QSignalBlocker(self.translation_shortcut.enabled), QSignalBlocker(self.translation_shortcut.recorder):
-                self.translation_shortcut.set_value(self.settings.value("translation_hotkey", ""),
-                                                    self.settings.value("translation_hotkey_preset", "Ctrl+Shift+T"))
+            with QSignalBlocker(editor.enabled), QSignalBlocker(editor.recorder):
+                editor.set_value(self.settings.value(key, ""), self.settings.value(key + "_preset", preset))
             self.status.setText(str(error))
 
     def save_screen_shortcut(self):

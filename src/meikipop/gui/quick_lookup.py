@@ -824,6 +824,7 @@ class QuickLookupWindow(QDialog):
     models_changed = pyqtSignal()
     hotkey_requested = pyqtSignal()
     translation_requested = pyqtSignal()
+    hover_toggle_requested = pyqtSignal()
     selection_requested = pyqtSignal()
     clipboard_requested = pyqtSignal()
 
@@ -1136,6 +1137,7 @@ class QuickLookupWindow(QDialog):
         self.hotkey_requested.connect(self.toggle_lookup)
         self.translation_requested.connect(self.open_translation)
         self._translation_keys = None
+        self._hover_keys = None
         from meikipop.gui.selection import SelectionCapture
         self.selection = SelectionCapture(self)
         self.selection.completed.connect(self._selected_text_ready)
@@ -3192,7 +3194,7 @@ class QuickLookupWindow(QDialog):
         from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
         from meikipop.utils.macos import InputMonitoringPermissionError
         bindings = {value: self.hotkey_requested.emit} if value else {}
-        validate_shortcuts([value, self.settings.value("translation_hotkey", "")])
+        validate_shortcuts([value, self.settings.value("translation_hotkey", ""), self.settings.value("hover_hotkey", "")])
         replacement = TextHotKeys(bindings) if bindings else None
         warning = ""
         if replacement:
@@ -3215,12 +3217,22 @@ class QuickLookupWindow(QDialog):
         binding = explicit if explicit is not None else self.settings.value("hotkey", "")
         self.apply_shortcut(binding)
         self.apply_translation_shortcut(self.settings.value("translation_hotkey", ""))
+        self.apply_hover_shortcut(self.settings.value("hover_hotkey", ""))
 
     def apply_translation_shortcut(self, value, preset=None):
+        return self._apply_auxiliary_shortcut("translation", value, preset)
+
+    def apply_hover_shortcut(self, value, preset=None):
+        return self._apply_auxiliary_shortcut("hover", value, preset)
+
+    def _apply_auxiliary_shortcut(self, name, value, preset):
         from meikipop.gui.text_shortcuts import TextHotKeys, validate_shortcuts
         from meikipop.utils.macos import InputMonitoringPermissionError
-        validate_shortcuts([self.settings.value("hotkey", ""), value])
-        replacement = TextHotKeys({value: self.translation_requested.emit}) if value else None
+        key = name + "_hotkey"
+        validate_shortcuts([value, *(self.settings.value(other, "") for other in
+                                   ("hotkey", "translation_hotkey", "hover_hotkey") if other != key)])
+        signal = self.translation_requested if name == "translation" else self.hover_toggle_requested
+        replacement = TextHotKeys({value: signal.emit}) if value else None
         warning = ""
         if replacement:
             try:
@@ -3229,13 +3241,15 @@ class QuickLookupWindow(QDialog):
                 warning = str(error)
                 replacement = None
                 self.show_message(warning)
-        previous, self._translation_keys = self._translation_keys, replacement
+        attribute = "_" + name + "_keys"
+        previous = getattr(self, attribute)
+        setattr(self, attribute, replacement)
         if previous:
             previous.stop()
             previous.join(timeout=2)
-        self.settings.setValue("translation_hotkey", value)
+        self.settings.setValue(key, value)
         if preset is not None:
-            self.settings.setValue("translation_hotkey_preset", preset)
+            self.settings.setValue(key + "_preset", preset)
         return warning
 
     def shutdown(self):
@@ -3262,6 +3276,9 @@ class QuickLookupWindow(QDialog):
         if self._keys:
             self._keys.stop()
             self._keys = None
+        if self._hover_keys:
+            self._hover_keys.stop()
+            self._hover_keys = None
         if self._translation_keys:
             self._translation_keys.stop()
             self._translation_keys = None
