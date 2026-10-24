@@ -194,8 +194,8 @@ class ClipboardLookup(QObject):
         point = geometry.center() if geometry.isValid() else QCursor.pos()
         screen = QApplication.screenAt(point) or QApplication.primaryScreen()
         area = screen.availableGeometry()
-        self.search_window.move(max(area.left(), min(point.x(), area.right() - 320)),
-                                max(area.top(), min(point.y() - 60, area.bottom() - 48)))
+        self.search_window.move(max(area.left(), min(point.x(), area.right() + 1 - self.search_window.width())),
+                                max(area.top(), min(point.y() - 60, area.bottom() + 1 - self.search_window.height())))
         self.search_window.show()
         self.search_window.activateWindow()
         self.search.setFocus()

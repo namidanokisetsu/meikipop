@@ -92,6 +92,7 @@ class RubyObject(QObject, QTextObjectInterface):
 class RubyBrowser(DictionaryBrowser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.document().setDocumentMargin(0)
         self._ruby_object = RubyObject(self)
         self._pitch_object = None
         self._pressed_kanji = ""

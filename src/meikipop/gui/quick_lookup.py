@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 from meikipop.config.config import config
 from meikipop.dictionary.search import SearchEngine, SearchResult
 from meikipop.gui.popup_style import DIVIDER_WIDTH, PANE_PADDING, expanded_geometry, frame_stylesheet, popup_position, surface_colors
-from meikipop.gui.action_icons import action_icon
+from meikipop.gui.action_icons import action_button, action_icon
 from meikipop.gui.ruby import RubyBrowser, TAG_PREFIX, ruby_html
 from meikipop.gui.gloss_content import normalize_definitions
 from meikipop.language.profiles import configured_profiles, default_partner, visible_profiles
@@ -1175,14 +1175,7 @@ class QuickLookupWindow(QDialog):
         self.installEventFilter(self)
 
     def _action(self, name, description):
-        button = QToolButton()
-        button.setProperty("action_name", name)
-        button.setIcon(action_icon(name, config.color_foreground))
-        button.setIconSize(QSize(16, 16))
-        button.setFixedSize(25, 25)
-        button.setAccessibleName(description)
-        button.setToolTip(description)
-        return button
+        return action_button(name, description, config.color_foreground)
 
     @property
     def is_pinned(self):
@@ -1214,6 +1207,7 @@ class QuickLookupWindow(QDialog):
             QComboBox QAbstractItemView {{background:{config.color_background};color:{config.color_foreground};}}
             QPushButton,QToolButton {{background:transparent;color:{config.color_foreground};
                 border:0;border-radius:4px;padding:3px 5px;}}
+            QToolButton[action_name] {{padding:3px;}}
             QPushButton:hover,QToolButton:hover,QToolButton:checked {{background:{colors['hover']};}}
             QPushButton:disabled,QToolButton:disabled {{color:{colors['muted']};}}
             QMenu {{background:{config.color_background};color:{config.color_foreground};
@@ -1887,23 +1881,37 @@ class QuickLookupWindow(QDialog):
                                                combine_frequencies=self.settings.value(f"profiles/{self.preferred_foreign}/combine_frequencies", True, bool)))
             self._action_heading = None
             self._headword_blocks = []
+            reservations = {}
             block = self.browser.document().begin()
             while block.isValid():
                 if block.blockFormat().headingLevel() == 2:
                     self._headword_blocks.append(block)
                     if self._headword_rows:
-                        fmt = block.blockFormat()
-                        fmt.setLineHeight(max(row.sizeHint().height() for row, _, _ in self._headword_rows.values()),
-                                          QTextBlockFormat.LineHeightTypes.MinimumHeight.value)
-                        QTextCursor(block).setBlockFormat(fmt)
+                        reservations[block.position()] = (block, max(
+                            row.sizeHint().height() for row, _, _ in self._headword_rows.values()))
                 if self._action_heading is None and (show_source and source_text or block.blockFormat().headingLevel() == 2):
                     self._action_heading = block
                     if self._action_clearance():
-                        fmt = block.blockFormat()
-                        fmt.setLineHeight(self.audio_actions.sizeHint().height(),
-                                          QTextBlockFormat.LineHeightTypes.MinimumHeight.value)
-                        QTextCursor(block).setBlockFormat(fmt)
+                        reservations[block.position()] = (block, self.audio_actions.sizeHint().height())
                 block = block.next()
+            document = self.browser.document()
+            formats = []
+            for block, height in reservations.values():
+                document.documentLayout().blockBoundingRect(block)
+                line = block.layout().lineAt(0) if block.layout().lineCount() else None
+                fmt = block.blockFormat()
+                fmt.setLineHeight(height, QTextBlockFormat.LineHeightTypes.MinimumHeight.value)
+                if line is not None:
+                    # Minimum line height puts the extra leading above the text.
+                    fmt.setBottomMargin(max(fmt.bottomMargin(), math.ceil((height - line.height()) / 2)))
+                formats.append((block, fmt))
+            if formats:
+                document.setLayoutEnabled(False)
+                try:
+                    for block, fmt in formats:
+                        QTextCursor(block).setBlockFormat(fmt)
+                finally:
+                    document.setLayoutEnabled(True)
             self._render_identity = identity
             self._rendered_result_key = result_key
             self._document_revision = self.revision
@@ -2278,8 +2286,8 @@ class QuickLookupWindow(QDialog):
                     y = area.top() + 8
                     if tray and not tray.isNull():
                         y = max(y, tray.bottom() + 8)
-                    y = min(y, area.bottom() - self.height())
-                self.move(max(area.left(), min(x - self.width() // 2, area.right() - self.width())),
+                    y = min(y, area.bottom() + 1 - self.height())
+                self.move(max(area.left(), min(x - self.width() // 2, area.right() + 1 - self.width())),
                           max(area.top(), y))
             else:
                 self.move(*popup_position(point.x(), point.y(), self.size(), area, config.popup_position_mode))
@@ -2380,10 +2388,8 @@ class QuickLookupWindow(QDialog):
             offset = sticky.y()
         rect = document.documentLayout().blockBoundingRect(block)
         line = block.layout().lineAt(0) if block.layout().lineCount() else None
-        # Qt includes minimum-line-height leading in y(), not in height().
-        height = max(line.y() + line.height() if line is not None else rect.height(),
-                     self.audio_actions.sizeHint().height())
-        top = rect.top() + offset
+        height = line.height() if line is not None else rect.height()
+        top = rect.top() + offset + (line.y() if line is not None else 0)
         size = self.audio_actions.sizeHint()
         margin = self.browser.document().documentMargin()
         self.audio_actions.setGeometry(round(viewport.width() - margin - size.width()),
@@ -2458,7 +2464,8 @@ class QuickLookupWindow(QDialog):
             size = row.sizeHint()
             shared_width = self._action_clearance() if block == self._action_heading else 0
             line = block.layout().lineAt(0) if block.layout().lineCount() else None
-            height = max(line.y() + line.height() if line else rect.height(), size.height())
+            top += line.y() if line else 0
+            height = line.height() if line else rect.height()
             row.setGeometry(round(viewport.width() - document.documentMargin() - size.width() - shared_width),
                             round(top + (height - size.height()) / 2), size.width(), size.height())
             row.setVisible(top + height > 0 and top < viewport.height() and not self._translation_view)

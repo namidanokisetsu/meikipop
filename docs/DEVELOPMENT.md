@@ -86,7 +86,9 @@ Nested document updates leave inherited paint suppression to the parent window.
 Preview defaults to one definition without grammar labels; pinned results have no definition cutoff.
 Dictionary display preferences only control whether a section starts collapsed.
 Popup actions share the first visible sentence or headword line, reserving their
-measured width. Button visibility and sentence size are saved per profile.
+measured width and centering on the text line after Qt leading. Icon actions use
+one square button geometry; reading surfaces share a zero document margin.
+Button visibility and sentence size are saved per profile.
 Multiple headword/reading groups have their own audio and Anki controls anchored
 to cached heading blocks. Anki exports and saved-note state belong to that group;
 sentence actions and automatic pronunciation retain their existing scope.
@@ -99,7 +101,8 @@ invalidate requests immediately and debounce submission outside IME composition.
 Previous output stays muted with its copy action disabled until replaced; streamed
 and completed results must match the current revision and source text. Dismissal releases the translation
 snapshot before another hover result. The stacked/horizontal splitter uses Qt
-layout bounds; editing and output have independent scroll surfaces.
+layout bounds and starts with equal panes until adjusted; editing and output
+have independent scroll surfaces. Loading indicators stay inside their viewport.
 The standalone translation shortcut is independently recorded and disabled by
 default. Language choosers search native/English names and codes. Translation
 accepts long input, splits it at paragraph, sentence or whitespace boundaries

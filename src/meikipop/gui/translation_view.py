@@ -9,7 +9,25 @@ from meikipop.config.config import config
 from meikipop.gui.ruby import RubyBrowser
 from meikipop.gui.section_scroll import ReadingPosition
 from meikipop.gui.popup_style import DIVIDER_WIDTH, PANE_PADDING, surface_colors
-from meikipop.gui.action_icons import action_icon
+from meikipop.gui.action_icons import action_button
+
+
+class PaneSplitter(QSplitter):
+    equal_sizes = True
+
+    def balance(self):
+        if self.equal_sizes and self.count() == 2:
+            span = self.width() if self.orientation() == Qt.Orientation.Horizontal else self.height()
+            available = max(0, span - self.handleWidth())
+            self.setSizes([available // 2, available - available // 2])
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.balance()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.balance()
 
 
 class TranslationView(RubyBrowser):
@@ -49,7 +67,12 @@ class TranslationView(RubyBrowser):
         cursor.movePosition(QTextCursor.MoveOperation.End)
         rect = self.cursorRect(cursor)
         metrics = self.loading.fontMetrics()
-        self.loading.setGeometry(rect.left(), rect.bottom(), metrics.horizontalAdvance("..."), metrics.height())
+        bounds = self.viewport().rect()
+        width = min(bounds.width(), metrics.horizontalAdvance("..."))
+        height = min(bounds.height(), metrics.height())
+        self.loading.setGeometry(max(bounds.left(), min(rect.left(), bounds.right() + 1 - width)),
+                                 max(bounds.top(), min(rect.bottom() + 1, bounds.bottom() + 1 - height)),
+                                 width, height)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -83,6 +106,7 @@ class SourceEditor(QTextEdit):
 
     def __init__(self):
         super().__init__()
+        self.document().setDocumentMargin(0)
         self.setAcceptRichText(False)
         self.setPlaceholderText("Text to translate")
         self.setAccessibleName("Translation source")
@@ -124,7 +148,7 @@ class TranslationPanel(QWidget):
         self.copy_source = self._button("copy", "Copy input", lambda: self._copy(self.source.toPlainText()))
         self.copy_output = self._button("copy", "Copy output", self._copy_output)
         self.swap = self._button("swap", "Swap languages", self.swap_requested.emit)
-        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        self.splitter = PaneSplitter(Qt.Orientation.Vertical)
         self.splitter.setHandleWidth(DIVIDER_WIDTH)
         for editor, label, buttons in ((self.source, self.source_label, (self.copy_source,)),
                                         (self.output, self.target_label, (self.copy_output,))):
@@ -155,10 +179,7 @@ class TranslationPanel(QWidget):
         self.busy = False
 
     def _button(self, icon, tooltip, callback):
-        button = QToolButton()
-        button.setIcon(action_icon(icon, config.color_foreground))
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
+        button = action_button(icon, tooltip, config.color_foreground)
         button.clicked.connect(callback)
         return button
 
@@ -187,22 +208,27 @@ class TranslationPanel(QWidget):
                                 f"border:1px solid {colors['border']};border-radius:3px;padding:1px 4px;}}"
                                 f"QToolButton:hover {{background:{colors['hover']};}}")
         self.output.set_content(translation or self.stale_output, message, stale=not translation and bool(self.stale_output))
+        self.splitter.balance()
 
     def _split_key(self):
         return "translation_split/" + self.splitter.orientation().name
 
     def _save_split(self, *_):
+        self.splitter.equal_sizes = False
         if self.settings is not None:
             self.settings.setValue(self._split_key(), self.splitter.sizes())
 
     def _restore_split(self):
-        sizes = self.settings.value(self._split_key(), [1, 1]) if self.settings is not None else [1, 1]
+        sizes = self.settings.value(self._split_key(), []) if self.settings is not None else []
+        self.splitter.equal_sizes = True
         try:
             sizes = [int(value) for value in sizes]
             if len(sizes) == 2 and all(value > 0 for value in sizes):
+                self.splitter.equal_sizes = False
                 self.splitter.setSizes(sizes)
         except (TypeError, ValueError):
             pass
+        self.splitter.balance()
 
     def set_side_by_side(self, enabled):
         orientation = Qt.Orientation.Horizontal if enabled else Qt.Orientation.Vertical

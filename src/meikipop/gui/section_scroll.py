@@ -3,7 +3,7 @@ from bisect import bisect_left, bisect_right
 import math
 
 from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSignalBlocker, QTimer, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QColor, QPainter, QRegion, QTextCursor, QTextFormat
+from PyQt6.QtGui import QColor, QPainter, QRegion, QTextBlockFormat, QTextCursor, QTextFormat
 from PyQt6.QtWidgets import QApplication, QSlider
 
 from meikipop.gui.ruby import RubyBrowser
@@ -488,7 +488,13 @@ class SectionScroller(QObject):
         document.setTextWidth(viewport.width())
         source = self.browser.document()
         source_height = source.documentLayout().blockBoundingRect(source.findBlock(position)).height()
-        height = min(viewport.height(), math.ceil(max(source_height, document.size().height())))
+        height = max(source_height, document.size().height())
+        block = document.begin()
+        fmt = block.blockFormat()
+        if block.layout().lineCount() and fmt.lineHeightType() == QTextBlockFormat.LineHeightTypes.MinimumHeight.value:
+            line = block.layout().lineAt(0)
+            height = max(height, line.y() + (line.height() + fmt.lineHeight()) / 2)
+        height = min(viewport.height(), math.ceil(height))
         offset = min(0, boundaries[index + 1][0] - scroll - height) if index + 1 < len(boundaries) else 0
         self.header.setGeometry(0, offset, viewport.width(), height)
         self.header.setVisible(self._top(position) < scroll)

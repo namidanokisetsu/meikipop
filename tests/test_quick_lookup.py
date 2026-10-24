@@ -57,6 +57,104 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_small_heading_actions_center_on_text_and_clear_the_next_block(self):
+        for size in (10, 14, 18):
+            with self.subTest(size=size):
+                self.settings.setValue('profiles/ja/font_size_header', size)
+                self.window.reload_appearance()
+                self.window.show_entries((entry(),), peek=True)
+                self.window.pin.setChecked(True)
+                self.app.processEvents()
+                block = self.window._action_heading
+                layout = self.window.browser.document().documentLayout()
+                rect = layout.blockBoundingRect(block)
+                line = block.layout().lineAt(0)
+                controls = self.window.audio_actions.geometry()
+                self.assertLessEqual(abs(controls.y() + controls.height() / 2
+                                         - rect.top() - line.y() - line.height() / 2), .5)
+                self.assertLess(controls.bottom(), layout.blockBoundingRect(block.next()).top())
+
+    def test_translation_default_split_is_equal_and_user_split_survives_resize(self):
+        self.window.open_translation()
+        panel = self.window.translation_panel
+        panel.set_content('Source', 'Translation', 'English', 'Japanese')
+        for horizontal in (False, True):
+            panel.set_side_by_side(horizontal)
+            for width in (480, 620):
+                self.window.resize(width, 420)
+                self.app.processEvents()
+                sizes = panel.splitter.sizes()
+                self.assertLessEqual(abs(sizes[0] - sizes[1]), 1)
+        for button in (panel.copy_source, panel.copy_output, panel.swap):
+            self.assertEqual(button.size(), self.window.copy_button.size())
+            self.assertEqual(button.iconSize(), self.window.copy_button.iconSize())
+        panel.splitter.setSizes([300, 150])
+        panel.splitter.splitterMoved.emit(300, 1)
+        sizes = panel.splitter.sizes()
+        ratio = sizes[0] / sum(sizes)
+        self.window.resize(740, 420)
+        self.app.processEvents()
+        sizes = panel.splitter.sizes()
+        self.assertAlmostEqual(sizes[0] / sum(sizes), ratio, delta=.01)
+        panel.set_side_by_side(False)
+        panel.set_side_by_side(True)
+        self.app.processEvents()
+        sizes = panel.splitter.sizes()
+        self.assertAlmostEqual(sizes[0] / sum(sizes), ratio, delta=.01)
+
+    def test_loading_indicator_stays_inside_long_translation_without_scrolling(self):
+        self.window.open_translation()
+        panel = self.window.translation_panel
+        panel.set_content('Source', '\n'.join(f'Line {i}' for i in range(100)), 'English', 'Japanese')
+        self.app.processEvents()
+        view = panel.output
+        bar = view.verticalScrollBar()
+        before = view.toHtml()
+        panel.set_busy(True)
+        for scroll in (0, bar.maximum()):
+            bar.setValue(scroll)
+            view._animate_loading()
+            self.assertTrue(view.viewport().rect().contains(view.loading.geometry()))
+            self.assertEqual(bar.value(), scroll)
+            self.assertEqual(view.toHtml(), before)
+
+    def test_copy_confirmation_centers_for_both_window_width_parities(self):
+        self.window.show()
+        for width in (480, 481):
+            self.window.resize(width, 340)
+            self.app.processEvents()
+            self.window.copy_feedback.show_confirmation()
+            frame = self.window.frame
+            bounds = frame.contentsRect().marginsRemoved(frame.layout().contentsMargins())
+            rect = self.window.copy_feedback.geometry()
+            self.assertLessEqual(abs((rect.left() - bounds.left()) - (bounds.right() - rect.right())), 1)
+
+    def test_settings_sections_share_rendered_field_columns(self):
+        from PyQt6.QtWidgets import QFormLayout
+        dialog = SetupDialog(self.temp.name, self.settings, self.window.apply_shortcut, self.window)
+        try:
+            dialog.show()
+            appearance_page = next(dialog.tabs.widget(i) for i in range(dialog.tabs.count())
+                                   if dialog.tabs.widget(i).widget() is dialog.appearance)
+            for page in (dialog.shortcuts_tab, appearance_page):
+                dialog.tabs.setCurrentWidget(page)
+                if page is not dialog.shortcuts_tab:
+                    dialog.appearance.preview_section.toggle.setChecked(True)
+                self.app.processEvents()
+                body = page.widget()
+                columns = []
+                for form in body.findChildren(QFormLayout):
+                    for row in range(form.rowCount()):
+                        label = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+                        field = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+                        if label and label.widget() and field and field.widget() and field.widget().isVisible():
+                            columns.append(field.widget().mapTo(body, QPoint()).x())
+                self.assertGreater(len(columns), 1)
+                self.assertEqual(len(set(columns)), 1)
+        finally:
+            dialog.hide()
+            dialog.deleteLater()
+
     def test_translation_restores_original_child_focus_without_stealing_focus(self):
         handle = int(self.window.winId())
         with patch('PyQt6.QtWidgets.QApplication.platformName', return_value='windows'), \

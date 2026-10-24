@@ -13,7 +13,7 @@ from meikipop.dictionary.library import Library, default_library_path, language_
 from meikipop.dictionary.translation import TranslationSettings, load_settings, load_profile_settings, save_profile_settings
 from meikipop.gui.quick_lookup import LANGUAGE_NAMES, language_name, shortcut_preset, audio_autoplay_mode
 from meikipop.gui.shortcut_edit import ShortcutEdit
-from meikipop.gui.settings_section import SettingsSection, StatusLabel
+from meikipop.gui.settings_section import SettingsSection, StatusLabel, align_form_columns
 from meikipop.language.profiles import configured_profiles, default_partner, visible_profiles
 
 
@@ -543,6 +543,7 @@ class SetupDialog(QDialog):
             shortcut_page_layout.addWidget(section)
         shortcut_page_layout.addStretch()
         self.shortcuts_tab = add_page(shortcut_page, "Shortcuts")
+        align_form_columns(shortcut_layout, popup_form)
         add_page(dictionaries, "Dictionaries")
         add_page(self.appearance, "Appearance")
         self.audio_tab = add_page(audio, "Audio")

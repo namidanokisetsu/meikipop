@@ -1,7 +1,9 @@
 """Small monochrome action icons drawn locally for the shared popup."""
-from PyQt6.QtCore import QByteArray, Qt
+from functools import lru_cache
+from PyQt6.QtCore import QByteArray, QSize, Qt
 from PyQt6.QtGui import QIcon, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtWidgets import QToolButton
 
 POPUP_ACTIONS = (("anki", "Add to Anki"), ("audio_sentence", "Sentence audio"),
                  ("audio", "Word audio"), ("translate", "Translate"),
@@ -23,10 +25,21 @@ _SHAPES = {
 }
 
 
+@lru_cache(maxsize=None)
+def _shape(name):
+    shape = _SHAPES[name]
+    if name in ("audio", "audio_sentence"):
+        renderer = QSvgRenderer(QByteArray(
+            f'<svg xmlns="http://www.w3.org/2000/svg"><g id="shape">{shape}</g></svg>'.encode()))
+        center = renderer.boundsOnElement("shape").center()
+        shape = f'<g transform="translate({12 - center.x()} {12 - center.y()})">{shape}</g>'
+    return shape
+
+
 def action_icon(name, color):
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">'
            f'<g fill="none" stroke="{color}" stroke-width="1.6" stroke-linecap="round" '
-           f'stroke-linejoin="round">{_SHAPES[name]}</g></svg>')
+           f'stroke-linejoin="round">{_shape(name)}</g></svg>')
     pixmap = QPixmap(48, 48)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -34,3 +47,14 @@ def action_icon(name, color):
     painter.end()
     pixmap.setDevicePixelRatio(2)
     return QIcon(pixmap)
+
+
+def action_button(name, description, color):
+    button = QToolButton()
+    button.setProperty("action_name", name)
+    button.setIcon(action_icon(name, color))
+    button.setIconSize(QSize(16, 16))
+    button.setFixedSize(25, 25)
+    button.setAccessibleName(description)
+    button.setToolTip(description)
+    return button

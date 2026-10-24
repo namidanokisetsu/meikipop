@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFontComboBox, 
                             QPushButton, QSpinBox, QVBoxLayout, QWidget)
 from meikipop.config.config import config
 from meikipop.gui.themes import THEMES, theme_name
-from meikipop.gui.settings_section import SettingsSection
+from meikipop.gui.settings_section import SettingsSection, align_form_columns
 from meikipop.gui.typography import default_family
 from meikipop.gui.action_icons import POPUP_ACTIONS
 
@@ -216,6 +216,7 @@ class ProfileAppearance(QWidget):
                 widget.setValue(int(value))
             if key.startswith("color"):
                 self.form.setRowVisible(widget, name == "Custom")
+        align_form_columns(self.form, self.preview_form, self.pinned_form)
         self._loading = False
 
     def set_color(self, key, color):

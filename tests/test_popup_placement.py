@@ -1,9 +1,17 @@
 import unittest
 from PyQt6.QtCore import QPoint, QRect, QSize
-from meikipop.gui.popup_style import expanded_geometry
+from meikipop.gui.popup_style import expanded_geometry, popup_position
 
 
 class PopupPlacementTests(unittest.TestCase):
+    def test_clamps_flush_to_inclusive_screen_edges(self):
+        for area in (QRect(0, 0, 1920, 1040), QRect(-1280, -200, 1280, 720)):
+            size = QSize(480, 340)
+            x, _ = popup_position(area.right(), area.top() + 100, size, area, 'flip_vertically')
+            _, y = popup_position(area.left() + 100, area.bottom(), size, area, 'flip_horizontally')
+            self.assertEqual(x + size.width(), area.right() + 1)
+            self.assertEqual(y + size.height(), area.bottom() + 1)
+
     def test_above_subtitles_preserves_lower_edge(self):
         previous = QRect(1500, 890, 350, 100)
         result = expanded_geometry(previous, QSize(480, 340), QRect(0, 0, 1920, 1040), QPoint(1600, 1005))

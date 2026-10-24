@@ -1,6 +1,14 @@
 """Compact, keyboard-accessible disclosure for optional settings."""
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QToolButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFormLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+
+
+def align_form_columns(*forms):
+    labels = [item.widget() for form in forms for row in range(form.rowCount())
+              if (item := form.itemAt(row, QFormLayout.ItemRole.LabelRole)) is not None and item.widget()]
+    width = max((label.sizeHint().width() for label in labels), default=0)
+    for label in labels:
+        label.setMinimumWidth(width)
 
 
 class SettingsSection(QWidget):

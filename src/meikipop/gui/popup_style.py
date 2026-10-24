@@ -52,8 +52,8 @@ def popup_position(x, y, popup_size, screen_geo, mode):
 
         # Vertical Push
         if final_y < screen_geo.top(): final_y = screen_geo.top()
-        if final_y + popup_size.height() > screen_geo.bottom():
-            final_y = screen_geo.bottom() - popup_size.height()
+        if final_y + popup_size.height() > screen_geo.bottom() + 1:
+            final_y = screen_geo.bottom() + 1 - popup_size.height()
 
         # --- Horizontal Position (VN Mode) ---
         screen_width = screen_geo.width()
@@ -74,34 +74,34 @@ def popup_position(x, y, popup_size, screen_geo, mode):
     elif mode == 'flip_horizontally':
         # X: Flip, Y: Push
         preferred_x = x + offset
-        final_x = preferred_x if preferred_x + popup_size.width() <= screen_geo.right() else x - popup_size.width() - offset
+        final_x = preferred_x if preferred_x + popup_size.width() <= screen_geo.right() + 1 else x - popup_size.width() - offset
 
         final_y = y + offset
-        if final_y + popup_size.height() > screen_geo.bottom(): final_y = screen_geo.bottom() - popup_size.height()
+        if final_y + popup_size.height() > screen_geo.bottom() + 1: final_y = screen_geo.bottom() + 1 - popup_size.height()
         if final_y < screen_geo.top(): final_y = screen_geo.top()
 
     elif mode == 'flip_vertically':
         # X: Push, Y: Flip
         final_x = x + offset
-        if final_x + popup_size.width() > screen_geo.right(): final_x = screen_geo.right() - popup_size.width()
+        if final_x + popup_size.width() > screen_geo.right() + 1: final_x = screen_geo.right() + 1 - popup_size.width()
         if final_x < screen_geo.left(): final_x = screen_geo.left()
 
         preferred_y = y + offset
-        final_y = preferred_y if preferred_y + popup_size.height() <= screen_geo.bottom() else y - popup_size.height() - offset
+        final_y = preferred_y if preferred_y + popup_size.height() <= screen_geo.bottom() + 1 else y - popup_size.height() - offset
 
     else:  # 'flip_both'
         # X: Flip
         preferred_x = x + offset
-        final_x = preferred_x if preferred_x + popup_size.width() <= screen_geo.right() else x - popup_size.width() - offset
+        final_x = preferred_x if preferred_x + popup_size.width() <= screen_geo.right() + 1 else x - popup_size.width() - offset
 
         # Y: Flip
         preferred_y = y + offset
-        final_y = preferred_y if preferred_y + popup_size.height() <= screen_geo.bottom() else y - popup_size.height() - offset
+        final_y = preferred_y if preferred_y + popup_size.height() <= screen_geo.bottom() + 1 else y - popup_size.height() - offset
 
     # Final clamp to ensure the popup is always fully visible.
     # This acts as a safeguard against any edge cases.
-    final_x = max(screen_geo.left(), min(final_x, screen_geo.right() - popup_size.width()))
-    final_y = max(screen_geo.top(), min(final_y, screen_geo.bottom() - popup_size.height()))
+    final_x = max(screen_geo.left(), min(final_x, screen_geo.right() + 1 - popup_size.width()))
+    final_y = max(screen_geo.top(), min(final_y, screen_geo.bottom() + 1 - popup_size.height()))
 
     return int(final_x), int(final_y)
 

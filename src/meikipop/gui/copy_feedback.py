@@ -32,7 +32,8 @@ class CopyFeedback(QLabel):
         parent = self.parentWidget()
         # Styling the label can invalidate the layout's cached geometry.
         bounds = parent.contentsRect().marginsRemoved(parent.layout().contentsMargins())
-        self.move(bounds.center().x() - self.width() // 2, bounds.bottom() - self.height() + 1)
+        self.move(bounds.left() + (bounds.width() - self.width()) // 2,
+                  bounds.bottom() - self.height() + 1)
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.Resize and self.isVisible():
