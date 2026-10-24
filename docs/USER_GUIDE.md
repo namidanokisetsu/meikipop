@@ -88,8 +88,9 @@ disable lookup and popup bindings. Popup defaults are **R** for replay,
 Close a pinned popup before starting another lookup with a keyboard hold.
 **Buttons** controls each popup action independently. **Sentence size** controls
 sentence and translation text. Click the compact sentence to read it in full.
-Tokyo Night and Dracula use darker, high-contrast palettes. Background opacity
-defaults to 98%; changing themes keeps your chosen opacity.
+Tokyo Night and Dracula use darker, high-contrast palettes. EVA pairs dark purple
+with lime headwords and violet readings. Pitch coloring is optional. Background
+opacity defaults to 98%; changing themes keeps your chosen opacity.
 Preview shows one definition without grammar labels by default; change **Definitions** or select **All**.
 Pinned results have no definition limit. Turkish misses can still show the analyzed root and
 grammar, and screen lookup keeps available spelling suggestions.

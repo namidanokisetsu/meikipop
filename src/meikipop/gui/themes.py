@@ -16,6 +16,11 @@ THEMES = {
         "color_highlight_word": "#FF92D0", "color_highlight_reading": "#C8ACFF",
         "background_opacity": 250,
     },
+    "EVA": {
+        "color_background": "#100B1C", "color_foreground": "#F4F1FF",
+        "color_highlight_word": "#B8FF3D", "color_highlight_reading": "#B18AFF",
+        "background_opacity": 250,
+    },
     "Light": {
         "color_background": "#FFFFFF", "color_foreground": "#202020",
         "color_highlight_word": "#202020", "color_highlight_reading": "#606060",

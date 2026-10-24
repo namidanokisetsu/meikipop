@@ -80,7 +80,7 @@ class ProfileThemeTests(unittest.TestCase):
                 widget.deleteLater()
 
     def test_presets_keep_text_and_metadata_readable(self):
-        self.assertEqual(set(THEMES), {"Tokyo Night", "Dracula", "Dark", "Light", "Custom"})
+        self.assertEqual(set(THEMES), {"Tokyo Night", "Dracula", "EVA", "Dark", "Light", "Custom"})
         for name, theme in THEMES.items():
             if not theme:
                 continue
