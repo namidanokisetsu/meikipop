@@ -805,15 +805,17 @@ class UnifiedOCR(QObject):
             self.leave_timer.start()
         self._sync_pin_ready()
 
-    def dismiss(self):
+    def dismiss(self, *, resume_hover=False):
         self.restore_capture_visibility()
-        self.session.dismiss()
+        self.session.dismiss(resume_hover=resume_hover)
         if hasattr(self.window, "scan_hold_changed"):
             self.window.scan_hold_changed(False)
         self._capture_hidden = False
         self.window._capture_visibility = False
         self._sync_timer()
         self.invalidate()
+        if resume_hover:
+            self._last_capture_at = 0
         self.window.hide()
         if self.input:
             self.input.visible.clear()
@@ -824,7 +826,9 @@ class UnifiedOCR(QObject):
             return
         if (self.window.isVisible() and not self.window.geometry().contains(QCursor.pos())
                 and QApplication.activeModalWidget() is None and QApplication.activePopupWidget() is None):
-            self.dismiss()
+            self._update_hover(QCursor.pos())
+            self.dismiss(resume_hover=self.session.hovering and not self.holding
+                         and getattr(self.window, "_peek", False))
 
     def finish_peek(self):
         if QApplication.activeModalWidget() or QApplication.activePopupWidget():

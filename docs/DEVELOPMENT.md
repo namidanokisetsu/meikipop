@@ -188,7 +188,9 @@ The hover scan area persists globally with its screen geometry and scale;
 restore it only on a matching display. Hover scanning starts disabled unless
 explicitly enabled at startup; restoration requires a valid saved area. Its independently recorded toggle defaults to disabled.
 Automatic popup hides keep hover scanning active inside the area; explicit
-dismissal pauses it until the pointer leaves and returns.
+dismissal through Close or Escape pauses it until the pointer leaves and returns.
+An outside click returns a pinned hover result to scanning within the same area,
+including after saving to Anki; saved-note state remains attached to its word.
 Successful saves retain their headword/reading and Anki settings across lookups;
 their checkmarks open the saved notes in Anki's browser. Live checks reconcile
 deleted notes; checks started before a save cannot erase its confirmation.

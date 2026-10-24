@@ -21,6 +21,8 @@ again. The app is not Apple-notarized, so Gatekeeper may show a warning.
   Point at words inside it without holding a key. The area is remembered between
   sessions while the display layout and scaling match. Enable it from the tray or assign **Toggle hover scan** in **Shortcuts**.
   **Enable hover scan at startup** optionally reuses a valid saved area.
+  Clicking outside a pinned result resumes hover lookup in the same area,
+  including after saving to Anki. Close or Escape pauses it until you leave and return.
 - **Typed or copied text:** open **Search** from the tray. The configurable text
   shortcut opens selected text, or an empty input when nothing is selected.
   Select a word in the search input and press Enter to look it up with the

@@ -35,9 +35,9 @@ class LookupSession:
         self.holding = active
         return True
 
-    def dismiss(self):
+    def dismiss(self, *, resume_hover=False):
         self.dismissed = self.dismissed or self.holding
-        self.hover_dismissed = self.hover_dismissed or self.hovering
+        self.hover_dismissed = not resume_hover and (self.hover_dismissed or self.hovering)
         self.holding = False
 
     def hide(self):

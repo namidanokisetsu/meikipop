@@ -4,6 +4,14 @@ from meikipop.gui.lookup_session import LookupSession, popup_mode
 
 
 class LookupSessionTests(unittest.TestCase):
+    def test_outside_click_can_return_to_hover_without_reentering_the_zone(self):
+        state = LookupSession(enabled=True, hovering=True)
+        state.dismiss(resume_hover=True)
+        state.hide()
+        self.assertTrue(state.scanning())
+        state.dismiss()
+        self.assertFalse(state.scanning())
+
     def test_popup_hide_keeps_hover_active_but_suppresses_held_shortcut(self):
         state = LookupSession(enabled=True, hovering=True, holding=True)
         state.hide()

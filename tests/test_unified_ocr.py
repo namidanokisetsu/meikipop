@@ -408,6 +408,11 @@ class FakeWindow(QWidget):
         self.show_entries = Mock(return_value=True)
         self.set_context = Mock()
 
+    def hideEvent(self, event):
+        if not getattr(self, '_capture_visibility', False):
+            self.pin.setChecked(False)
+        super().hideEvent(event)
+
 
 class UnifiedOCRLifecycleTests(unittest.TestCase):
     @classmethod
@@ -727,6 +732,25 @@ class UnifiedOCRLifecycleTests(unittest.TestCase):
             with patch("meikipop.gui.unified_ocr.QCursor.pos", return_value=QPoint(400, 300)):
                 self.controller.scan()
             self.controller.scan()
+            self.assertEqual(capture.call_count, 2)
+
+    def test_outside_click_resumes_hover_at_same_word_and_other_words_in_zone(self):
+        self.enable_hover()
+        self.window.setGeometry(400, 300, 200, 100)
+        with patch('meikipop.gui.unified_ocr.QCursor.pos', return_value=QPoint(100, 100)) as cursor, \
+                patch.object(self.controller, '_request_capture') as capture:
+            self.controller._update_hover(cursor.return_value)
+            self.window.show()
+            self.window.pin.setChecked(True)
+            self.controller.scan()
+            capture.assert_not_called()
+            self.controller.outside_click()
+            self.assertFalse(self.window.isVisible())
+            self.assertFalse(self.window.is_pinned)
+            self.assertFalse(self.controller.session.hover_dismissed)
+            for point in (QPoint(100, 100), QPoint(200, 100)):
+                cursor.return_value = point
+                self.controller.scan()
             self.assertEqual(capture.call_count, 2)
 
     def test_popup_hide_keeps_hover_scanning_inside_area(self):

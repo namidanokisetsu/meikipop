@@ -9,7 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from PyQt6.QtCore import QCoreApplication, QEvent, QSettings
+from PyQt6.QtCore import QCoreApplication, QEvent, QPoint, QRect, QSettings
 from PyQt6.QtWidgets import QApplication
 
 from meikipop.anki import AnkiSettings, load_settings
@@ -225,6 +225,61 @@ class AnkiGuiTests(unittest.TestCase):
         window = QuickLookupWindow(self.temp.name, FakeEngine, self.settings)
         self.widgets.append(window)
         return window
+
+    def test_hover_continues_after_outside_click_during_and_after_anki_save(self):
+        from meikipop.gui.unified_ocr import UnifiedOCR
+        window = self.anki_window()
+        with patch.object(UnifiedOCR, 'reload_settings'):
+            controller = UnifiedOCR(window)
+        controller.enabled = True
+        controller.hover_enabled = True
+        controller.hover_region = QRect(50, 50, 300, 150)
+        controller.hover_screen = controller._screen_key(QApplication.primaryScreen())
+        entered, release = threading.Event(), threading.Event()
+
+        def save(*args, **kwargs):
+            entered.set()
+            release.wait(2)
+            return 123
+
+        cat = Entry('1', 'cat', '', 'Words', 'ja', ('cat',))
+        dog = Entry('2', 'dog', '', 'Words', 'ja', ('dog',))
+        try:
+            with patch('meikipop.gui.unified_ocr.QCursor.pos', return_value=QPoint(100, 100)), \
+                    patch.object(controller, '_request_capture') as capture, \
+                    patch('meikipop.gui.anki.export_note', side_effect=save) as export:
+                window.show_entries([cat], 'cat', peek=True)
+                controller._update_hover(QPoint(100, 100))
+                window.pin.setChecked(True)
+                window.setGeometry(400, 300, 480, 340)
+                window.add_to_anki()
+                self.assertTrue(entered.wait(1))
+                controller.scan()
+                capture.assert_not_called()
+                controller.outside_click()
+                controller.scan()
+                capture.assert_called_once()
+                window.show_entries([dog], 'dog', peek=True)
+                release.set()
+                self.wait_until(lambda: window._anki_task is None)
+                self.assertEqual(export.call_args.args[0], (cat,))
+                self.assertEqual(window._result.text, 'dog')
+                self.assertEqual(window.anki_button.property('action_name'), 'anki')
+                window.show_entries([cat], 'cat', peek=True)
+                self.assertEqual(window.anki_button.property('action_name'), 'anki_saved')
+                window.pin.setChecked(True)
+                window.setGeometry(400, 300, 480, 340)
+                capture.reset_mock()
+                controller.scan()
+                capture.assert_not_called()
+                controller.outside_click()
+                controller.scan()
+                capture.assert_called_once()
+                self.assertFalse(window.is_pinned)
+                self.assertFalse(controller.session.hover_dismissed)
+        finally:
+            release.set()
+            controller.shutdown()
 
     def test_existing_word_shows_saved_state_and_opens_all_matching_notes(self):
         window = self.anki_window()
