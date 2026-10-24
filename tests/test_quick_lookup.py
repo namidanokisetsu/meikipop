@@ -139,7 +139,7 @@ class QuickLookupTests(unittest.TestCase):
         panel.source.setPlainText(long_text)
         panel.copy_source.click()
         self.assertEqual(QApplication.clipboard().text(), long_text)
-        panel.translate.click()
+        panel.source.submitted.emit()
         revision = self.window.revision
         self.assertEqual(self.window.translation_worker.request.call_args.args[1], long_text.strip())
         self.window.deliver(revision, SearchResult(long_text.strip(), "en", "ja", translation="長い翻訳。"))
@@ -156,14 +156,15 @@ class QuickLookupTests(unittest.TestCase):
         self.assertEqual(panel.source.toPlainText(), "長い翻訳。")
         self.assertEqual(self.window._translation_content.source, "ja")
         self.assertEqual(self.window._translation_content.target, "en")
-        self.assertEqual(panel.output.toPlainText(), "")
+        self.assertTrue(self.window.translation_debounce.isActive())
+        self.assertFalse(panel.copy_output.isEnabled())
 
     def test_editing_source_cancels_stream_and_preserves_edit_cursor(self):
         self.window.translation_worker = Mock()
         self.window.open_translation()
         panel = self.window.translation_panel
         panel.source.setPlainText("old")
-        panel.translate.click()
+        panel.source.submitted.emit()
         old_revision = self.window.revision
         panel.source.setPlainText("new")
         panel.source.moveCursor(QTextCursor.MoveOperation.End)
@@ -174,6 +175,30 @@ class QuickLookupTests(unittest.TestCase):
         self.assertFalse(self.window._translation_busy)
         self.assertEqual(panel.output.toPlainText(), "")
         self.window.translation_worker.cancel.assert_called()
+
+    def test_auto_translation_debounces_composition_and_dismissal(self):
+        from PyQt6.QtGui import QInputMethodEvent
+        self.window.translation_worker = Mock()
+        self.window.open_translation()
+        panel = self.window.translation_panel
+        panel.source.setPlainText("first")
+        self.assertTrue(self.window.translation_debounce.isActive())
+        QApplication.sendEvent(panel.source, QInputMethodEvent("composing", []))
+        self.assertFalse(self.window.translation_debounce.isActive())
+        self.window._submit_translation_source()
+        self.window.translation_worker.request.assert_not_called()
+        commit = QInputMethodEvent()
+        commit.setCommitString(" final")
+        QApplication.sendEvent(panel.source, commit)
+        self.assertTrue(self.window.translation_debounce.isActive())
+        self.window.translation_debounce.timeout.emit()
+        self.window.translation_worker.request.assert_called_once()
+        self.window.deliver(self.window.revision, SearchResult(panel.source.toPlainText().strip(), "en", "ja", translation="result"))
+        panel.source.insertPlainText(" edited")
+        self.assertEqual(panel.output.toPlainText(), "result")
+        self.assertFalse(panel.copy_output.isEnabled())
+        self.window.hide()
+        self.assertFalse(self.window.translation_debounce.isActive())
 
     def test_hover_shortcut_is_independent_and_checks_collisions(self):
         self.assertIsNone(self.window._hover_keys)
@@ -1284,9 +1309,9 @@ class QuickLookupTests(unittest.TestCase):
             self.assertNotIn("dictionary definition", self.window.translation_browser.toPlainText())
             revision = self.window.revision
             self.window.deliver(revision, SearchResult(sentence, "ja", "en", translation="Full translated sentence."))
-            self.assertEqual("English", self.window.translation_panel.target_label.text())
+            self.assertEqual("English \u25be", self.window.translation_panel.target_label.text())
             self.assertIn("Full translated sentence.", self.window.translation_browser.toPlainText())
-            self.assertEqual("日本語", self.window.translation_panel.source_label.text())
+            self.assertEqual("日本語 \u25be", self.window.translation_panel.source_label.text())
             self.assertTrue(self.window.translation_panel.copy_output.isEnabled())
             self.window._set_translation_language("target", "tr")
             self.assertEqual(self.window.translation_worker.request.call_args.kwargs["target"], "tr")

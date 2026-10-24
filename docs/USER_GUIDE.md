@@ -117,9 +117,9 @@ the tray, or enable **Translate** in **Shortcuts** with the Ctrl+Shift+T preset
 (Command+Shift+T on macOS). Click a language name to change it; language search
 accepts codes, English names and native names. The swap button reverses direction
 and uses the output as the new input. Copy buttons stay beside the language labels.
-Use **Translate** or Ctrl+Enter to submit edited input. **Back** returns to the
+Edits translate automatically after a short pause; Ctrl+Enter submits immediately. **Back** returns to the
 dictionary with its selection and scroll position preserved.
-Drag the divider to resize the text panes. **Translation → Side-by-side text panes**
+Drag the divider to resize the text panes; each layout remembers its split. **Translation → Side-by-side text panes**
 puts input on the left and output on the right; resize the window as needed.
 Long text translates in passages. **Advanced → Passage size** controls their
 maximum length; the model's context and output limits still apply per passage.

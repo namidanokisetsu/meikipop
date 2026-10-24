@@ -93,9 +93,10 @@ Translation uses a separate reading surface and the existing worker; returning
 keeps the dictionary document, selection and scroll intact.
 Compact language labels and a viewport loading indicator keep streaming updates
 separate from loading animation. Back or dismissal cancels the request;
-the fixed pane headers retain copy, language, swap and submit actions. Source edits
-invalidate the request and output immediately; streamed and completed results must
-match the current revision and source text. Dismissal releases the translation
+the fixed pane headers retain copy, language and swap actions. Source edits
+invalidate requests immediately and debounce submission outside IME composition.
+Previous output stays muted with its copy action disabled until replaced; streamed
+and completed results must match the current revision and source text. Dismissal releases the translation
 snapshot before another hover result. The stacked/horizontal splitter uses Qt
 layout bounds; editing and output have independent scroll surfaces.
 The standalone translation shortcut is independently recorded and disabled by

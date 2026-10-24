@@ -56,13 +56,14 @@ class TranslationView(RubyBrowser):
         if hasattr(self, "loading"):
             self._position_loading()
 
-    def set_content(self, translation, message=""):
+    def set_content(self, translation, message="", stale=False):
         muted = surface_colors(config.color_background, config.color_foreground)["muted"]
-        content = (translation, message, config.color_foreground, muted)
+        foreground = muted if stale else config.color_foreground
+        content = (translation, message, foreground, muted)
         if content == self._content:
             return
         position = ReadingPosition(self) if self._content else None
-        parts = [f'<style>p {{margin:2px 0;}} body {{color:{config.color_foreground};}}</style>']
+        parts = [f'<style>p {{margin:0;}} body {{color:{foreground};}}</style>']
         parts.append(f'<p>{escape(translation).replace(chr(10), "<br>")}</p>')
         if message:
             parts.append(f'<p>{escape(message).replace(chr(10), "<br>")}</p>')
@@ -76,13 +77,20 @@ class TranslationView(RubyBrowser):
 
 class SourceEditor(QTextEdit):
     submitted = pyqtSignal()
+    composition_changed = pyqtSignal(bool)
     selecting = False
+    composing = False
 
     def __init__(self):
         super().__init__()
         self.setAcceptRichText(False)
         self.setPlaceholderText("Text to translate")
         self.setAccessibleName("Translation source")
+
+    def inputMethodEvent(self, event):
+        self.composing = bool(event.preeditString())
+        self.composition_changed.emit(self.composing)
+        super().inputMethodEvent(event)
 
     def selected_text(self):
         return self.textCursor().selectedText().replace("\u2029", "\n").strip()
@@ -101,8 +109,10 @@ class TranslationPanel(QWidget):
     language_requested = pyqtSignal(str)
     swap_requested = pyqtSignal()
 
-    def __init__(self):
+    def __init__(self, settings=None):
         super().__init__()
+        self.settings = settings
+        self.stale_output = ""
         self.source = SourceEditor()
         self.output = TranslationView()
         self.source_label, self.target_label = QToolButton(), QToolButton()
@@ -113,9 +123,9 @@ class TranslationPanel(QWidget):
         self.copy_source = self._button("copy", "Copy input", lambda: QApplication.clipboard().setText(self.source.toPlainText()))
         self.copy_output = self._button("copy", "Copy output", self._copy_output)
         self.swap = self._button("swap", "Swap languages", self.swap_requested.emit)
-        self.translate = self._button("translate", "Translate (Ctrl+Enter)", self.translate_requested.emit)
         self.splitter = QSplitter(Qt.Orientation.Vertical)
-        for editor, label, buttons in ((self.source, self.source_label, (self.copy_source, self.swap, self.translate)),
+        self.splitter.setHandleWidth(2)
+        for editor, label, buttons in ((self.source, self.source_label, (self.copy_source,)),
                                         (self.output, self.target_label, (self.copy_output,))):
             pane = QWidget()
             layout = QVBoxLayout(pane)
@@ -124,6 +134,8 @@ class TranslationPanel(QWidget):
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
             row.addWidget(label)
+            if editor is self.source:
+                row.addWidget(self.swap)
             row.addStretch()
             for button in buttons:
                 row.addWidget(button)
@@ -131,6 +143,8 @@ class TranslationPanel(QWidget):
             layout.addWidget(editor, 1)
             self.splitter.addWidget(pane)
         self.splitter.setChildrenCollapsible(False)
+        self.splitter.splitterMoved.connect(self._save_split)
+        self._restore_split()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.splitter)
@@ -151,25 +165,45 @@ class TranslationPanel(QWidget):
         QApplication.clipboard().setText(self.translation)
 
     def set_content(self, text, translation, source, target, message=""):
-        if self.source.toPlainText() != text:
+        if self.source.toPlainText().strip() != text.strip():
             with QSignalBlocker(self.source):
                 self.source.setPlainText(text)
         self.translation = translation
         self.copy_source.setEnabled(bool(text))
         self.copy_output.setEnabled(bool(translation))
-        self.translate.setEnabled(bool(text.strip()) and not self.busy)
         self.swap.setEnabled(source != "Automatic" and source != target)
-        self.source_label.setText(source)
-        self.target_label.setText(target)
-        muted = surface_colors(config.color_background, config.color_foreground)["muted"]
+        self.source_label.setText(source + " \u25be")
+        self.target_label.setText(target + " \u25be")
+        colors = surface_colors(config.color_background, config.color_foreground)
+        muted = colors["muted"]
         for label in (self.source_label, self.target_label):
-            label.setStyleSheet(f"color:{muted};font-size:{max(10, round(config.font_size_sentence * .75))}px;")
-        self.output.set_content(translation, message)
+            label.setStyleSheet(f"QToolButton {{color:{muted};font-size:{max(10, round(config.font_size_sentence * .8))}px;"
+                                f"border:1px solid {colors['border']};border-radius:3px;padding:1px 4px;}}"
+                                f"QToolButton:hover {{background:{colors['hover']};}}")
+        self.output.set_content(translation or self.stale_output, message, stale=not translation and bool(self.stale_output))
+
+    def _split_key(self):
+        return "translation_split/" + self.splitter.orientation().name
+
+    def _save_split(self, *_):
+        if self.settings is not None:
+            self.settings.setValue(self._split_key(), self.splitter.sizes())
+
+    def _restore_split(self):
+        sizes = self.settings.value(self._split_key(), [1, 1]) if self.settings is not None else [1, 1]
+        try:
+            sizes = [int(value) for value in sizes]
+            if len(sizes) == 2 and all(value > 0 for value in sizes):
+                self.splitter.setSizes(sizes)
+        except (TypeError, ValueError):
+            pass
 
     def set_side_by_side(self, enabled):
-        self.splitter.setOrientation(Qt.Orientation.Horizontal if enabled else Qt.Orientation.Vertical)
+        orientation = Qt.Orientation.Horizontal if enabled else Qt.Orientation.Vertical
+        if self.splitter.orientation() != orientation:
+            self.splitter.setOrientation(orientation)
+            self._restore_split()
 
     def set_busy(self, busy):
         self.busy = busy
-        self.translate.setEnabled(not busy and bool(self.source.toPlainText().strip()))
         self.output.set_busy(busy)

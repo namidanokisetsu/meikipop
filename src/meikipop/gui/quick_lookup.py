@@ -1043,11 +1043,16 @@ class QuickLookupWindow(QDialog):
         self.browser.anchorClicked.connect(self._queue_link)
         self.browser.word_selected.connect(self.lookup_word)
         from meikipop.gui.translation_view import TranslationPanel
-        self.translation_panel = TranslationPanel()
+        self.translation_panel = TranslationPanel(self.settings)
         self.translation_browser = self.translation_panel.output
         self.translation_panel.language_requested.connect(self._translation_language_menu)
         self.translation_panel.translate_requested.connect(self._submit_translation_source)
         self.translation_panel.source_changed.connect(self._translation_source_edited)
+        self.translation_debounce = QTimer(self)
+        self.translation_debounce.setSingleShot(True)
+        self.translation_debounce.setInterval(500)
+        self.translation_debounce.timeout.connect(self._submit_translation_source)
+        self.translation_panel.source.composition_changed.connect(self._translation_composition_changed)
         self.translation_panel.swap_requested.connect(self._swap_translation_languages)
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.browser)
@@ -1336,6 +1341,7 @@ class QuickLookupWindow(QDialog):
         self._edited()
 
     def _invalidate(self):
+        self.translation_debounce.stop()
         self.revision += 1
         self._pending_context = None
         self.stream_timer.stop()
@@ -1387,7 +1393,10 @@ class QuickLookupWindow(QDialog):
             self.submit(translate=True, context=bool(self._context))
 
     def _show_translation(self, text, source, target):
+        if self._translation_view and self._translation_content.translation:
+            self.translation_panel.stale_output = self._translation_content.translation
         if not self._translation_view:
+            self.translation_panel.stale_output = ""
             self._translation_return = {}
             for name in (
                 "_result", "_result_context", "_result_screenshot", "_result_input",
@@ -1416,6 +1425,8 @@ class QuickLookupWindow(QDialog):
     def _leave_translation(self):
         if not self._translation_view:
             return
+        self.translation_debounce.stop()
+        self.translation_panel.stale_output = ""
         self._translation_view = False
         self._partial_translation = False
         for name, value in (self._translation_return or {}).items():
@@ -1470,18 +1481,31 @@ class QuickLookupWindow(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
         from meikipop.utils.window_focus import focus_pinned_popup
         focus_pinned_popup(self, self.translation_panel.source)
+        if text.strip():
+            self.translation_debounce.start()
 
     def _translation_source_edited(self, text):
         if not self._translation_view:
             return
+        self.translation_panel.stale_output = self._translation_content.translation or self.translation_panel.stale_output
+        if not text.strip():
+            self.translation_panel.stale_output = ""
         self._translation_text = text
         self._translation_content = replace(self._translation_content, text=text, translation="", message="")
         self._invalidate()
         self._render_translation()
         self._place_actions()
+        if text.strip() and not self.translation_panel.source.composing:
+            self.translation_debounce.start()
+
+    def _translation_composition_changed(self, composing):
+        self.translation_debounce.stop()
+        if not composing and self._translation_view:
+            self.translation_debounce.start()
 
     def _submit_translation_source(self):
-        if self._translation_view:
+        self.translation_debounce.stop()
+        if self._translation_view and not self.translation_panel.source.composing:
             self.submit(translate=True, translation_text=self.translation_panel.source.toPlainText())
 
     def _swap_translation_languages(self):
@@ -3264,7 +3288,7 @@ class QuickLookupWindow(QDialog):
             self.audio.shutdown()
         self.debounce.stop()
         for timer in (self.busy_delay, self.fit_timer, self.render_timer, self.stream_timer, self.link_timer,
-                      self.cursor_leave_timer):
+                      self.cursor_leave_timer, self.translation_debounce):
             timer.stop()
         self._translation_chunk = None
         self.worker.shutdown()
