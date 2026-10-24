@@ -121,7 +121,9 @@ native monitor-bounds check. Side buttons page while over the popup and can be
 disabled per profile.
 Windows popups remember the source before showing, before a pin click can activate
 them. Dismissal restores that source only while the popup still has focus;
-temporary capture hiding never changes focus tracking.
+temporary capture hiding never changes focus tracking. Windows also retains the
+source child focus handle for restoration after editing; app-owned dialogs never
+replace the source.
 The text lookup shortcut opens selected text or a blank search input, without
 falling back to clipboard contents. Foreground changes still cancel capture.
 Unhandled native popup events return `(False, 0)` directly. Calling PyQt's base

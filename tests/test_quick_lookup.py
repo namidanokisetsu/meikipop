@@ -57,6 +57,24 @@ class FakeEngine:
 
 
 class QuickLookupTests(unittest.TestCase):
+    def test_translation_restores_original_child_focus_without_stealing_focus(self):
+        handle = int(self.window.winId())
+        with patch('PyQt6.QtWidgets.QApplication.platformName', return_value='windows'), \
+                patch('meikipop.utils.window_focus.foreground_window', return_value=987654) as foreground, \
+                patch('meikipop.utils.window_focus.focused_child', return_value=987655), \
+                patch('meikipop.utils.window_focus.focus_pinned_popup'), \
+                patch('meikipop.utils.window_focus.restore_foreground') as restore:
+            self.window.remember_foreground()
+            foreground.return_value = handle
+            self.window.open_translation()
+            self.window.remember_foreground()
+            self.window.hide()
+            restore.assert_called_once_with(987654, 987655)
+            restore.reset_mock()
+            foreground.return_value = 987656
+            self.window.hide()
+            restore.assert_not_called()
+
     def test_ocr_dismissal_restores_source_even_when_click_activated_before_pin(self):
         handle = int(self.window.winId())
         with patch('PyQt6.QtWidgets.QApplication.platformName', return_value='windows'), \

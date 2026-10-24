@@ -44,7 +44,27 @@ def foreground_window():
     return user32.GetForegroundWindow()
 
 
-def restore_foreground(handle):
+def focused_child(handle):
+    if sys.platform != "win32" or not handle:
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class GuiThreadInfo(ctypes.Structure):
+        _fields_ = [("size", wintypes.DWORD), ("flags", wintypes.DWORD),
+                    *[(name, wintypes.HWND) for name in
+                      ("active", "focus", "capture", "menu", "move", "caret")],
+                    ("rect", wintypes.RECT)]
+
+    user32 = ctypes.WinDLL("user32")
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.c_void_p]
+    info = GuiThreadInfo()
+    info.size = ctypes.sizeof(info)
+    thread = user32.GetWindowThreadProcessId(handle, None)
+    return info.focus if thread and user32.GetGUIThreadInfo(thread, ctypes.byref(info)) else None
+
+
+def restore_foreground(handle, child=None):
     if sys.platform != "win32" or not handle:
         return
     import ctypes
@@ -53,6 +73,19 @@ def restore_foreground(handle):
     user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
     if user32.IsWindow(handle):
         user32.SetForegroundWindow(handle)
+        user32.IsChild.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        if child and user32.IsWindow(child) and (child == handle or user32.IsChild(handle, child)):
+            user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            user32.SetFocus.argtypes = [ctypes.c_void_p]
+            thread = user32.GetWindowThreadProcessId(handle, None)
+            current = ctypes.windll.kernel32.GetCurrentThreadId()
+            attached = thread != current and user32.AttachThreadInput(current, thread, True)
+            try:
+                if foreground_window() == handle:
+                    user32.SetFocus(child)
+            finally:
+                if attached:
+                    user32.AttachThreadInput(current, thread, False)
 
 
 def foreground_is_fullscreen():

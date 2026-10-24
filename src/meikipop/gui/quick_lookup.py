@@ -902,6 +902,7 @@ class QuickLookupWindow(QDialog):
         self._manual_at_cursor = False
         self._opening_search = False
         self._previous_foreground = None
+        self._previous_focus = None
         self._passive_text = False
         self._selection_passive = False
         self._selection_for_search = False
@@ -3138,16 +3139,22 @@ class QuickLookupWindow(QDialog):
 
     def remember_foreground(self):
         if QApplication.platformName() != "offscreen":
-            from meikipop.utils.window_focus import foreground_window
+            from meikipop.utils.window_focus import foreground_window, focused_child
             handle = foreground_window()
-            if handle and handle != int(self.winId()):
+            own_windows = {int(self.winId()), *(int(widget.winId()) for widget in QApplication.topLevelWidgets()
+                                              if widget.isVisible())}
+            if handle and handle not in own_windows:
                 self._previous_foreground = handle
+                self._previous_focus = focused_child(handle)
 
     def hide(self):
         if not self._capture_visibility and QApplication.platformName() != "offscreen":
             from meikipop.utils.window_focus import foreground_window, restore_foreground
             if foreground_window() == int(self.winId()):
-                restore_foreground(self._previous_foreground)
+                if self._previous_focus:
+                    restore_foreground(self._previous_foreground, self._previous_focus)
+                else:
+                    restore_foreground(self._previous_foreground)
         super().hide()
 
     def keyPressEvent(self, event):
